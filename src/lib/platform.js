@@ -40,14 +40,21 @@ async function request(path, options = {}) {
     },
   });
   const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(payload.error || `Request failed with ${response.status}`);
+  if (!response.ok) {
+    const error = new Error(payload.error || `Request failed with ${response.status}`);
+    error.code = payload.code || '';
+    error.status = response.status;
+    throw error;
+  }
   return payload;
 }
 
 export async function registerAccount(details) {
-  const payload = await request('/api/auth/register', { method: 'POST', body: JSON.stringify(details) });
-  setSessionToken(payload.token);
-  return payload.user;
+  return request('/api/auth/register', { method: 'POST', body: JSON.stringify(details) });
+}
+
+export async function resendVerification(email) {
+  return request('/api/auth/resend-verification', { method: 'POST', body: JSON.stringify({ email }) });
 }
 
 export async function loginAccount(details) {
@@ -104,6 +111,23 @@ export function reportClientError(error, context = '') {
 export async function updateUserRole(userId, role) {
   const payload = await request('/api/admin/users/role', { method: 'POST', body: JSON.stringify({ userId, role }) });
   return payload.user;
+}
+
+export async function deleteUserAccount(userId) {
+  return request('/api/admin/users/delete', { method: 'POST', body: JSON.stringify({ userId }) });
+}
+
+export async function inviteAdminByEmail(email) {
+  return request('/api/admin/invites', { method: 'POST', body: JSON.stringify({ email }) });
+}
+
+export async function loadAdminInvites() {
+  const payload = await request('/api/admin/invites');
+  return payload.invites;
+}
+
+export async function revokeAdminInvite(email) {
+  return request('/api/admin/invites/revoke', { method: 'POST', body: JSON.stringify({ email }) });
 }
 
 export async function loadAdminDashboard() {
