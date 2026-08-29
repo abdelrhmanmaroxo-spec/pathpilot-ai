@@ -48,3 +48,35 @@ test('limits concurrent requests per provider', async () => {
   ]);
   assert.equal(maxActive, 1);
 });
+
+test('caches identical Tavily POST requests without retaining api key in cache identity', async () => {
+  let calls = 0;
+  const resilient = createProviderResilientFetch(async () => {
+    calls += 1;
+    return new Response(JSON.stringify({ answer: `result-${calls}` }), { status: 200, headers: { 'content-type': 'application/json' } });
+  }, { maxRetries: 0, researchCacheTtlMs: 60_000 });
+
+  const firstInit = { method: 'POST', body: JSON.stringify({ api_key: 'secret-one', query: 'same query', max_results: 8 }) };
+  const secondInit = { method: 'POST', body: JSON.stringify({ api_key: 'secret-two', query: 'same query', max_results: 8 }) };
+  const first = await resilient('https://api.tavily.com/search', firstInit);
+  const second = await resilient('https://api.tavily.com/search', secondInit);
+
+  assert.equal((await first.json()).answer, 'result-1');
+  assert.equal((await second.json()).answer, 'result-1');
+  assert.equal(calls, 1);
+  assert.equal(resilient.getState().researchCache.entries, 1);
+});
+
+test('expires Tavily cache entries after TTL', async () => {
+  let calls = 0;
+  const resilient = createProviderResilientFetch(async () => {
+    calls += 1;
+    return new Response(JSON.stringify({ calls }), { status: 200 });
+  }, { maxRetries: 0, researchCacheTtlMs: 1 });
+  const init = { method: 'POST', body: JSON.stringify({ api_key: 'secret', query: 'freshness test' }) };
+
+  await resilient('https://api.tavily.com/search', init);
+  await new Promise((resolve) => setTimeout(resolve, 4));
+  await resilient('https://api.tavily.com/search', init);
+  assert.equal(calls, 2);
+});
