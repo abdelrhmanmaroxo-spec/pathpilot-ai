@@ -27,3 +27,21 @@ test('separates answers by response preferences', () => {
   const miss = cache.find({ mode: 'general', tool: 'ask', prompt: 'اشرح recursion ببساطة', preferences: { responseStyle: 'detailed' } });
   assert.equal(miss, null);
 });
+
+test('keeps deep-analysis answers separate from normal chat answers', () => {
+  const cache = createAnswerCache({ threshold: 0.8 });
+  cache.store({
+    mode: 'general',
+    tool: 'ask',
+    prompt: 'قارن الخيارين',
+    preferences: { responseStyle: 'balanced', deepThinkEnabled: true },
+    result: { answer: 'deep', source: 'live', degraded: false },
+  });
+  const miss = cache.find({
+    mode: 'general',
+    tool: 'ask',
+    prompt: 'قارن الخيارين',
+    preferences: { responseStyle: 'balanced', deepThinkEnabled: false },
+  });
+  assert.equal(miss, null);
+});
