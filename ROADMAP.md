@@ -12,6 +12,7 @@ This file is the execution tracker for the two approved 50-item roadmaps. Status
 
 ## Progress notes
 
+- 2026-08-30: A13 i18n coverage expanded to `AccountExperience.jsx`. Account settings, feedback, Google account status, and account-menu Arabic-only UI copy are now guarded by the combined catalog check; the previously uncovered Google server-configuration status was added to the runtime catalog. Authentication behavior and backend contracts are unchanged.
 - 2026-08-30: A13 i18n coverage expanded to the privileged Chat workspace and shared ConversationThread. New Arabic-only literals introduced in those conversational surfaces must now be backed by the combined translation catalogs, while intentional inline English/Arabic ternaries remain supported. This extends CI protection into the main live-chat path without changing runtime behavior or persistence.
 - 2026-08-29: A13 i18n coverage hardened so explicit bilingual ternaries no longer cause the entire source line to be skipped. The guard now strips only the matched English/Arabic ternary pair, still catches unrelated Arabic-only UI copy on the same line, and has regression coverage for bilingual, mixed, and Arabic-only ternary cases.
 - 2026-08-29: A13 i18n coverage expanded from a single `AppChrome.jsx` guard to a combined-catalog CI check across the main, override, and runtime-hardening catalogs plus critical Arabic-only UI surfaces (`AppChrome`, `Landing`, `WorkspacePanels`, `PinnedPrompts`, and `VoiceControls`). Explicit inline bilingual ternaries are excluded because they do not rely on runtime catalog translation. This prevents new untranslated Arabic-only labels/placeholders/status text from silently shipping while the legacy i18n layers are being consolidated.
@@ -47,7 +48,7 @@ This file is the execution tracker for the two approved 50-item roadmaps. Status
 | A10 | IN_PROGRESS | Update README and deployment docs; changelog/user guide are now current |
 | A11 | IN_PROGRESS | Key-based i18n architecture |
 | A12 | IN_PROGRESS | Merge legacy i18n runtime layers |
-| A13 | IN_PROGRESS | Translation coverage CI validates combined catalogs plus core app, workspace, voice, privileged Chat, and conversation-thread surfaces; broader component coverage remains |
+| A13 | IN_PROGRESS | Translation coverage CI validates combined catalogs plus core app, workspace, voice, privileged Chat, conversation-thread, and account-experience surfaces; broader component coverage remains |
 | A14 | TODO | Automated LTR/RTL UI checks |
 | A15 | IN_PROGRESS | Full mobile UX pass; premium workspace responsive pass + non-sticky top utility controls completed |
 | A16 | IN_PROGRESS | Accessibility pass; focus states, reduced-motion support, and top utility keyboard focus protection active |
