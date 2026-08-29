@@ -1,3 +1,5 @@
+import { sanitizeTavilyPayload } from './retrieval-safety.js';
+
 const DEFAULTS = {
   maxConcurrency: 4,
   failureThreshold: 3,
@@ -42,6 +44,26 @@ function responseFromCache(entry) {
     statusText: entry.statusText,
     headers: entry.headers,
   });
+}
+
+async function sanitizeProviderResponse(provider, response) {
+  if (provider !== 'tavily' || !response.ok) return response;
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) return response;
+  try {
+    const payload = await response.clone().json();
+    const sanitized = sanitizeTavilyPayload(payload);
+    const headers = new Headers(response.headers);
+    headers.delete('content-length');
+    headers.set('content-type', 'application/json; charset=utf-8');
+    return new Response(JSON.stringify(sanitized), {
+      status: response.status,
+      statusText: response.statusText,
+      headers,
+    });
+  } catch {
+    return response;
+  }
 }
 
 async function snapshotResponse(response) {
@@ -162,7 +184,8 @@ export function createProviderResilientFetch(fetchImpl = globalThis.fetch, optio
       let lastError = null;
       for (let attempt = 0; attempt <= gate.options.maxRetries; attempt += 1) {
         try {
-          const response = await fetchImpl(input, init);
+          const rawResponse = await fetchImpl(input, init);
+          const response = await sanitizeProviderResponse(provider, rawResponse);
           if (!retryableStatus(response.status)) {
             if (response.ok) {
               gate.success();
@@ -216,6 +239,6 @@ export function installProviderResilience({ fetchImpl = globalThis.fetch, logger
   globalThis.__pathPilotNativeFetch = fetchImpl;
   globalThis.__pathPilotProviderFetch = wrapped;
   globalThis.fetch = wrapped;
-  logger.info?.('[PathPilot providers] resilience and research cache enabled for Gemini and Tavily');
+  logger.info?.('[PathPilot providers] resilience, research cache, and retrieval safety enabled for Gemini and Tavily');
   return wrapped;
 }
