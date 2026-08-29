@@ -10,7 +10,7 @@
     "preview": "vite preview",
     "lint": "eslint .",
     "test": "node --test src/lib/*.test.js server/lib/*.test.js server/*.test.js",
-    "check:server": "node --check server/index.js && node --check server/research-server.js",
+    "check:server": "node --check server/index.js && node --check server/research-server.js && node --check server/admin-extensions.js",
     "check": "npm run lint && npm run test && npm run check:server && npm run build"
   },
   "dependencies": {
@@ -22,7 +22,7 @@
     "@eslint/js": "^10.0.1",
     "@vitejs/plugin-react": "^6.1.1",
     "eslint": "^10.9.1",
-    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-hooks": "^6.1.1",
     "eslint-plugin-react-refresh": "^0.5.5",
     "globals": "^17.4.0",
     "vite": "^8.2.2"
