@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
-import { CheckCircle2, LogIn, MailCheck, UserPlus, X } from 'lucide-react';
-import { getPlatformStatus, loginAccount, loginWithGoogleCredential, registerAccount, resendVerification } from './lib/platform.js';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { CheckCircle2, KeyRound, LogIn, MailCheck, UserPlus, X } from 'lucide-react';
+import { getPlatformStatus, loginAccount, loginWithGoogleCredential, registerAccount, requestPasswordReset, resendVerification } from './lib/platform.js';
 
 let googleScriptPromise;
 
@@ -33,19 +33,21 @@ export default function AuthDialog({ open, onClose, onAuthenticated }) {
   const [loading, setLoading] = useState(false);
   const [verificationEmail, setVerificationEmail] = useState('');
   const [resent, setResent] = useState(false);
+  const [resetSent, setResetSent] = useState(false);
   const googleButtonRef = useRef(null);
 
-  const closeDialog = () => {
+  const closeDialog = useCallback(() => {
     setVerificationEmail('');
     setResent(false);
+    setResetSent(false);
     setError('');
     setLoading(false);
     setView('login');
     onClose();
-  };
+  }, [onClose]);
 
   useEffect(() => {
-    if (!open) return undefined;
+    if (!open || view === 'forgot') return undefined;
     let active = true;
     getPlatformStatus()
       .then(async (status) => {
@@ -124,6 +126,21 @@ export default function AuthDialog({ open, onClose, onAuthenticated }) {
     }
   };
 
+  const forgotPassword = async (event) => {
+    event.preventDefault();
+    setLoading(true);
+    setError('');
+    setResetSent(false);
+    try {
+      await requestPasswordReset(form.email);
+      setResetSent(true);
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closeDialog(); }}>
       <section className="auth-dialog" role="dialog" aria-modal="true" aria-labelledby="auth-title">
@@ -139,6 +156,19 @@ export default function AuthDialog({ open, onClose, onAuthenticated }) {
             <button className="button button-primary" type="button" onClick={resend} disabled={loading}><MailCheck size={18} /> {loading ? 'جاري الإرسال…' : 'إعادة إرسال رابط التفعيل'}</button>
             <button className="button button-ghost" type="button" style={{ marginTop: 10 }} onClick={() => { setVerificationEmail(''); setView('login'); setError(''); }}>العودة لتسجيل الدخول</button>
           </div>
+        ) : view === 'forgot' ? (
+          <div style={{ paddingTop: 10 }}>
+            <KeyRound size={42} style={{ marginBottom: 10 }} />
+            <h2 id="auth-title">إعادة تعيين كلمة المرور</h2>
+            <p>اكتب البريد المرتبط بحسابك. لو الحساب موجود ومؤهل، هنرسل له رابط Reset صالح لمدة 30 دقيقة.</p>
+            <form onSubmit={forgotPassword}>
+              <label><span>البريد الإلكتروني</span><input required type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} autoComplete="email" /></label>
+              {resetSent && <div className="auth-error" style={{ borderColor: 'rgba(34,197,94,.45)' }}><CheckCircle2 size={17} /> لو البريد مرتبط بحساب، تم إرسال رابط إعادة التعيين. راجع Inbox وSpam.</div>}
+              {error && <div className="auth-error">{error}</div>}
+              <button className="button button-primary" type="submit" disabled={loading}><MailCheck size={18} /> {loading ? 'جاري الإرسال…' : resetSent ? 'إرسال رابط آخر' : 'إرسال رابط إعادة التعيين'}</button>
+              <button className="button button-ghost" type="button" style={{ marginTop: 10 }} onClick={() => { setView('login'); setResetSent(false); setError(''); }}>العودة لتسجيل الدخول</button>
+            </form>
+          </div>
         ) : (
           <>
             <div className="auth-tabs"><button className={view === 'login' ? 'active' : ''} type="button" onClick={() => setView('login')}>تسجيل الدخول</button><button className={view === 'register' ? 'active' : ''} type="button" onClick={() => setView('register')}>حساب جديد</button></div>
@@ -150,6 +180,7 @@ export default function AuthDialog({ open, onClose, onAuthenticated }) {
               {view === 'register' && <label><span>الاسم</span><input required minLength={2} maxLength={60} value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} autoComplete="name" /></label>}
               <label><span>البريد الإلكتروني</span><input required type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} autoComplete="email" /></label>
               <label><span>كلمة المرور</span><input required type="password" minLength={8} maxLength={128} value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} autoComplete={view === 'login' ? 'current-password' : 'new-password'} /></label>
+              {view === 'login' && <button type="button" className="button button-ghost" style={{ paddingInline: 0, justifyContent: 'flex-start', marginTop: -4 }} onClick={() => { setView('forgot'); setError(''); setResetSent(false); }}>نسيت كلمة المرور؟</button>}
               {error && <div className="auth-error">{error}</div>}
               <button className="button button-primary" type="submit" disabled={loading}>{view === 'login' ? <LogIn size={18} /> : <UserPlus size={18} />} {loading ? 'جاري التنفيذ…' : view === 'login' ? 'دخول' : 'إنشاء الحساب'}</button>
             </form>
