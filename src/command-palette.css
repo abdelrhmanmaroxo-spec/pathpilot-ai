@@ -1,17 +1,23 @@
+:root {
+  --pathpilot-top-control-top: 78px;
+  --pathpilot-top-control-height: 44px;
+  --pathpilot-top-control-side: 16px;
+}
+
 .command-dock-spacer {
   height: 64px;
   pointer-events: none;
 }
 
 .global-command-trigger {
-  position: fixed !important;
+  position: absolute !important;
   z-index: 180;
-  top: 78px;
+  top: var(--pathpilot-top-control-top);
   left: 50%;
   display: grid;
   width: min(560px, calc(100vw - 280px));
   min-width: 300px;
-  height: 44px;
+  height: var(--pathpilot-top-control-height);
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 10px;
@@ -26,7 +32,7 @@
   transform: translate3d(-50%, 0, 0);
   isolation: isolate;
   cursor: pointer;
-  transition: border-color 160ms ease, background 160ms ease, box-shadow 160ms ease;
+  transition: border-color 160ms ease, background 160ms ease, box-shadow 160ms ease, transform 160ms ease;
 }
 
 .global-command-trigger::before {
@@ -44,6 +50,13 @@
   background: rgba(16, 27, 54, .98);
   box-shadow: 0 18px 54px rgba(0,0,0,.4), 0 0 0 4px rgba(98,112,255,.035);
   color: #c1cee6;
+}
+
+.global-command-trigger:focus-visible {
+  outline: 3px solid rgba(140, 255, 232, .5);
+  outline-offset: 3px;
+  border-color: rgba(140, 255, 232, .38);
+  color: #e9fdf9;
 }
 
 .global-command-trigger span {
@@ -208,22 +221,28 @@
 }
 
 @media (max-width: 980px) {
+  :root {
+    --pathpilot-top-control-side: 10px;
+  }
+
   .command-dock-spacer { height: 64px; }
   .global-command-trigger {
-    top: 78px;
     width: min(500px, calc(100vw - 210px));
     min-width: 250px;
   }
 }
 
 @media (max-width: 720px) {
+  :root {
+    --pathpilot-top-control-top: 76px;
+    --pathpilot-top-control-height: 42px;
+  }
+
   .command-dock-spacer { height: 62px; }
   .global-command-trigger {
-    top: 76px;
-    left: 10px;
+    left: var(--pathpilot-top-control-side);
     width: calc(100vw - 116px);
     min-width: 0;
-    height: 42px;
     padding-inline: 10px;
     transform: none;
   }
@@ -238,4 +257,11 @@
     width: calc(100vw - 108px);
   }
   .global-command-trigger span { font-size: 10px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .global-command-trigger,
+  .pathpilot-search-hit {
+    transition: none;
+  }
 }
