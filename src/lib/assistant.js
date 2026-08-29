@@ -1,4 +1,4 @@
-import { localReasonedResponse } from './local-intelligence.js';
+import { advancedLocalResponse } from './local-reasoner.js';
 
 export const TOOL_LIBRARY = {
   study: [
@@ -118,11 +118,11 @@ export function generateDemoResponse({ mode, tool, prompt, preferences = {} }) {
 }
 
 function fallbackResponse(args, reason) {
-  const knowledgeAnswer = localReasonedResponse(args);
+  const knowledgeAnswer = advancedLocalResponse(args);
   const specialized = generateDemoResponse(args);
   const reasonText = reason === 'timeout' ? 'انتهت مهلة الخدمة الحية قبل وصول النتيجة.' : 'تعذر الوصول إلى البحث والذكاء الحي في هذه المحاولة.';
   return {
-    answer: `⚠️ Local Intelligence Beta\n${reasonText}\nتم تشغيل قاعدة المعرفة المحلية ومحرك الاسترجاع بدل إيقاف الرد. المعلومات الحديثة تحتاج بحثًا حيًا للتأكيد.\n\n${knowledgeAnswer}\n\nتطبيق مباشر للأداة\n${specialized}`,
+    answer: `⚠️ Local Intelligence Beta\n${reasonText}\nتم تشغيل قاعدة المعرفة المحلية ومحرك الاستدلال والاسترجاع بدل إيقاف الرد. المعلومات الحديثة تحتاج بحثًا حيًا للتأكيد.\n\n${knowledgeAnswer}\n\nتطبيق مباشر للأداة\n${specialized}`,
     source: 'local-fallback',
     degraded: true,
   };
@@ -152,7 +152,7 @@ export async function generateAssistantResponse({ mode, tool, prompt, preference
       targetReached: Boolean(payload.targetReached),
     };
   } catch (error) {
-    console.warn('PathPilot live response failed; using local intelligence fallback.', error);
+    console.warn('PathPilot live response failed; using advanced local intelligence fallback.', error);
     return fallbackResponse(args, error?.name === 'AbortError' ? 'timeout' : 'offline');
   } finally {
     clearTimeout(timeout);
