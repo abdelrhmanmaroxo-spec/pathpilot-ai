@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import {
   BadgeCheck,
+  BookOpen,
   BriefcaseBusiness,
   Check,
   Code2,
   Download,
   GraduationCap,
+  History,
   Home,
   Link,
   LogIn,
@@ -107,12 +109,19 @@ export function InstallDialog({ open, onClose, onInstall, canInstall, installed 
 }
 
 export function Footer() {
+  const base = import.meta.env.BASE_URL || '/';
   return (
     <footer className="site-footer">
       <div className="page-shell footer-inner">
-        <div><Brand /><p>مساعد عربي عام للدراسة والعمل والحياة اليومية، بطبقات AI حي ومحلي وموسوعة معرفية.</p></div>
+        <div>
+          <Brand />
+          <p>مساعد عربي عام للدراسة والعمل والحياة اليومية، بطبقات AI حي ومحلي وموسوعة معرفية.</p>
+          <small className="built-by">Built by Abdelrhman Essam</small>
+        </div>
         <div className="footer-meta">
           <span>PathPilot BETA</span>
+          <a href={`${base}updates.html`}><History size={18} /> آخر التحديثات</a>
+          <a href={`${base}guide.html`}><BookOpen size={18} /> دليل الاستخدام</a>
           <a href="https://github.com/abdelrhmanmaroxo-spec" target="_blank" rel="noreferrer"><Code2 size={18} /> GitHub</a>
           <a href="https://www.linkedin.com/in/abdelrhman-essam-vib/" target="_blank" rel="noreferrer"><Link size={18} /> LinkedIn</a>
         </div>
