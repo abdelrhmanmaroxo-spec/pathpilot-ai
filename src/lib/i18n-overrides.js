@@ -9,6 +9,14 @@ const EXTRA_AR_TO_EN = {
   'مساحة الدراسة': 'Study Workspace',
   'مساحة العمل': 'Work Workspace',
   'Live AI متصل': 'Live AI connected',
+  'طبقات ذكاء متعددة': 'Multiple intelligence layers',
+  'يستخدم AI حي عند توفره، ومعه موسوعة واستدلال محلي، ويمكن تفعيل Local LLM على الأجهزة الداعمة.': 'Uses live AI when available, backed by a local encyclopedia and reasoning engine, with an optional Local LLM on supported devices.',
+  'معاينة PathPilot AI': 'PathPilot AI preview',
+  'تجريبي': 'Experimental',
+  'متوقف': 'Off',
+  'مفعّل على هذا الجهاز': 'Enabled on this device',
+  'يشغّل نموذجًا لغويًا محليًا عبر WebGPU عند الحاجة. أول تشغيل قد يحتاج تنزيلًا كبيرًا، ثم يُستخدم Cache المتصفح.': 'Runs a local language model through WebGPU when needed. The first run may require a large download, then the browser cache is reused.',
+  'الجهاز أو المتصفح الحالي لا يوفّر WebGPU، وسيستمر استخدام Local Super Reasoner.': 'This device or browser does not provide WebGPU, so Local Super Reasoner will continue to be used.',
 
   'مثال: اشرح لي مفهوم قواعد البيانات العلائقية كأنني أدرسه لأول مرة…': 'Example: explain relational databases as if I am learning them for the first time…',
   'وضّح الفرق بين HTTP وHTTPS': 'Explain the difference between HTTP and HTTPS',
@@ -83,10 +91,64 @@ const EXTRA_AR_TO_EN = {
   'بوست LinkedIn تقني': 'Technical LinkedIn post',
   'سكريبت فيديو قصير': 'Short video script',
   'هيكل مقال بسيط': 'Simple article outline',
+
+  'ابعت ملاحظتك': 'Send feedback',
+  'الملاحظة بتوصل للوحة الإدارة عشان نعرف إيه اللي محتاج يتحسن.': 'Your feedback goes to the admin dashboard so we can see what needs improvement.',
+  'التقييم': 'Rating',
+  'اكتب اقتراح، مشكلة، أو أي ملاحظة…': 'Write a suggestion, problem, or any feedback…',
+  'إرسال الملاحظة': 'Send feedback',
+  'اختار تقييم من 1 إلى 5 نجوم.': 'Choose a rating from 1 to 5 stars.',
+  'اكتب ملاحظتك الأول.': 'Write your feedback first.',
+  'تم إرسال ملاحظتك للإدارة. شكرًا ✨': 'Your feedback was sent to the admin team. Thank you ✨',
+  'تعذر إرسال الملاحظة حاليًا.': 'Could not send feedback right now.',
+  'الإعدادات': 'Settings',
+  'تسجيل الدخول بحساب Google': 'Sign in with Google',
+  'Google Sign-In جاهز على PathPilot.': 'Google Sign-In is ready on PathPilot.',
+  'Google Sign-In يحتاج إعداد Google Client ID أولًا.': 'Google Sign-In requires a Google Client ID first.',
+  'تبديل / متابعة': 'Switch / Continue',
+  'متابعة': 'Continue',
+  'نسيت كلمة المرور؟': 'Forgot password?',
+  'هنبعت رابط إعادة تعيين على البريد المسجل.': 'We will send a reset link to the registered email.',
+  'جاري الإرسال…': 'Sending…',
+  'إرسال الرابط': 'Send link',
+  'الملاحظات': 'Feedback',
+  'اقتراح أو مشكلة تتبعت مباشرة للوحة الإدارة.': 'Send a suggestion or issue directly to the admin dashboard.',
+  'إرسال ملاحظة': 'Send feedback',
+  'لو الحساب مؤهل، اتبعت رابط إعادة تعيين للبريد. راجع Inbox وSpam.': 'If the account is eligible, a password reset link was sent. Check Inbox and Spam.',
+  'تعذر إرسال رابط إعادة التعيين.': 'Could not send the password reset link.',
+  'حسابي': 'My account',
+  'الحساب وGoogle والأمان': 'Account, Google, and security',
+  'تبديل الحساب': 'Switch account',
+  'سجّل بحساب مختلف': 'Sign in with a different account',
+  'إرسال رابط للبريد': 'Send a link by email',
+  'اقتراح أو مشكلة': 'Suggestion or issue',
+  'إنهاء الجلسة الحالية': 'End the current session',
+  'متابعة باستخدام Google': 'Continue with Google',
+
+  'الحساب اتعمل ومستني التفعيل': 'Account created, awaiting verification',
+  'الحساب آمن ومعلّق فقط. اضغط إعادة الإرسال لاحقًا، ولن تحتاج لإنشاء الحساب من جديد.': 'Your account is safe and pending verification. Try resending later; you do not need to create the account again.',
+  'الإرسال حاليًا في وضع Resend التجريبي. الحساب لن يُحذف ويمكن إعادة المحاولة.': 'Email delivery is currently using the Resend sandbox. Your account will not be deleted and you can try again.',
+  'الحساب آمن ومعلّق فقط، لكن Gmail لم يؤكد تسليم رسالة التفعيل في هذه المحاولة. راجع إعدادات البريد ثم اضغط إعادة الإرسال.': 'Your account is safe and pending, but Gmail did not confirm delivery in this attempt. Check email settings, then resend.',
+  'إعادة إرسال رابط التفعيل': 'Resend verification link',
+  'العودة لتسجيل الدخول': 'Back to sign in',
+  'تم إرسال رابط جديد. راجع Inbox وSpam وPromotions.': 'A new verification link was sent. Check Inbox, Spam, and Promotions.',
+  'إعادة تعيين كلمة المرور': 'Reset password',
+  'اكتب البريد المرتبط بحسابك. لو الحساب موجود ومؤهل، هنرسل له رابط Reset صالح لمدة 30 دقيقة.': 'Enter the email linked to your account. If the account exists and is eligible, we will send a reset link valid for 30 minutes.',
+  'لو البريد مرتبط بحساب، تم إرسال رابط إعادة التعيين. راجع Inbox وSpam وJunk وPromotions وابحث عن PathPilot.': 'If the email is linked to an account, a reset link was sent. Check Inbox, Spam, Junk, and Promotions for PathPilot.',
+  'إرسال رابط آخر': 'Send another link',
+  'إرسال رابط إعادة التعيين': 'Send reset link',
+  'بعد إنشاء الحساب ستحتاج لتأكيد بريدك الإلكتروني قبل أول تسجيل دخول.': 'After creating your account, you will need to verify your email before your first sign-in.',
+  'أو بالبريد الإلكتروني': 'or with email',
+  'أرسلنا رابط تفعيل إلى': 'We sent a verification link to',
+  'افتح الرسالة واضغط Verify email، وبعدها ارجع وسجل دخولك.': 'Open the message and click Verify email, then come back and sign in.',
+  'لو الرسالة مش ظاهرة في Inbox، راجع Spam / Junk / Promotions وابحث عن': 'If the message is not in Inbox, check Spam / Junk / Promotions and search for',
+  'لو لقيتها في Spam اختار Not spam أو Move to inbox عشان الرسائل الجاية توصل طبيعي.': 'If you find it in Spam, choose Not spam or Move to inbox so future messages arrive normally.',
 };
 
 const EXTRA_EN_TO_AR = Object.fromEntries(Object.entries(EXTRA_AR_TO_EN).map(([ar, en]) => [en, ar]));
 const ARABIC_DIGITS = '٠١٢٣٤٥٦٧٨٩';
+const PARTIAL_AR_TO_EN = Object.entries(EXTRA_AR_TO_EN).sort((a, b) => b[0].length - a[0].length);
+const PARTIAL_EN_TO_AR = Object.entries(EXTRA_EN_TO_AR).sort((a, b) => b[0].length - a[0].length);
 let busy = false;
 let queued = false;
 
@@ -101,17 +163,43 @@ function normalizeEnglishNumerals(value) {
     .replace(/٫/g, '.');
 }
 
+function translateDynamic(value, targetLanguage) {
+  if (targetLanguage === 'en') {
+    return value
+      .replace(/(\d+)\s*من\s*5/g, '$1 of 5')
+      .replace(/تقييم\s+(\d+)\s*من\s*5/g, 'Rating $1 of 5')
+      .replace(/أهلًا\s+([^.!؟]+)\./g, 'Welcome, $1.');
+  }
+  return value
+    .replace(/(\d+)\s*of\s*5/g, '$1 من 5')
+    .replace(/Rating\s+(\d+)\s*of\s*5/g, 'تقييم $1 من 5')
+    .replace(/Welcome,\s+([^.!?]+)\./g, 'أهلًا $1.');
+}
+
 function translate(value, targetLanguage) {
   if (!value) return value;
   const trimmed = value.trim();
   const table = targetLanguage === 'en' ? EXTRA_AR_TO_EN : EXTRA_EN_TO_AR;
-  const replacement = table[trimmed];
+  const exact = table[trimmed];
   let result = value;
-  if (replacement) {
+  if (exact) {
     const start = value.indexOf(trimmed);
-    result = `${value.slice(0, start)}${replacement}${value.slice(start + trimmed.length)}`;
+    result = `${value.slice(0, start)}${exact}${value.slice(start + trimmed.length)}`;
+  } else {
+    const replacements = targetLanguage === 'en' ? PARTIAL_AR_TO_EN : PARTIAL_EN_TO_AR;
+    for (const [from, to] of replacements) {
+      if (result.includes(from)) result = result.split(from).join(to);
+    }
+    result = translateDynamic(result, targetLanguage);
   }
   return targetLanguage === 'en' ? normalizeEnglishNumerals(result) : result;
+}
+
+function shouldSkip(node) {
+  const parent = node.parentElement;
+  if (!parent) return true;
+  if (parent.closest('#pathpilot-language-switch')) return true;
+  return ['SCRIPT', 'STYLE', 'PRE', 'CODE'].includes(parent.tagName);
 }
 
 function polishLanguageSpecificUi(targetLanguage) {
@@ -124,22 +212,22 @@ function polishLanguageSpecificUi(targetLanguage) {
   }
 }
 
-function translateRoot() {
-  const root = document.getElementById('root');
-  if (!root || busy) return;
+function translateUi() {
+  const scope = document.body;
+  if (!scope || busy) return;
   busy = true;
   try {
     const targetLanguage = language();
-    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    const walker = document.createTreeWalker(scope, NodeFilter.SHOW_TEXT);
     const nodes = [];
     while (walker.nextNode()) nodes.push(walker.currentNode);
     nodes.forEach((node) => {
-      const parent = node.parentElement;
-      if (!parent || ['SCRIPT', 'STYLE', 'PRE', 'CODE'].includes(parent.tagName)) return;
+      if (shouldSkip(node)) return;
       const next = translate(node.nodeValue, targetLanguage);
       if (next !== node.nodeValue) node.nodeValue = next;
     });
-    root.querySelectorAll('[placeholder], [title], [aria-label]').forEach((element) => {
+    scope.querySelectorAll('[placeholder], [title], [aria-label]').forEach((element) => {
+      if (element.id === 'pathpilot-language-switch' || element.closest('#pathpilot-language-switch')) return;
       ['placeholder', 'title', 'aria-label'].forEach((attribute) => {
         if (!element.hasAttribute(attribute)) return;
         const current = element.getAttribute(attribute);
@@ -158,25 +246,20 @@ function schedule() {
   queued = true;
   requestAnimationFrame(() => {
     queued = false;
-    translateRoot();
+    translateUi();
   });
 }
 
 export function initI18nOverrides() {
-  translateRoot();
-  const root = document.getElementById('root');
-  if (root) {
-    const rootObserver = new MutationObserver(schedule);
-    rootObserver.observe(root, {
-      childList: true,
-      subtree: true,
-      characterData: true,
-      attributes: true,
-      attributeFilter: ['placeholder', 'title', 'aria-label'],
-    });
-  }
-  const bodyObserver = new MutationObserver(schedule);
-  bodyObserver.observe(document.body, { attributes: true, attributeFilter: ['data-language'] });
+  translateUi();
+  const observer = new MutationObserver(schedule);
+  observer.observe(document.body, {
+    childList: true,
+    subtree: true,
+    characterData: true,
+    attributes: true,
+    attributeFilter: ['data-language', 'placeholder', 'title', 'aria-label'],
+  });
   window.addEventListener('hashchange', schedule);
   window.addEventListener('pageshow', schedule);
   schedule();
