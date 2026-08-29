@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { CheckCircle2, KeyRound, LogIn, MailCheck, UserPlus, X } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, KeyRound, LogIn, MailCheck, UserPlus, X } from 'lucide-react';
 import { getPlatformStatus, loginAccount, loginWithGoogleCredential, registerAccount, requestPasswordReset, resendVerification } from './lib/platform.js';
 
 let googleScriptPromise;
@@ -32,19 +32,27 @@ export default function AuthDialog({ open, onClose, onAuthenticated }) {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [verificationEmail, setVerificationEmail] = useState('');
+  const [verificationPending, setVerificationPending] = useState(false);
+  const [deliveryMode, setDeliveryMode] = useState('');
   const [resent, setResent] = useState(false);
   const [resetSent, setResetSent] = useState(false);
   const googleButtonRef = useRef(null);
 
-  const closeDialog = useCallback(() => {
+  const resetVerificationState = useCallback(() => {
     setVerificationEmail('');
+    setVerificationPending(false);
+    setDeliveryMode('');
     setResent(false);
+  }, []);
+
+  const closeDialog = useCallback(() => {
+    resetVerificationState();
     setResetSent(false);
     setError('');
     setLoading(false);
     setView('login');
     onClose();
-  }, [onClose]);
+  }, [onClose, resetVerificationState]);
 
   useEffect(() => {
     if (!open || view === 'forgot') return undefined;
@@ -98,6 +106,8 @@ export default function AuthDialog({ open, onClose, onAuthenticated }) {
         const result = await registerAccount(form);
         if (result.requiresVerification) {
           setVerificationEmail(result.email || form.email);
+          setVerificationPending(Boolean(result.deliveryPending));
+          setDeliveryMode(result.deliveryMode || '');
           return;
         }
       } else {
@@ -106,8 +116,13 @@ export default function AuthDialog({ open, onClose, onAuthenticated }) {
         closeDialog();
       }
     } catch (requestError) {
-      if (requestError.code === 'EMAIL_NOT_VERIFIED') setVerificationEmail(form.email);
-      else setError(requestError.message);
+      if (requestError.code === 'EMAIL_NOT_VERIFIED') {
+        setVerificationEmail(form.email);
+        setVerificationPending(false);
+        setDeliveryMode('');
+      } else {
+        setError(requestError.message);
+      }
     } finally {
       setLoading(false);
     }
@@ -116,9 +131,12 @@ export default function AuthDialog({ open, onClose, onAuthenticated }) {
   const resend = async () => {
     setLoading(true);
     setError('');
+    setResent(false);
     try {
-      await resendVerification(verificationEmail);
-      setResent(true);
+      const result = await resendVerification(verificationEmail);
+      setVerificationPending(Boolean(result.deliveryPending));
+      setDeliveryMode(result.deliveryMode || deliveryMode);
+      setResent(!result.deliveryPending);
     } catch (requestError) {
       setError(requestError.message);
     } finally {
@@ -149,12 +167,24 @@ export default function AuthDialog({ open, onClose, onAuthenticated }) {
         {verificationEmail ? (
           <div style={{ textAlign: 'center', padding: '18px 6px 8px' }}>
             <MailCheck size={46} style={{ margin: '0 auto 12px' }} />
-            <h2 id="auth-title">أكد بريدك الإلكتروني</h2>
-            <p>أرسلنا رابط تفعيل إلى <strong>{verificationEmail}</strong>. افتح الرسالة واضغط Verify email، وبعدها ارجع وسجل دخولك.</p>
-            {resent && <div className="auth-error" style={{ borderColor: 'rgba(34,197,94,.45)' }}><CheckCircle2 size={17} /> تم إرسال رابط جديد.</div>}
+            <h2 id="auth-title">الحساب اتعمل ومستني التفعيل</h2>
+            {verificationPending ? (
+              <>
+                <p>حساب <strong>{verificationEmail}</strong> محفوظ بالفعل، لكن مزود البريد لم يسلّم رسالة التفعيل في المحاولة الحالية.</p>
+                <div className="auth-error" style={{ borderColor: 'rgba(245,158,11,.5)' }}>
+                  <AlertTriangle size={17} />
+                  {deliveryMode === 'sandbox'
+                    ? 'الإرسال حاليًا في وضع Resend التجريبي، لذلك الإرسال العام لأي Gmail لن يكتمل حتى يتم استخدام Sender Domain موثّق. الحساب لن يُحذف ويمكن إعادة المحاولة.'
+                    : 'الحساب آمن ومعلّق فقط. اضغط إعادة الإرسال لاحقًا، ولن تحتاج لإنشاء الحساب من جديد.'}
+                </div>
+              </>
+            ) : (
+              <p>أرسلنا رابط تفعيل إلى <strong>{verificationEmail}</strong>. افتح الرسالة واضغط Verify email، وبعدها ارجع وسجل دخولك.</p>
+            )}
+            {resent && <div className="auth-error" style={{ borderColor: 'rgba(34,197,94,.45)' }}><CheckCircle2 size={17} /> تم إرسال رابط جديد. راجع Inbox وSpam.</div>}
             {error && <div className="auth-error">{error}</div>}
             <button className="button button-primary" type="button" onClick={resend} disabled={loading}><MailCheck size={18} /> {loading ? 'جاري الإرسال…' : 'إعادة إرسال رابط التفعيل'}</button>
-            <button className="button button-ghost" type="button" style={{ marginTop: 10 }} onClick={() => { setVerificationEmail(''); setView('login'); setError(''); }}>العودة لتسجيل الدخول</button>
+            <button className="button button-ghost" type="button" style={{ marginTop: 10 }} onClick={() => { resetVerificationState(); setView('login'); setError(''); }}>العودة لتسجيل الدخول</button>
           </div>
         ) : view === 'forgot' ? (
           <div style={{ paddingTop: 10 }}>
