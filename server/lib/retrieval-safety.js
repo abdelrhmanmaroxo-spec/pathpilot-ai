@@ -29,7 +29,6 @@ export function sanitizeTavilyPayload(payload) {
   if (!payload || typeof payload !== 'object') return payload;
   return {
     ...payload,
-    answer: typeof payload.answer === 'string' ? sanitizeRetrievedText(payload.answer, { maxLength: 5_000 }) : payload.answer,
     results: Array.isArray(payload.results)
       ? payload.results.map((item) => ({
         ...item,
