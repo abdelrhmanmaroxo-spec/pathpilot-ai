@@ -20,7 +20,7 @@ test('central API client returns JSON payloads', async () => {
   assert.deepEqual(payload, { ok: true });
 });
 
-test('central API client serializes explicit json payloads', async () => {
+test('central API client serializes explicit json payloads without leaking client metadata to fetch', async () => {
   const client = createApiClient({
     baseUrl: 'https://example.test/',
     sendClientRequestId: true,
@@ -31,7 +31,8 @@ test('central API client serializes explicit json payloads', async () => {
       assert.equal(options.headers.get('X-Request-ID'), 'client-123');
       assert.equal(options.body, JSON.stringify({ displayName: 'Path Pilot' }));
       assert.equal('json' in options, false);
-      assert.equal('requestId' in options, true);
+      assert.equal('requestId' in options, false);
+      assert.equal('timeoutMs' in options, false);
       return new Response(JSON.stringify({ saved: true }), {
         status: 200,
         headers: { 'Content-Type': 'application/json', 'X-Request-ID': 'server-123' },
@@ -42,6 +43,7 @@ test('central API client serializes explicit json payloads', async () => {
   const payload = await client.request('/api/profile', {
     method: 'POST',
     requestId: 'client-123',
+    timeoutMs: 1000,
     json: { displayName: 'Path Pilot' },
   });
   assert.deepEqual(payload, { saved: true });
