@@ -1,52 +1,22 @@
 import {
-  BookOpen,
   BrainCircuit,
   BriefcaseBusiness,
-  CalendarRange,
   ChevronLeft,
-  CircleHelp,
-  ClipboardList,
   Clock3,
   Copy,
   Download,
-  FileCheck2,
   GraduationCap,
   History,
-  Layers3,
-  ListChecks,
-  Mail,
-  ScrollText,
   Share2,
   SlidersHorizontal,
   Sparkles,
   Star,
-  Target,
   Trash2,
   UserRound,
 } from 'lucide-react';
 import { TOOL_LIBRARY } from '../lib/assistant.js';
 import { supportsBrowserLLM } from '../lib/local-llm.js';
-
-export const TOOL_ICONS = {
-  explain: BrainCircuit,
-  summarize: BookOpen,
-  plan: CalendarRange,
-  quiz: CircleHelp,
-  flashcards: Layers3,
-  research: Target,
-  email: Mail,
-  tasks: ListChecks,
-  meeting: ClipboardList,
-  cv: FileCheck2,
-  cover: ScrollText,
-  qa: ClipboardList,
-  ask: Sparkles,
-  rewrite: FileCheck2,
-  brainstorm: BrainCircuit,
-  decide: ListChecks,
-  organize: CalendarRange,
-  content: BookOpen,
-};
+import { TOOL_ICONS } from '../lib/tool-icons.js';
 
 function sourceLabel(source) {
   if (source === 'research-ai') return 'Web Research + AI · Beta';
