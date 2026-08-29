@@ -215,7 +215,7 @@ function complexRequest({ prompt, tool, preferences, profile, modelId }) {
 
 async function buildKnowledge(args, profile, onProgress) {
   onProgress?.({ phase: 'knowledge', progress: 0.06, text: 'Retrieving expert local knowledge…' });
-  const module = await import('./local-knowledge-context.js');
+  const module = await import('./local-knowledge-augment.js');
   const knowledge = module.buildExpertKnowledgeContext({
     ...args,
     maxChars: contextCharsFor(args.preferences?.responseStyle || 'balanced', profile),
