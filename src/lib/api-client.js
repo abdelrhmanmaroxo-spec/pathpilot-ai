@@ -31,6 +31,19 @@ async function parsePayload(response) {
   return text ? { message: text } : {};
 }
 
+function buildRequestOptions(options) {
+  const { json, ...requestOptions } = options;
+  if (json === undefined) return requestOptions;
+  if (requestOptions.body !== undefined && requestOptions.body !== null) {
+    throw new PathPilotApiError('Use either json or body, not both.', { code: 'INVALID_REQUEST_OPTIONS' });
+  }
+
+  return {
+    ...requestOptions,
+    body: JSON.stringify(json),
+  };
+}
+
 export function createApiClient({
   baseUrl,
   getToken = () => '',
@@ -48,24 +61,25 @@ export function createApiClient({
       throw new PathPilotApiError('Fetch is not available.', { code: 'FETCH_UNAVAILABLE' });
     }
 
-    const localRequestId = options.requestId || createRequestId();
+    const preparedOptions = buildRequestOptions(options);
+    const localRequestId = preparedOptions.requestId || createRequestId();
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(new Error('API_TIMEOUT')), options.timeoutMs || timeoutMs);
-    const externalSignal = options.signal;
+    const timer = setTimeout(() => controller.abort(new Error('API_TIMEOUT')), preparedOptions.timeoutMs || timeoutMs);
+    const externalSignal = preparedOptions.signal;
     const abortFromExternal = () => controller.abort(externalSignal?.reason || new Error('REQUEST_ABORTED'));
     externalSignal?.addEventListener?.('abort', abortFromExternal, { once: true });
 
     try {
       const token = getToken?.() || '';
-      const headers = new Headers(options.headers || {});
-      const hasBody = options.body !== undefined && options.body !== null;
-      const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData;
+      const headers = new Headers(preparedOptions.headers || {});
+      const hasBody = preparedOptions.body !== undefined && preparedOptions.body !== null;
+      const isFormData = typeof FormData !== 'undefined' && preparedOptions.body instanceof FormData;
       if (hasBody && !isFormData && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
       if (token && !headers.has('Authorization')) headers.set('Authorization', `Bearer ${token}`);
       if (sendClientRequestId && !headers.has('X-Request-ID')) headers.set('X-Request-ID', localRequestId);
 
       const response = await fetchImpl(`${normalizedBase}${path}`, {
-        ...options,
+        ...preparedOptions,
         headers,
         signal: controller.signal,
       });
