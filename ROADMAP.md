@@ -12,6 +12,7 @@ This file is the execution tracker for the two approved 50-item roadmaps. Status
 
 ## Progress notes
 
+- 2026-08-29: Chat Agent Orchestrator v1 added for the privileged Chat preview. The chat now selects helper capabilities automatically from a registry of 40 context, research, RAG, reasoning, specialist, verification, runtime, and voice capabilities; users can opt out of optional capability groups while context, safety, model routing, confidence checks, and the final quality gate remain mandatory. Search is now treated as a freshness/verification tool rather than a prerequisite for answering stable questions: privileged Chat prefers the evolving local LLM + RAG for stable requests when enabled, while freshness-sensitive requests can automatically route to grounded research. Casual conversation is classified separately so simple prompts such as “انت بتعمل اي؟” stay lightweight and conversational instead of triggering RAG/report templates. The local LLM was split into dedicated model-policy and prompt/review-policy modules, and voice dictation is wired into the Chat composer.
 - 2026-08-29: Added an Admin/Owner-only experimental Chat workspace with persistent on-device chat sessions, explicit Search and Deep Think controls, long-history relevance retrieval across up to 30 stored turns while keeping the final model context bounded to the most relevant turns, and role-gated access. Regular users can see the Chat entry but receive a development notice stating that the feature is under development by Abdelrhman. Search can force grounded research; Deep Think enables stricter provider-side verification without exposing hidden reasoning. Account/cloud conversation sync remains TODO and no production SQLite data model was changed.
 - 2026-08-29: Conversation intelligence upgraded with a relevance-aware context analyzer. PathPilot now classifies the latest message as standalone/new-topic/related/continuation/follow-up, keeps only relevant prior turns, carries forward explicit constraints only when continuity justifies it, gives the newest request precedence over conflicting history, routes using the latest request instead of the full context envelope, and keeps local RAG retrieval focused on the latest request while the LLM still receives selected conversational context. Regression tests cover follow-ups without lexical overlap, unrelated topic resets, inherited constraints, and RAG query isolation.
 - 2026-08-29: Top utility controls cleaned up. Global search and the Arabic/English switch now stay in the document's top utility row and scroll away with the page instead of following the user. Shared responsive sizing, visible keyboard focus, reduced-motion handling, and regression tests were added so the controls remain aligned and non-sticky on desktop and mobile.
@@ -61,7 +62,7 @@ This file is the execution tracker for the two approved 50-item roadmaps. Status
 | A30 | IN_PROGRESS | Source quality score; backend ranking active, richer user-facing score pending |
 | A31 | DONE | Smart request router; contextual prompts are routed using the latest user request |
 | A32 | DONE | Stronger freshness detector |
-| A33 | DONE | Natural local final answers for current local-reasoner scope |
+| A33 | DONE | Natural local final answers, including lightweight casual conversation without forcing research/RAG templates |
 | A34 | DONE | Stronger local challenge pass |
 | A35 | DONE | Better constraint extraction |
 | A36 | TODO | Indexed local RAG |
@@ -94,11 +95,11 @@ This file is the execution tracker for the two approved 50-item roadmaps. Status
 | B08 | DONE | AI request queue and concurrency control |
 | B09 | DONE | Per-user/per-role style rate-limit policies |
 | B10 | TODO | Idempotency keys for sensitive writes |
-| B11 | DONE | Conservative semantic answer cache |
+| B11 | DONE | Conservative semantic answer cache; automatic agent tool plans are isolated in cache signatures |
 | B12 | DONE | Research query cache |
 | B13 | TODO | Dynamic model selection |
 | B14 | TODO | Provider quality scoring |
-| B15 | IN_PROGRESS | Answer verification pass; local Draft → Review quality gate and contradiction-aware constraint verification active; Deep Think adds stricter provider verification in privileged Chat |
+| B15 | IN_PROGRESS | Answer verification pass; local Draft → Review quality gate and contradiction-aware constraint verification active; automatic Chat orchestration can escalate deep review when needed |
 | B16 | TODO | Citation-to-claim matching |
 | B17 | IN_PROGRESS | Local LLM confidence scoring is active and influences review; dedicated user-facing indicator pending |
 | B18 | IN_PROGRESS | Explicit uncertainty handling in prompts/fallbacks; dedicated UI pending |
@@ -106,7 +107,7 @@ This file is the execution tracker for the two approved 50-item roadmaps. Status
 | B20 | DONE | Trusted-domain/authority boosting in research ranking |
 | B21 | TODO | PDF/TXT/DOCX uploads |
 | B22 | TODO | Multimodal image input |
-| B23 | DONE | Long-form voice input with browser auto-resume |
+| B23 | DONE | Long-form voice input with browser auto-resume; privileged Chat composer now reuses voice dictation |
 | B24 | DONE | Read aloud |
 | B25 | TODO | PDF export |
 | B26 | TODO | DOCX export |
