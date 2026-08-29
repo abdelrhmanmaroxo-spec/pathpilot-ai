@@ -143,9 +143,7 @@ function sourceAppendix(sources) {
 }
 
 function fallbackSearchAnswer(rounds) {
-  const answers = rounds
-    .map((round) => String(round?.answer || '').trim())
-    .filter(Boolean);
+  const answers = rounds.map((round) => String(round?.answer || '').trim()).filter(Boolean);
   if (!answers.length) return 'تم جمع المصادر، لكن مزود البحث لم يُرجع ملخصًا نصيًا قابلًا للاستخدام.';
   return answers[0];
 }
@@ -163,16 +161,35 @@ function evidencePrompt({ prompt, mode, tool, sources }) {
     `طلب المستخدم الأصلي:\n${prompt}`,
     `المساحة: ${mode}. الأداة: ${tool}. الهدف: ${TOOL_LABELS[tool] || TOOL_LABELS.ask}.`,
     'قواعد التركيب:',
-    '1) أجب على الطلب نفسه مباشرة وبأفضل صيغة عملية.',
-    '2) استخرج الادعاءات المهمة من الأدلة، قارن بينها، وحل التعارضات بترجيح المصادر الأولية والرسمية والأحدث والأكثر مباشرة.',
-    '3) لا تستخدم معلومة حديثة غير مدعومة بالأدلة أدناه. إذا كانت الأدلة غير كافية فاذكر ذلك بوضوح.',
-    '4) ضع [رقم] بعد الادعاءات المهمة للإشارة للمصدر المناسب، ولا تستخدم مرجعًا لا يدعم الجملة.',
-    '5) إذا كان الطلب كتابة أو CV أو Email أو خطة، قدّم الناتج المطلوب نفسه، واستخدم البحث لتحسين الدقة بدل تحويل الإجابة كلها إلى تقرير بحثي.',
-    '6) راجع الإجابة قبل الإخراج بحثًا عن التناقضات، الادعاءات غير المدعومة، الأرقام غير المؤكدة، والتعميمات الزائدة.',
-    '7) لا تعرض سلسلة التفكير الداخلية. اعرض فقط النتيجة، أهم أسبابها، والقيود أو نقاط عدم اليقين المفيدة.',
+    '1) أجب على الطلب نفسه مباشرة وبأفضل صيغة عملية، ولا تستبدل المطلوب بقالب عام.',
+    '2) في المقارنات: اختر الخيارات الجادة المرتبطة فعلا بالطلب، قارن المزايا والعيوب والمعايير، ثم رشّح الأنسب حسب أكثر من حالة استخدام.',
+    '3) في العصف الذهني: قدّم نطاقًا واسعًا من الأفكار المختلفة فعليًا، ثم رتّب الأقوى واذكر طريقة اختبارها.',
+    '4) استخرج الادعاءات المهمة من الأدلة، قارن بينها، وحل التعارضات بترجيح المصادر الأولية والرسمية والأحدث والأكثر مباشرة.',
+    '5) لا تستخدم معلومة حديثة غير مدعومة بالأدلة أدناه. إذا كانت الأدلة غير كافية فاذكر ذلك بوضوح.',
+    '6) ضع [رقم] بعد الادعاءات المهمة للإشارة للمصدر المناسب، ولا تستخدم مرجعًا لا يدعم الجملة.',
+    '7) إذا كان الطلب كتابة أو CV أو Email أو خطة، قدّم الناتج المطلوب نفسه، واستخدم البحث لتحسين الدقة بدل تحويل الإجابة كلها إلى تقرير بحثي.',
+    '8) راجع الإجابة قبل الإخراج بحثًا عن التناقضات، الادعاءات غير المدعومة، الأرقام غير المؤكدة، والتعميمات الزائدة.',
+    '9) لا تعرض سلسلة التفكير الداخلية. اعرض فقط النتيجة، أهم أسبابها، والقيود أو نقاط عدم اليقين المفيدة.',
     '',
     'الأدلة المتاحة:',
     evidence,
+  ].join('\n');
+}
+
+function directPrompt({ prompt, mode, tool, researchFailure }) {
+  return [
+    'أجب عن طلب المستخدم مباشرة حتى لو تعذر البحث على الويب مؤقتًا.',
+    `طلب المستخدم: ${prompt}`,
+    `المساحة: ${mode}. الأداة: ${tool}. الهدف: ${TOOL_LABELS[tool] || TOOL_LABELS.ask}.`,
+    researchFailure
+      ? 'تعذر البحث الخارجي في هذه المحاولة. استخدم معرفتك العامة فقط، ولا تدّع أن المعلومات حديثة أو متحققة من الويب.'
+      : 'البحث الخارجي غير مفعّل في هذه المحاولة. استخدم معرفتك العامة فقط، وافصل أي معلومة قد تحتاج تحققًا حديثًا.',
+    'لا تعطِ قالبًا فارغًا إذا كان بإمكانك تقديم محتوى مفيد فعليًا.',
+    'إذا طلب المستخدم مقارنة، أعطِ مقارنة فعلية بخيارات معروفة من معرفتك، مع المزايا والعيوب ومعايير الاختيار، ووضّح أن التفاصيل المتغيرة تحتاج تحققًا حديثًا.',
+    'إذا طلب أفكارًا، وسّع النطاق إلى أفكار محافظة، عملية، مبتكرة وتجريبية، ثم رتّب أفضل الخيارات.',
+    'إذا طلب قرارًا، استنتج معايير افتراضية معقولة بدل إجباره على إدخالها كلها، ثم قدم توصية مشروطة واضحة.',
+    'إذا طلب خطة، حوّلها إلى خطوات وترتيب ومخاطر ونقاط تحقق.',
+    'لا تعرض سلسلة التفكير الداخلية. قدم النتيجة والمبررات العملية فقط.',
   ].join('\n');
 }
 
@@ -186,18 +203,18 @@ function aiConfiguration(env) {
   return { apiKey, model, apiMode, endpoint, reasoningEffort, configured: Boolean(apiKey && model) };
 }
 
-async function synthesizeAnswer({ env, prompt, mode, tool, preferences, sources }) {
+async function callAi({ env, prompt, mode, tool, preferences, groundedResearch }) {
   const config = aiConfiguration(env);
-  if (!config.configured || !sources.length) return null;
+  if (!config.configured) return null;
   const providerRequest = buildProviderRequest({
     apiMode: config.apiMode,
     model: config.model,
-    prompt: evidencePrompt({ prompt, mode, tool, sources }),
+    prompt,
     mode,
     tool,
     preferences,
     reasoningEffort: config.reasoningEffort,
-    groundedResearch: true,
+    groundedResearch,
   });
   const response = await fetch(config.endpoint, {
     method: 'POST',
@@ -206,10 +223,19 @@ async function synthesizeAnswer({ env, prompt, mode, tool, preferences, sources 
     signal: AbortSignal.timeout(45_000),
   });
   const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(`SYNTHESIS_PROVIDER_${response.status}`);
+  if (!response.ok) throw new Error(`AI_PROVIDER_${response.status}`);
   const answer = extractProviderText(payload, config.apiMode);
-  if (!answer) throw new Error('SYNTHESIS_EMPTY_RESPONSE');
+  if (!answer) throw new Error('AI_EMPTY_RESPONSE');
   return { answer, model: config.model };
+}
+
+async function synthesizeAnswer({ env, prompt, mode, tool, preferences, sources }) {
+  if (!sources.length) return null;
+  return callAi({ env, prompt: evidencePrompt({ prompt, mode, tool, sources }), mode, tool, preferences, groundedResearch: true });
+}
+
+async function directAiAnswer({ env, prompt, mode, tool, preferences, researchFailure = false }) {
+  return callAi({ env, prompt: directPrompt({ prompt, mode, tool, researchFailure }), mode, tool, preferences, groundedResearch: false });
 }
 
 export function createResearchHandler({ env = process.env, baseApp, database }) {
@@ -218,9 +244,7 @@ export function createResearchHandler({ env = process.env, baseApp, database }) 
   const researchAvailable = Boolean(tavilyApiKey);
   const synthesisAvailable = aiConfiguration(env).configured;
   const securityGuard = createSecurityGuard();
-  const handleAdminExtension = database
-    ? createAdminExtensions({ database, env, sendJson, allowedOrigins })
-    : null;
+  const handleAdminExtension = database ? createAdminExtensions({ database, env, sendJson, allowedOrigins }) : null;
 
   return async function researchHandler(request, response) {
     applySecurityHeaders(request, response);
@@ -248,6 +272,7 @@ export function createResearchHandler({ env = process.env, baseApp, database }) 
       return sendJson(response, 200, {
         researchAvailable,
         synthesisAvailable,
+        fallbackAvailable: synthesisAvailable,
         provider: researchAvailable ? 'Tavily' : null,
         targetSources: MAX_SOURCES,
         minimumTargetSources: MIN_TARGET_SOURCES,
@@ -256,27 +281,62 @@ export function createResearchHandler({ env = process.env, baseApp, database }) 
     }
 
     if (request.method === 'POST' && path === '/api/research') {
+      let body;
+      try {
+        body = await readJson(request);
+      } catch (error) {
+        return sendJson(response, 400, { error: 'Invalid request body.', code: String(error?.message || 'INVALID_BODY') }, origin, allowedOrigins);
+      }
+
+      const prompt = String(body.prompt || body.query || '').trim();
+      const tool = String(body.tool || 'ask').slice(0, 40);
+      const mode = String(body.mode || 'general').slice(0, 30);
+      const preferences = body.preferences && typeof body.preferences === 'object' ? body.preferences : {};
+      if (prompt.length < 3 || prompt.length > 12_000) {
+        return sendJson(response, 400, { error: 'Research query length is invalid.' }, origin, allowedOrigins);
+      }
+
       if (!researchAvailable) {
-        return sendJson(response, 503, {
-          error: 'Web research is not configured yet. Add TAVILY_API_KEY on the server.',
-          code: 'RESEARCH_NOT_CONFIGURED',
-        }, origin, allowedOrigins);
+        if (synthesisAvailable) {
+          try {
+            const direct = await directAiAnswer({ env, prompt, mode, tool, preferences, researchFailure: false });
+            return sendJson(response, 200, {
+              answer: `🧠 رد AI بدون بحث ويب\nتعذر استخدام البحث الخارجي في هذه المحاولة، لذلك لم يتم التحقق من حداثة المعلومات.\n\n${direct.answer}`,
+              sources: [], sourceCount: 0, targetReached: false, provider: null,
+              synthesisProvider: 'AI', synthesisModel: direct.model,
+              sourceMode: 'ai-fallback', researchFailed: false,
+            }, origin, allowedOrigins);
+          } catch (error) {
+            console.warn('PathPilot direct AI fallback failed:', error?.message || error);
+          }
+        }
+        return sendJson(response, 503, { error: 'Web research is not configured and the AI fallback is unavailable.', code: 'RESEARCH_NOT_CONFIGURED' }, origin, allowedOrigins);
       }
 
       try {
-        const body = await readJson(request);
-        const prompt = String(body.prompt || body.query || '').trim();
-        const tool = String(body.tool || 'ask').slice(0, 40);
-        const mode = String(body.mode || 'general').slice(0, 30);
-        const preferences = body.preferences && typeof body.preferences === 'object' ? body.preferences : {};
-        if (prompt.length < 3 || prompt.length > 12_000) {
-          return sendJson(response, 400, { error: 'Research query length is invalid.' }, origin, allowedOrigins);
+        let primary;
+        try {
+          primary = await tavilySearch(tavilyApiKey, buildResearchQuery({ prompt, tool, mode, round: 0 }));
+        } catch (searchError) {
+          console.warn('PathPilot primary research failed:', searchError?.message || searchError);
+          if (synthesisAvailable) {
+            try {
+              const direct = await directAiAnswer({ env, prompt, mode, tool, preferences, researchFailure: true });
+              return sendJson(response, 200, {
+                answer: `🧠 رد AI احتياطي\nتعذر البحث على الويب مؤقتًا، لكن PathPilot أكمل الإجابة باستخدام نموذج AI. المعلومات المتغيرة زمنيًا تحتاج تحققًا لاحقًا.\n\n${direct.answer}`,
+                sources: [], sourceCount: 0, targetReached: false, provider: 'Tavily',
+                synthesisProvider: 'AI', synthesisModel: direct.model,
+                sourceMode: 'ai-fallback', researchFailed: true,
+              }, origin, allowedOrigins);
+            } catch (aiError) {
+              console.warn('PathPilot AI fallback after search failure failed:', aiError?.message || aiError);
+            }
+          }
+          throw searchError;
         }
 
-        const primary = await tavilySearch(tavilyApiKey, buildResearchQuery({ prompt, tool, mode, round: 0 }));
         let rounds = [primary];
         let sources = uniqueSources(primary.results);
-
         if (sources.length < MIN_TARGET_SOURCES) {
           const supplemental = await Promise.allSettled([
             tavilySearch(tavilyApiKey, buildResearchQuery({ prompt, tool, mode, round: 1 })),
@@ -300,7 +360,7 @@ export function createResearchHandler({ env = process.env, baseApp, database }) 
           : `تمت مراجعة ${sources.length} مواقع مختلفة مناسبة ومتاحة لهذا الطلب. لم تتوفر ${MIN_TARGET_SOURCES} مصادر مستقلة مناسبة، لذلك لا يدّعي PathPilot أنه حقق العدد المستهدف.`;
         const intelligenceNote = synthesis
           ? `تم تحليل الأدلة وتركيب الإجابة بواسطة نموذج AI (${synthesis.model}) بعد البحث.`
-          : 'تم استخدام ملخص البحث مباشرة لأن طبقة AI synthesis غير متاحة حاليًا.';
+          : 'تم استخدام ملخص البحث مباشرة لأن طبقة AI synthesis لم تُكمل هذه المحاولة.';
 
         return sendJson(response, 200, {
           answer: `🌐 نتيجة مدعومة ببحث ويب\n${verificationNote}\n${intelligenceNote}\n\n${baseAnswer}${sourceAppendix(sources)}`,
@@ -310,10 +370,12 @@ export function createResearchHandler({ env = process.env, baseApp, database }) 
           provider: 'Tavily',
           synthesisProvider: synthesis ? 'AI' : 'Tavily',
           synthesisModel: synthesis?.model || null,
+          sourceMode: synthesis ? 'research-ai' : 'research-search',
+          researchFailed: false,
         }, origin, allowedOrigins);
       } catch (error) {
         return sendJson(response, 502, {
-          error: 'Web research could not be completed right now.',
+          error: 'Live research and AI fallback could not be completed right now.',
           code: String(error?.message || 'SEARCH_FAILED').slice(0, 100),
         }, origin, allowedOrigins);
       }
