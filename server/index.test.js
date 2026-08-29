@@ -7,6 +7,7 @@ import { initializeDatabase } from './lib/database.js';
 async function startPlatform() {
   const database = initializeDatabase();
   const sent = [];
+  const resetSent = [];
   const app = createPathPilotServer({
     database,
     env: {
@@ -17,6 +18,7 @@ async function startPlatform() {
       PUBLIC_APP_URL: 'http://localhost:5173',
     },
     emailSender: async (message) => { sent.push(message); },
+    passwordResetSender: async (message) => { resetSent.push(message); },
   });
   const server = createServer(app.handle);
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
@@ -24,6 +26,7 @@ async function startPlatform() {
   return {
     database,
     sent,
+    resetSent,
     url: `http://127.0.0.1:${address.port}`,
     close: () => new Promise((resolve, reject) => server.close((error) => (error ? reject(error) : resolve()))),
   };
@@ -61,6 +64,7 @@ test('platform exposes honest offline AI status with a live database', async (co
   assert.equal(response.body.apiOnline, false);
   assert.equal(response.body.databaseOnline, true);
   assert.equal(response.body.emailVerificationAvailable, true);
+  assert.equal(response.body.passwordResetAvailable, true);
   assert.equal(response.body.provider, 'OpenAI');
 });
 
@@ -92,6 +96,61 @@ test('email/password registration cannot sign in before email verification', asy
   });
   assert.equal(login.status, 200);
   assert.equal(login.body.user.emailVerified, true);
+});
+
+test('password reset changes the password and invalidates existing sessions', async (context) => {
+  const platform = await startPlatform();
+  context.after(async () => { await platform.close(); platform.database.close(); });
+  await registerAndVerify(platform, { name: 'Reset User', email: 'reset@example.com', password: 'OldPassword123!' });
+
+  const login = await jsonRequest(platform.url, '/api/auth/login', {
+    method: 'POST',
+    body: JSON.stringify({ email: 'reset@example.com', password: 'OldPassword123!' }),
+  });
+  assert.equal(login.status, 200);
+  const oldAuthorization = { Authorization: `Bearer ${login.body.token}` };
+
+  const forgot = await jsonRequest(platform.url, '/api/auth/forgot-password', {
+    method: 'POST',
+    body: JSON.stringify({ email: 'reset@example.com' }),
+  });
+  assert.equal(forgot.status, 200);
+  assert.equal(platform.resetSent.length, 1);
+
+  const resetUrl = new URL(platform.resetSent[0].resetUrl);
+  const resetToken = resetUrl.searchParams.get('token');
+  assert.ok(resetToken);
+  const reset = await jsonRequest(platform.url, '/api/auth/reset-password', {
+    method: 'POST',
+    body: JSON.stringify({ token: resetToken, password: 'NewPassword456!' }),
+  });
+  assert.equal(reset.status, 200);
+
+  const oldSession = await jsonRequest(platform.url, '/api/auth/me', { headers: oldAuthorization });
+  assert.equal(oldSession.status, 401);
+
+  const oldLogin = await jsonRequest(platform.url, '/api/auth/login', {
+    method: 'POST',
+    body: JSON.stringify({ email: 'reset@example.com', password: 'OldPassword123!' }),
+  });
+  assert.equal(oldLogin.status, 401);
+
+  const newLogin = await jsonRequest(platform.url, '/api/auth/login', {
+    method: 'POST',
+    body: JSON.stringify({ email: 'reset@example.com', password: 'NewPassword456!' }),
+  });
+  assert.equal(newLogin.status, 200);
+});
+
+test('forgot password response does not reveal whether an account exists', async (context) => {
+  const platform = await startPlatform();
+  context.after(async () => { await platform.close(); platform.database.close(); });
+  const response = await jsonRequest(platform.url, '/api/auth/forgot-password', {
+    method: 'POST',
+    body: JSON.stringify({ email: 'does-not-exist@example.com' }),
+  });
+  assert.equal(response.status, 200);
+  assert.equal(platform.resetSent.length, 0);
 });
 
 test('owner can invite admins and delete users but cannot delete owner account', async (context) => {
