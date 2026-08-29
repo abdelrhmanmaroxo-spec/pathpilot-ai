@@ -2,8 +2,8 @@
 
 > منصة عربية ذكية تساعد الطالب في الجامعة، ثم ترافقه إلى بيئة العمل — كتطبيق ويب قابل للتثبيت.
 
-[![CI](https://github.com/abdelrhmanmaroxo-spec/app/actions/workflows/ci.yml/badge.svg)](https://github.com/abdelrhmanmaroxo-spec/app/actions/workflows/ci.yml)
-[![PWA](https://img.shields.io/badge/PWA-installable-6d5dfc)](https://github.com/abdelrhmanmaroxo-spec/app)
+[![CI](https://github.com/abdelrhmanmaroxo-spec/pathpilot-ai/actions/workflows/ci.yml/badge.svg)](https://github.com/abdelrhmanmaroxo-spec/pathpilot-ai/actions/workflows/ci.yml)
+[![PWA](https://img.shields.io/badge/PWA-installable-6d5dfc)](https://abdelrhmanmaroxo-spec.github.io/pathpilot-ai/)
 [![React](https://img.shields.io/badge/React-19-149eca)](https://react.dev/)
 
 ## لماذا PathPilot؟
