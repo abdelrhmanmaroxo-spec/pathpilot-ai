@@ -4,7 +4,7 @@ import { retrieveExpandedKnowledge, EXPANDED_ENCYCLOPEDIA_STATS } from './local-
 import { retrieveExpertMaxKnowledge, LOCAL_EXPERTISE_MAX_STATS } from './local-expertise-max.js';
 import { retrieveDeepExpertise, LOCAL_EXPERTISE_DEEP_STATS } from './local-expertise-deep.js';
 
-export const LOCAL_KNOWLEDGE_CONTEXT_VERSION = '2026.08.29-rag-v3';
+export const LOCAL_KNOWLEDGE_CONTEXT_VERSION = '2026.08.29-rag-v4';
 
 const INTENT_TERMS = {
   comparison: 'tradeoff alternatives constraints downside sensitivity decision criteria failure conditions',
@@ -22,6 +22,19 @@ const STOP = new Set([
   'the','and','for','with','from','that','this','into','about','your','you','are','was','were','have','has','had','what','how','why',
   'على','الى','إلى','من','في','عن','مع','هذا','هذه','ذلك','الذي','التي','هو','هي','كان','كانت','ايه','اي','عايز','اريد','أريد','اعمل','كيف','ليه','لماذا',
 ]);
+
+const DOMAIN_AFFINITIES = [
+  { query: /(?:rtl|ltr|placeholder|localization|i18n|تعريب|ترجمه|ترجمة|واجهه|واجهة|english|العربي|العربية)/i, ids: /(?:arabic-language|react|frontend|accessibility|search-ux)/i, boost: 9 },
+  { query: /(?:oauth|oidc|login|signin|sign in|refresh token|access token|jwt|auth|تسجيل دخول|مصادقه|مصادقة)/i, ids: /(?:auth-oauth|iam|security|backend-api)/i, boost: 9 },
+  { query: /(?:llm|rag|embedding|prompt|agent|function calling|tool calling|نموذج لغوي|استرجاع|ذكاء اصطناعي)/i, ids: /(?:llm|rag|ai-evaluation|prompt|agent|function-calling|information-retrieval)/i, boost: 8 },
+  { query: /(?:react|useeffect|usestate|component|render|vite|frontend)/i, ids: /(?:react|frontend|javascript|web-performance|testing)/i, boost: 8 },
+  { query: /(?:database|sql|sqlite|postgres|mysql|index|transaction|قاعدة بيانات|استعلام)/i, ids: /(?:database|data-engineering|backend-api|performance)/i, boost: 8 },
+  { query: /(?:xss|csrf|ssrf|injection|exploit|malware|virus|hack|ثغره|ثغرة|اختراق|فيروس)/i, ids: /(?:security|threat|incident|auth|api)/i, boost: 9 },
+  { query: /(?:cv|resume|linkedin|job|interview|cover letter|وظيفه|وظيفة|سيره|سيرة|مقابله|مقابلة)/i, ids: /(?:career|hiring|negotiation|writing)/i, boost: 7 },
+  { query: /(?:finance|financial|valuation|dcf|accounting|cash flow|excel|spreadsheet|محاسبه|محاسبة|تحليل مالي|اكسل)/i, ids: /(?:financial|accounting|spreadsheet|unit-economics)/i, boost: 8 },
+  { query: /(?:network|dns|tcp|http|https|timeout|شبكه|شبكة|اتصال)/i, ids: /(?:network|distributed|sre|troubleshooting|operating)/i, boost: 7 },
+  { query: /(?:video|premiere|capcut|editing|مونتاج|فيديو)/i, ids: /(?:content-video|content-strategy|ui-ux)/i, boost: 8 },
+];
 
 function normalize(value) {
   return String(value || '')
@@ -62,6 +75,16 @@ function uniqueEntries(...groups) {
   return result;
 }
 
+function affinityScore(entryId, exactText) {
+  let score = 0;
+  for (const affinity of DOMAIN_AFFINITIES) {
+    affinity.query.lastIndex = 0;
+    affinity.ids.lastIndex = 0;
+    if (affinity.query.test(exactText) && affinity.ids.test(entryId)) score += affinity.boost;
+  }
+  return score;
+}
+
 function scoreCandidate(entry, queryTokens, exactText, index) {
   const id = normalize(entry.id);
   const triggers = (entry.triggers || []).map(normalize).filter(Boolean);
@@ -71,6 +94,7 @@ function scoreCandidate(entry, queryTokens, exactText, index) {
     if (exactText.includes(trigger)) score += trigger.includes(' ') ? 13 : 8;
   }
   if (id.split('-').some((part) => part.length >= 4 && exactText.includes(part))) score += 3;
+  score += affinityScore(entry.id, exactText);
   score += Math.max(0, 5 - index * 0.12);
   if (entry.pack === 'expert-max') score += 1.4;
   if (entry.pack === 'deep-specialist') score += 2.2;
