@@ -36,14 +36,16 @@ function selectModel(webllm) {
   const memory = Number(navigator.deviceMemory || 4);
   const preferred = memory >= 8
     ? [
-        'Qwen2-1.5B-Instruct-q4f16_1-MLC',
-        'Qwen2-0.5B-Instruct-q4f16_1-MLC',
+        'Qwen3-1.7B-q4f16_1-MLC',
+        'Qwen3.5-0.8B-q4f16_1-MLC',
+        'Qwen3-0.6B-q4f16_1-MLC',
         'Llama-3.2-1B-Instruct-q4f16_1-MLC',
       ]
     : [
-        'Qwen2-0.5B-Instruct-q4f16_1-MLC',
+        'Qwen3.5-0.8B-q4f16_1-MLC',
+        'Qwen3-0.6B-q4f16_1-MLC',
         'Llama-3.2-1B-Instruct-q4f16_1-MLC',
-        'Qwen2-1.5B-Instruct-q4f16_1-MLC',
+        'Qwen3-1.7B-q4f16_1-MLC',
       ];
 
   for (const candidate of preferred) {
@@ -51,9 +53,9 @@ function selectModel(webllm) {
     if (exact) return exact;
   }
 
-  const multilingual = ids.find((id) => /qwen.*instruct/i.test(id));
-  if (multilingual) return multilingual;
-  const smallInstruct = ids.find((id) => /(0\.5b|1b|1\.5b).*instruct/i.test(id));
+  const qwen = ids.find((id) => /qwen3(?:\.5)?-(?:0\.6|0\.8|1\.7)b.*q4f16/i.test(id));
+  if (qwen) return qwen;
+  const smallInstruct = ids.find((id) => /(0\.5b|0\.6b|0\.8b|1b|1\.5b|1\.7b).*instruct/i.test(id));
   if (smallInstruct) return smallInstruct;
   throw new Error('LOCAL_LLM_SMALL_MODEL_NOT_FOUND');
 }
@@ -88,18 +90,19 @@ function systemPrompt() {
     'You are PathPilot Local AI, an on-device assistant.',
     'Answer primarily in Arabic unless the user clearly asks for another language.',
     'Use the supplied local knowledge as evidence and context, but do not copy it mechanically.',
-    'Infer the user intent, answer the actual request, compare alternatives when relevant, and finish with practical next steps.',
+    'Infer the real user intent, satisfy every explicit constraint, compare alternatives when relevant, and finish with practical next steps.',
+    'Separate known information from assumptions and uncertainty.',
     'Do not claim current web knowledge, live prices, current releases, or recent news unless it is explicitly present in the supplied context.',
     'Never invent personal facts, credentials, metrics, sources, or citations.',
-    'For uncertain claims, state the uncertainty briefly.',
-    'Do not reveal hidden reasoning or chain-of-thought. Give concise conclusions and useful rationale only.',
+    'For uncertain claims, state the uncertainty briefly and suggest what would resolve it.',
+    'Do not reveal hidden reasoning or chain-of-thought. Give conclusions and concise useful rationale only.',
   ].join(' ');
 }
 
 function userPrompt({ prompt, tool, mode, preferences, context }) {
   const style = preferences?.responseStyle || 'balanced';
   const audience = preferences?.audience || 'self';
-  return `User request:\n${prompt}\n\nWorkspace: ${mode}\nTool: ${tool}\nAudience: ${audience}\nResponse style: ${style}\n\nLocal knowledge retrieved from PathPilot:\n${context.slice(0, 11_000)}\n\nTask: Produce one coherent final answer that directly satisfies the user. Use the local knowledge to improve correctness and depth. Do not describe the retrieval process.`;
+  return `User request:\n${prompt}\n\nWorkspace: ${mode}\nTool: ${tool}\nAudience: ${audience}\nResponse style: ${style}\n\nLocal knowledge retrieved from PathPilot:\n${context.slice(0, 11_000)}\n\nTask: Produce one coherent final answer that directly satisfies the user. Use the local knowledge to improve correctness and depth. Do not describe the retrieval process or hidden reasoning.`;
 }
 
 function withTimeout(promise, timeoutMs) {
@@ -126,8 +129,9 @@ export async function generateBrowserLLMResponse({ prompt, tool = 'ask', mode = 
       temperature: 0.25,
       top_p: 0.9,
       max_tokens: preferences.responseStyle === 'detailed' ? 1100 : preferences.responseStyle === 'concise' ? 450 : 750,
+      extra_body: { enable_thinking: false },
     });
-    const answer = response?.choices?.[0]?.message?.content?.trim();
+    const answer = response?.choices?.[0]?.message?.content?.replace(/<think>[\s\S]*?<\/think>\s*/gi, '').trim();
     if (!answer) throw new Error('LOCAL_LLM_EMPTY_RESPONSE');
     return {
       answer,
