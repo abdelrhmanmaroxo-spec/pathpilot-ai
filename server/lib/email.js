@@ -7,6 +7,21 @@ function escapeHtml(value) {
     .replaceAll("'", '&#039;');
 }
 
+export function getEmailDeliveryMode(from) {
+  const value = String(from || '').toLowerCase();
+  if (!value) return 'unconfigured';
+  if (value.includes('@resend.dev')) return 'sandbox';
+  return 'custom-domain';
+}
+
+export function getEmailDeliveryFailureCode(error, from) {
+  const message = String(error?.message || '').toLowerCase();
+  if (getEmailDeliveryMode(from) === 'sandbox' || message.includes('testing emails') || message.includes('resend.dev')) return 'EMAIL_SANDBOX_RESTRICTED';
+  if (message.includes(':401:') || message.includes(':403:')) return 'EMAIL_PROVIDER_AUTH';
+  if (message.includes('timeout')) return 'EMAIL_PROVIDER_TIMEOUT';
+  return 'EMAIL_DELIVERY_FAILED';
+}
+
 async function sendEmail({ apiKey, from, to, subject, html, tag }) {
   if (!apiKey || !from) throw new Error('EMAIL_NOT_CONFIGURED');
   const response = await fetch('https://api.resend.com/emails', {
