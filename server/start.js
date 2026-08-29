@@ -1,15 +1,20 @@
 import { createServer } from 'node:http';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
+import { Readable } from 'node:stream';
 import { createPathPilotServer } from './index.js';
 import { createIntelligenceV3Handler } from './intelligence-v3-server.js';
 import { hashToken } from './lib/auth.js';
 import { assertRuntimeConfig, logRuntimeConfig } from './lib/config.js';
 import { getSessionUser, initializeDatabase } from './lib/database.js';
 import { createCachedHealthProbe } from './lib/health.js';
+import { inspectUntrustedInput, sanitizePrompt } from './lib/input-security.js';
 import { installProviderResilience } from './lib/provider-resilience.js';
 import { createRoleRateLimiter } from './lib/rate-limit.js';
 import { attachRequestContext } from './lib/request-context.js';
+import { recordSecurityEvent } from './lib/system-control.js';
+
+const MAX_DIRECT_BODY_BYTES = 128_000;
 
 function bearerToken(request) {
   const header = String(request.headers.authorization || '');
@@ -31,6 +36,79 @@ function responseCors(request, env) {
 function sessionUser(request, database) {
   const token = bearerToken(request);
   return token ? getSessionUser(database, hashToken(token)) : null;
+}
+
+async function bufferRequest(request) {
+  const chunks = [];
+  let length = 0;
+  for await (const chunk of request) {
+    const value = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    length += value.length;
+    if (length > MAX_DIRECT_BODY_BYTES) {
+      const error = new Error('BODY_TOO_LARGE');
+      error.code = 'BODY_TOO_LARGE';
+      throw error;
+    }
+    chunks.push(value);
+  }
+  return Buffer.concat(chunks);
+}
+
+function replayRequest(original, body) {
+  const replay = Readable.from(body.length ? [body] : []);
+  replay.method = original.method;
+  replay.url = original.url;
+  replay.headers = original.headers;
+  replay.rawHeaders = original.rawHeaders;
+  replay.socket = original.socket;
+  replay.requestId = original.requestId;
+  return replay;
+}
+
+async function secureDirectAiRequest({ request, response, database, env, requestId, appHandler }) {
+  const cors = responseCors(request, env);
+  let raw;
+  let payload;
+  try {
+    raw = await bufferRequest(request);
+    payload = JSON.parse(raw.toString('utf8') || '{}');
+  } catch (error) {
+    const tooLarge = error?.code === 'BODY_TOO_LARGE';
+    response.writeHead(tooLarge ? 413 : 400, {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Cache-Control': 'no-store',
+      ...cors,
+    });
+    response.end(JSON.stringify({ error: tooLarge ? 'Request body is too large.' : 'Invalid JSON request.', code: tooLarge ? 'BODY_TOO_LARGE' : 'INVALID_REQUEST', requestId }));
+    return;
+  }
+
+  const prompt = sanitizePrompt(payload?.prompt || '', 12_000);
+  const inspection = inspectUntrustedInput(prompt);
+  if (inspection.blocked) {
+    recordSecurityEvent(database, {
+      eventType: 'UNSAFE_DIRECT_AI_INPUT_BLOCKED',
+      severity: inspection.risk,
+      ip: request.socket?.remoteAddress || '',
+      path: '/api/assistant',
+      details: inspection.codes.join(','),
+    });
+    response.writeHead(400, {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Cache-Control': 'no-store',
+      ...cors,
+    });
+    response.end(JSON.stringify({
+      error: 'This request contains executable or exploit-like input and was blocked by PathPilot Security.',
+      code: 'UNSAFE_INPUT_BLOCKED',
+      requestId,
+    }));
+    return;
+  }
+
+  const safePayload = { ...payload, prompt };
+  const replay = replayRequest(request, Buffer.from(JSON.stringify(safePayload)));
+  await appHandler(replay, response);
 }
 
 export function startPathPilotServer({ env = process.env, logger = console } = {}) {
@@ -105,6 +183,20 @@ export function startPathPilotServer({ env = process.env, logger = console } = {
           logger.error?.(`[PathPilot health ${requestId}]`, error);
           response.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...cors });
           response.end(JSON.stringify({ error: 'Deep health check failed.', code: 'HEALTH_CHECK_FAILED', requestId }));
+        });
+      return;
+    }
+
+    if (url.pathname === '/api/assistant' && request.method === 'POST') {
+      secureDirectAiRequest({ request, response, database, env, requestId, appHandler })
+        .catch((error) => {
+          logger.error?.(`[PathPilot direct security ${requestId}]`, error);
+          if (response.headersSent) {
+            response.destroy(error);
+            return;
+          }
+          response.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...cors });
+          response.end(JSON.stringify({ error: 'Internal server error.', code: 'INTERNAL_ERROR', requestId }));
         });
       return;
     }
