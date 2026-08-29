@@ -4,6 +4,8 @@ const DEFAULTS = {
   cooldownMs: 30_000,
   maxRetries: 2,
   baseDelayMs: 250,
+  researchCacheTtlMs: 5 * 60_000,
+  researchCacheMaxEntries: 100,
 };
 
 function sleep(ms) {
@@ -19,6 +21,38 @@ function providerForUrl(input) {
 
 function retryableStatus(status) {
   return status === 408 || status === 409 || status === 425 || status === 429 || status === 500 || status === 502 || status === 503 || status === 504;
+}
+
+function researchCacheKey(input, init) {
+  if (providerForUrl(input) !== 'tavily') return '';
+  const method = String(init?.method || 'GET').toUpperCase();
+  if (method !== 'POST' || typeof init?.body !== 'string') return '';
+  try {
+    const payload = JSON.parse(init.body);
+    delete payload.api_key;
+    return JSON.stringify(payload);
+  } catch {
+    return '';
+  }
+}
+
+function responseFromCache(entry) {
+  return new Response(entry.body.slice(0), {
+    status: entry.status,
+    statusText: entry.statusText,
+    headers: entry.headers,
+  });
+}
+
+async function snapshotResponse(response) {
+  const clone = response.clone();
+  return {
+    body: new Uint8Array(await clone.arrayBuffer()),
+    status: clone.status,
+    statusText: clone.statusText,
+    headers: Object.fromEntries(clone.headers.entries()),
+    storedAt: Date.now(),
+  };
 }
 
 class ProviderGate {
@@ -89,10 +123,39 @@ export function createProviderResilientFetch(fetchImpl = globalThis.fetch, optio
     ['gemini', new ProviderGate('gemini', { ...config, ...(options.gemini || {}) })],
     ['tavily', new ProviderGate('tavily', { ...config, ...(options.tavily || {}) })],
   ]);
+  const researchCache = new Map();
+
+  function readResearchCache(key) {
+    if (!key) return null;
+    const entry = researchCache.get(key);
+    if (!entry) return null;
+    if (Date.now() - entry.storedAt > config.researchCacheTtlMs) {
+      researchCache.delete(key);
+      return null;
+    }
+    researchCache.delete(key);
+    researchCache.set(key, entry);
+    return responseFromCache(entry);
+  }
+
+  async function writeResearchCache(key, response) {
+    if (!key || !response.ok || config.researchCacheTtlMs <= 0) return;
+    const entry = await snapshotResponse(response);
+    researchCache.set(key, entry);
+    while (researchCache.size > config.researchCacheMaxEntries) {
+      const oldest = researchCache.keys().next().value;
+      researchCache.delete(oldest);
+    }
+  }
 
   async function resilientFetch(input, init) {
     const provider = providerForUrl(input);
     if (!provider) return fetchImpl(input, init);
+
+    const cacheKey = researchCacheKey(input, init);
+    const cached = readResearchCache(cacheKey);
+    if (cached) return cached;
+
     const gate = gates.get(provider);
     await gate.acquire();
     try {
@@ -101,8 +164,10 @@ export function createProviderResilientFetch(fetchImpl = globalThis.fetch, optio
         try {
           const response = await fetchImpl(input, init);
           if (!retryableStatus(response.status)) {
-            if (response.ok) gate.success();
-            else gate.failure();
+            if (response.ok) {
+              gate.success();
+              await writeResearchCache(cacheKey, response);
+            } else gate.failure();
             return response;
           }
           lastError = new Error(`${provider.toUpperCase()}_${response.status}`);
@@ -127,13 +192,21 @@ export function createProviderResilientFetch(fetchImpl = globalThis.fetch, optio
     }
   }
 
-  resilientFetch.getState = () => Object.fromEntries([...gates.entries()].map(([name, gate]) => [name, {
-    state: gate.circuitState(),
-    active: gate.active,
-    queued: gate.queue.length,
-    failures: gate.failures,
-  }]));
+  resilientFetch.getState = () => ({
+    ...Object.fromEntries([...gates.entries()].map(([name, gate]) => [name, {
+      state: gate.circuitState(),
+      active: gate.active,
+      queued: gate.queue.length,
+      failures: gate.failures,
+    }])),
+    researchCache: {
+      entries: researchCache.size,
+      ttlMs: config.researchCacheTtlMs,
+      maxEntries: config.researchCacheMaxEntries,
+    },
+  });
 
+  resilientFetch.clearResearchCache = () => researchCache.clear();
   return resilientFetch;
 }
 
@@ -143,6 +216,6 @@ export function installProviderResilience({ fetchImpl = globalThis.fetch, logger
   globalThis.__pathPilotNativeFetch = fetchImpl;
   globalThis.__pathPilotProviderFetch = wrapped;
   globalThis.fetch = wrapped;
-  logger.info?.('[PathPilot providers] resilience enabled for Gemini and Tavily');
+  logger.info?.('[PathPilot providers] resilience and research cache enabled for Gemini and Tavily');
   return wrapped;
 }
