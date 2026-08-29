@@ -13,14 +13,8 @@ function shareText({ prompt, answer }) {
   return `PathPilot\n\nالسؤال / الطلب\n${prompt || '—'}\n\nالنتيجة\n${answer || '—'}\n\nتمت مشاركة هذه المحادثة فقط.`;
 }
 
-function HistoryManager({ open, onClose, notify }) {
+function HistoryManager({ onClose, notify }) {
   const [items, setItems] = useState(() => loadHistory());
-
-  useEffect(() => {
-    if (open) setItems(loadHistory());
-  }, [open]);
-
-  if (!open) return null;
 
   const removeItem = (item) => {
     if (!window.confirm(`حذف هذه المحادثة فقط؟\n\n${String(item.prompt || '').slice(0, 120)}`)) return;
@@ -130,7 +124,7 @@ export default function ConversationExperience() {
     <>
       {resultPortal}
       {historyPortal}
-      <HistoryManager open={managerOpen} onClose={() => setManagerOpen(false)} notify={setToast} />
+      {managerOpen && <HistoryManager onClose={() => setManagerOpen(false)} notify={setToast} />}
       {toast && createPortal(<div className="conversation-toast" role="status">{toast}</div>, document.body)}
     </>
   );
