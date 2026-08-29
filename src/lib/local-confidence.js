@@ -18,7 +18,6 @@ function numericScores(knowledge) {
 function retrievalStrength(knowledge) {
   const scores = numericScores(knowledge);
   if (!scores.length) return 0.18;
-  const top = scores[0] || 0;
   const topThree = scores.slice(0, 3);
   const averageTop = topThree.reduce((sum, value) => sum + value, 0) / topThree.length;
   const scoreComponent = clamp((averageTop - 4) / 26);
