@@ -77,6 +77,10 @@ export async function getPlatformStatus() {
   return request('/api/status');
 }
 
+export async function getResearchStatus() {
+  return request('/api/research/status');
+}
+
 export async function logoutAccount() {
   try { await request('/api/auth/logout', { method: 'POST' }); } finally { setSessionToken(''); }
 }
@@ -159,13 +163,14 @@ export async function exportOwnerData() {
 }
 
 export async function loadAdminDashboard() {
-  const [summary, users, apiUsage, errors, feedback, status, loginLog] = await Promise.all([
+  const [summary, users, apiUsage, errors, feedback, status, researchStatus, loginLog] = await Promise.all([
     request('/api/admin/summary'),
     request('/api/admin/users'),
     request('/api/admin/api-usage'),
     request('/api/admin/errors'),
     request('/api/admin/feedback'),
     request('/api/status'),
+    request('/api/research/status').catch(() => ({ researchAvailable: false, provider: null, targetSources: 18, appliesToAllTools: true })),
     request('/api/admin/login-log'),
   ]);
   return {
@@ -175,6 +180,7 @@ export async function loadAdminDashboard() {
     errors: errors.errors,
     feedback: feedback.feedback,
     status,
+    researchStatus,
     loginLog: loginLog.logins || [],
   };
 }
