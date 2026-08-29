@@ -265,6 +265,37 @@ export default function Workspace({ mode, history, preferences, onPreferencesCha
   }, [mode]);
 
   useEffect(() => {
+    const selectTool = (event) => {
+      const toolId = String(event.detail?.toolId || '');
+      if (!tools.some((item) => item.id === toolId)) return;
+      abortRef.current?.abort();
+      runTokenRef.current += 1;
+      setSelectedTool(toolId);
+      setPrompt('');
+      setAnswer('');
+      setSources([]);
+      setTurns([]);
+      setLoading(false);
+      setProcessingSeconds(0);
+      setLastProcessingSeconds(null);
+      trackUsage({ eventType: 'tool_selected', workspace: mode, tool: toolId, metadata: { source: 'global-search' } });
+      window.setTimeout(() => document.querySelector('#assistant-prompt')?.focus(), 0);
+    };
+    const reuseFromSearch = (event) => {
+      const value = String(event.detail?.prompt || '').trim();
+      if (!value) return;
+      setPrompt(value.slice(0, 12000));
+      window.setTimeout(() => document.querySelector('#assistant-prompt')?.focus(), 0);
+    };
+    window.addEventListener('pathpilot:select-tool', selectTool);
+    window.addEventListener('pathpilot:reuse-prompt', reuseFromSearch);
+    return () => {
+      window.removeEventListener('pathpilot:select-tool', selectTool);
+      window.removeEventListener('pathpilot:reuse-prompt', reuseFromSearch);
+    };
+  }, [mode, tools]);
+
+  useEffect(() => {
     if (!loading) return undefined;
     const update = () => {
       if (!processingStartedRef.current) return;
@@ -274,17 +305,6 @@ export default function Workspace({ mode, history, preferences, onPreferencesCha
     const timer = window.setInterval(update, 100);
     return () => window.clearInterval(timer);
   }, [loading]);
-
-  useEffect(() => {
-    const handler = (event) => {
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
-        event.preventDefault();
-        document.querySelector('#assistant-prompt')?.focus();
-      }
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, []);
 
   useEffect(() => () => {
     abortRef.current?.abort();
