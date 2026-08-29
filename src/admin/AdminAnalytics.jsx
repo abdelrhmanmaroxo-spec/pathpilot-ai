@@ -1,7 +1,7 @@
 import { Activity, Ban, Bot, BriefcaseBusiness, GraduationCap, MessageSquareText, Sparkles, Users } from 'lucide-react';
 import { Metric } from './AdminShared.jsx';
 
-export default function AdminAnalytics({ data, percentages, bannedCount }) {
+export default function AdminAnalytics({ data, percentages, bannedCount, showBreakdown = true }) {
   return (
     <>
       <section className="admin-metrics">
@@ -10,12 +10,12 @@ export default function AdminAnalytics({ data, percentages, bannedCount }) {
         <Metric icon={Activity} label="Tracked usage" value={data?.summary?.totalUsage ?? '—'} hint="Real tool requests" />
         <Metric icon={Ban} label="Banned" value={bannedCount} hint="Owner-controlled account bans" />
       </section>
-      <section className="admin-grid">
+      {showBreakdown && <section className="admin-grid">
         <article className="usage-card"><div><Sparkles /><span><strong>General</strong><small>{percentages.general}% of usage</small></span></div><i><b style={{ width: `${percentages.general}%` }} /></i></article>
         <article className="usage-card"><div><GraduationCap /><span><strong>Study</strong><small>{percentages.study}% of usage</small></span></div><i><b style={{ width: `${percentages.study}%` }} /></i></article>
         <article className="usage-card"><div><BriefcaseBusiness /><span><strong>Work</strong><small>{percentages.work}% of usage</small></span></div><i><b style={{ width: `${percentages.work}%` }} /></i></article>
         <article className="usage-card health"><div><Bot /><span><strong>Platform health</strong><small>{data?.status?.apiOnline ? 'AI and database are ready' : 'Database ready · AI waiting for key'}</small></span></div></article>
-      </section>
+      </section>}
     </>
   );
 }
