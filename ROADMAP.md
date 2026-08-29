@@ -12,6 +12,7 @@ This file is the execution tracker for the two approved 50-item roadmaps. Status
 
 ## Progress notes
 
+- 2026-08-29: Global search privacy tightened. Regular users no longer receive admin-mode history in search, and the global search is not mounted on an unauthorized `#/admin` route. Admin/Owner search access is preserved and covered by regression tests.
 - 2026-08-29: Local final-answer quality gate now understands negative constraints such as `without backend changes` / `بدون تغيير backend`. Contradictory reviewed answers receive an explicit penalty and `contradicted-constraints` flag, preventing a stylistically polished review from replacing a draft that actually obeyed the user's hard constraint. Regression tests cover Arabic negative constraints and draft-vs-review selection.
 - 2026-08-29: Roadmap reconciled with shipped local intelligence work: local RAG is currently `rag-v4` with query expansion, reranking, deduplication/diversity and bounded context; device-aware model selection with fallback is active; local confidence-aware review and answer-quality verification are active foundations.
 - 2026-08-29: Expanded A13 translation coverage CI with a source-level guard for quoted Arabic literals in `AppChrome.jsx`. New Arabic labels, titles, status text, or install instructions in the shared app chrome must now have a matching English catalog entry or CI fails.
@@ -111,7 +112,7 @@ This file is the execution tracker for the two approved 50-item roadmaps. Status
 | B29 | DONE | Conversation folders foundation |
 | B30 | DONE | Conversation tags foundation |
 | B31 | DONE | Keyboard shortcuts |
-| B32 | TODO | Command palette |
+| B32 | DONE | Command palette / global search, with admin/owner-only administrative search visibility |
 | B33 | IN_PROGRESS | Pinned prompts storage/component foundation; full workspace integration pending |
 | B34 | TODO | Custom tool builder |
 | B35 | TODO | Custom instructions |
