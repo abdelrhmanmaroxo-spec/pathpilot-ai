@@ -1,15 +1,18 @@
 const SUSPICIOUS_PATH_PARTS = [
   '/.env', '/.git', '/wp-admin', '/wp-login', '/phpmyadmin', '/vendor/phpunit',
   '/actuator', '/server-status', '/cgi-bin', '/boaform', '/HNAP1', '/.aws', '/.ssh',
+  '/etc/passwd', '/proc/self', '/docker.sock', '/metadata/identity', '/latest/meta-data',
 ];
+
+const MAX_BODY_BYTES = 128_000;
+const MAX_URL_LENGTH = 2_048;
+const MAX_HEADER_COUNT = 100;
 
 function normalizeIp(value) {
   return String(value || 'unknown').replace(/^::ffff:/, '').slice(0, 80);
 }
 
 export function clientIp(request) {
-  // Railway's edge proxy supplies X-Forwarded-For. Keep the first public-facing hop
-  // for audit/rate limiting, with safe fallbacks for local development.
   const forwarded = String(request.headers['x-forwarded-for'] || '')
     .split(',')
     .map((item) => item.trim())
@@ -28,27 +31,41 @@ export function applySecurityHeaders(request, response) {
   response.setHeader('X-Content-Type-Options', 'nosniff');
   response.setHeader('X-Frame-Options', 'DENY');
   response.setHeader('Referrer-Policy', 'no-referrer');
-  response.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=(), usb=()');
+  response.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=(), usb=(), serial=(), bluetooth=()');
   response.setHeader('X-DNS-Prefetch-Control', 'off');
-  response.setHeader('Cache-Control', 'no-store');
-  if (isHttps) response.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  response.setHeader('X-Permitted-Cross-Domain-Policies', 'none');
+  response.setHeader('X-Download-Options', 'noopen');
+  response.setHeader('Cross-Origin-Opener-Policy', 'same-origin-allow-popups');
+  response.setHeader('Origin-Agent-Cluster', '?1');
+  response.setHeader('Content-Security-Policy', "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'");
+  response.setHeader('Cache-Control', 'no-store, max-age=0');
+  response.setHeader('Pragma', 'no-cache');
+  response.setHeader('Expires', '0');
+  if (isHttps) response.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload');
 }
 
 function routePolicy(path) {
   if (path === '/api/auth/login' || path === '/api/auth/google') return { limit: 12, windowMs: 10 * 60_000, bucket: 'auth-login' };
-  if (['/api/auth/register', '/api/auth/resend-verification', '/api/auth/forgot-password', '/api/auth/reset-password'].includes(path)) {
-    return { limit: 8, windowMs: 10 * 60_000, bucket: 'auth-sensitive' };
+  if (path === '/api/auth/register') return { limit: 6, windowMs: 15 * 60_000, bucket: 'auth-register' };
+  if (['/api/auth/resend-verification', '/api/auth/forgot-password', '/api/auth/reset-password'].includes(path)) {
+    return { limit: 6, windowMs: 15 * 60_000, bucket: 'auth-sensitive' };
   }
   if (path === '/api/research' || path === '/api/assistant') return { limit: 30, windowMs: 60_000, bucket: 'ai' };
-  if (path.startsWith('/api/admin/')) return { limit: 180, windowMs: 60_000, bucket: 'admin' };
-  if (path === '/api/feedback' || path === '/api/client-errors') return { limit: 40, windowMs: 60_000, bucket: 'telemetry' };
-  return { limit: 240, windowMs: 60_000, bucket: 'general' };
+  if (path.startsWith('/api/admin/') || path.startsWith('/api/security/')) return { limit: 120, windowMs: 60_000, bucket: 'admin' };
+  if (path === '/api/feedback' || path === '/api/client-errors') return { limit: 30, windowMs: 60_000, bucket: 'telemetry' };
+  return { limit: 180, windowMs: 60_000, bucket: 'general' };
 }
 
 function suspiciousPath(rawPath) {
   const path = String(rawPath || '').toLowerCase();
-  if (path.includes('..') || path.includes('%2e%2e') || path.includes('%00')) return true;
+  if (path.includes('..') || path.includes('%2e%2e') || path.includes('%00') || path.includes('\\')) return true;
   return SUSPICIOUS_PATH_PARTS.some((part) => path.includes(part.toLowerCase()));
+}
+
+function contentTypeAllowed(request, method, path, contentLength) {
+  if (method !== 'POST' || !path.startsWith('/api/') || contentLength === 0) return true;
+  const type = String(request.headers['content-type'] || '').toLowerCase();
+  return type.startsWith('application/json');
 }
 
 export function createSecurityGuard() {
@@ -67,7 +84,14 @@ export function createSecurityGuard() {
     check(request) {
       const now = Date.now();
       cleanup(now);
-      const url = new URL(request.url || '/', 'http://localhost');
+      const rawUrl = String(request.url || '/');
+      if (rawUrl.length > MAX_URL_LENGTH) {
+        return { allowed: false, status: 414, error: 'Request URL is too long.', code: 'URL_TOO_LONG' };
+      }
+
+      let url;
+      try { url = new URL(rawUrl, 'http://localhost'); }
+      catch { return { allowed: false, status: 400, error: 'Invalid request URL.', code: 'INVALID_URL' }; }
       const path = url.pathname;
       const method = String(request.method || 'GET').toUpperCase();
       const ip = clientIp(request);
@@ -75,13 +99,25 @@ export function createSecurityGuard() {
       if (!['GET', 'POST', 'OPTIONS', 'HEAD'].includes(method)) {
         return { allowed: false, status: 405, error: 'Method not allowed.', code: 'METHOD_BLOCKED' };
       }
-      if (suspiciousPath(request.url)) {
+      if (suspiciousPath(rawUrl)) {
         return { allowed: false, status: 404, error: 'Not found.', code: 'SUSPICIOUS_PATH' };
       }
 
-      const length = Number(request.headers['content-length'] || 0);
-      if (Number.isFinite(length) && length > 128_000) {
+      const headerCount = Array.isArray(request.rawHeaders) ? Math.floor(request.rawHeaders.length / 2) : Object.keys(request.headers || {}).length;
+      if (headerCount > MAX_HEADER_COUNT) {
+        return { allowed: false, status: 431, error: 'Too many request headers.', code: 'TOO_MANY_HEADERS' };
+      }
+
+      const rawLength = request.headers['content-length'];
+      const length = rawLength === undefined ? 0 : Number(rawLength);
+      if (!Number.isFinite(length) || length < 0) {
+        return { allowed: false, status: 400, error: 'Invalid content length.', code: 'INVALID_CONTENT_LENGTH' };
+      }
+      if (length > MAX_BODY_BYTES) {
         return { allowed: false, status: 413, error: 'Request body is too large.', code: 'BODY_TOO_LARGE' };
+      }
+      if (!contentTypeAllowed(request, method, path, length)) {
+        return { allowed: false, status: 415, error: 'Content-Type must be application/json.', code: 'UNSUPPORTED_MEDIA_TYPE' };
       }
 
       const policy = routePolicy(path);
