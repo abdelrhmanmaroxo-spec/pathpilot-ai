@@ -121,29 +121,10 @@ function conversationalFastPath(prompt, enabled) {
   };
 }
 
-async function tryPreferredLocalAgent({ args, contextualPrompt, effectivePreferences, plan }) {
-  if (plan?.mode !== 'auto' || !args.routeOptions?.preferLocalModel || !effectivePreferences.localLlmEnabled || plan.freshnessNeeded) return null;
-  const local = await generateLocalAgentResponse({
-    mode: args.mode,
-    tool: args.tool,
-    prompt: contextualPrompt,
-    preferences: effectivePreferences,
-    signal: args.signal,
-    freshnessNeeded: false,
-    allowColdStart: true,
-  });
-  return local?.source === 'local-llm' ? local : null;
-}
-
-export async function generateRoutedAssistantResponse(args) {
+function buildRoutingContext(args) {
   const contextualPrompt = String(args.prompt || '').trim();
   const latestPrompt = latestRequestFromContext(contextualPrompt);
   const agentEnabled = args.routeOptions?.agentMode === 'auto' || args.routeOptions?.preferLocalModel === true;
-
-  assertSafePrompt(latestPrompt);
-  const conversational = conversationalFastPath(latestPrompt, agentEnabled);
-  if (conversational) return conversational;
-
   const plan = agentEnabled
     ? planChatAgent({
       prompt: latestPrompt,
@@ -163,51 +144,97 @@ export async function generateRoutedAssistantResponse(args) {
       agentGuidance: agentPlanGuidance(plan),
     } : {}),
   };
-  await assertSystemAvailable(args.signal);
+  return { contextualPrompt, latestPrompt, agentEnabled, plan, deepThink, effectivePreferences };
+}
 
-  const preferredLocal = await tryPreferredLocalAgent({ args, contextualPrompt, effectivePreferences, plan });
-  if (preferredLocal) return withAgentMetadata(preferredLocal, plan);
-
-  const decision = routeAssistantRequest({
+function routingDecision(args, latestPrompt, plan) {
+  return routeAssistantRequest({
     prompt: latestPrompt,
     tool: args.tool,
     hasResearch: researchAvailable && plan.allowResearch,
     hasDirectAI: directAvailable,
     forceResearch: plan.forceResearch,
   });
+}
+
+function cacheLookup(args, contextualPrompt, effectivePreferences) {
+  return answerCache.find({
+    mode: args.mode,
+    tool: args.tool,
+    prompt: contextualPrompt,
+    preferences: effectivePreferences,
+  });
+}
+
+function cacheStore(args, contextualPrompt, effectivePreferences, result) {
+  answerCache.store({
+    mode: args.mode,
+    tool: args.tool,
+    prompt: contextualPrompt,
+    preferences: effectivePreferences,
+    result,
+  });
+}
+
+function shouldRethrow(error, signal) {
+  return Boolean(
+    signal?.aborted
+    || error?.code === 'REQUEST_ABORTED'
+    || error?.code === 'SYSTEM_PAUSED'
+    || error?.code === 'UNSAFE_INPUT_BLOCKED',
+  );
+}
+
+async function tryPreferredLocalAgent({ args, contextualPrompt, effectivePreferences, plan }) {
+  if (plan?.mode !== 'auto' || !args.routeOptions?.preferLocalModel || !effectivePreferences.localLlmEnabled || plan.freshnessNeeded) return null;
+  const local = await generateLocalAgentResponse({
+    mode: args.mode,
+    tool: args.tool,
+    prompt: contextualPrompt,
+    preferences: effectivePreferences,
+    signal: args.signal,
+    freshnessNeeded: false,
+    allowColdStart: true,
+  });
+  return local?.source === 'local-llm' ? local : null;
+}
+
+export async function generateRoutedAssistantResponse(args) {
+  const runtime = buildRoutingContext(args);
+  const { contextualPrompt, latestPrompt, agentEnabled, plan, deepThink, effectivePreferences } = runtime;
+
+  assertSafePrompt(latestPrompt);
+  const conversational = conversationalFastPath(latestPrompt, agentEnabled);
+  if (conversational) return withAgentMetadata(conversational, plan);
+
+  await assertSystemAvailable(args.signal);
+
+  const preferredLocal = await tryPreferredLocalAgent({ args, contextualPrompt, effectivePreferences, plan });
+  if (preferredLocal) return withAgentMetadata(preferredLocal, plan);
+
+  const decision = routingDecision(args, latestPrompt, plan);
 
   if (decision.route === 'direct-ai' && directClient) {
-    const cached = answerCache.find({
-      mode: args.mode,
-      tool: args.tool,
-      prompt: contextualPrompt,
-      preferences: effectivePreferences,
-    });
+    const cached = cacheLookup(args, contextualPrompt, effectivePreferences);
     if (cached) return withAgentMetadata(cached, plan);
 
     try {
       const payload = await directClient.request('/api/assistant', {
         method: 'POST',
-        body: JSON.stringify({
+        json: {
           mode: args.mode,
           tool: args.tool,
           prompt: contextualPrompt,
           preferences: effectivePreferences,
-        }),
+        },
         signal: args.signal,
         timeoutMs: deepThink ? 85_000 : 65_000,
       });
       const result = normalizedResult(payload, 'direct-ai');
-      answerCache.store({
-        mode: args.mode,
-        tool: args.tool,
-        prompt: contextualPrompt,
-        preferences: effectivePreferences,
-        result,
-      });
+      cacheStore(args, contextualPrompt, effectivePreferences, result);
       return withAgentMetadata(result, plan);
     } catch (error) {
-      if (args.signal?.aborted || error?.code === 'REQUEST_ABORTED' || error?.code === 'SYSTEM_PAUSED' || error?.code === 'UNSAFE_INPUT_BLOCKED') throw error;
+      if (shouldRethrow(error, args.signal)) throw error;
       console.warn(agentEnabled
         ? 'PathPilot direct route failed; falling back to the next allowed agent tier.'
         : 'PathPilot direct route failed; falling back to grounded route.', error);
@@ -238,4 +265,93 @@ export async function generateRoutedAssistantResponse(args) {
     route: decision.route === 'research' ? 'research' : result.route || 'fallback',
   };
   return withAgentMetadata(routed, plan);
+}
+
+export async function streamRoutedAssistantResponse(args, { onDelta } = {}) {
+  const runtime = buildRoutingContext(args);
+  const { contextualPrompt, latestPrompt, agentEnabled, plan, deepThink, effectivePreferences } = runtime;
+
+  assertSafePrompt(latestPrompt);
+  const conversational = conversationalFastPath(latestPrompt, agentEnabled);
+  if (conversational) {
+    onDelta?.(conversational.answer, conversational.answer);
+    return withAgentMetadata(conversational, plan);
+  }
+
+  await assertSystemAvailable(args.signal);
+  const decision = routingDecision(args, latestPrompt, plan);
+
+  if (decision.route !== 'direct-ai' || !directClient) {
+    const result = await generateRoutedAssistantResponse(args);
+    onDelta?.(result.answer, result.answer);
+    return result;
+  }
+
+  const cached = cacheLookup(args, contextualPrompt, effectivePreferences);
+  if (cached) {
+    onDelta?.(cached.answer, cached.answer);
+    return withAgentMetadata(cached, plan);
+  }
+
+  let answer = '';
+  let emitted = false;
+  let doneMetadata = null;
+
+  try {
+    for await (const event of directClient.streamEvents('/api/assistant/stream', {
+      method: 'POST',
+      json: {
+        mode: args.mode,
+        tool: args.tool,
+        prompt: contextualPrompt,
+        preferences: effectivePreferences,
+      },
+      signal: args.signal,
+      timeoutMs: deepThink ? 110_000 : 90_000,
+    })) {
+      if (event.event === 'delta') {
+        const delta = typeof event.data?.text === 'string' ? event.data.text : '';
+        if (!delta) continue;
+        emitted = true;
+        answer += delta;
+        onDelta?.(delta, answer);
+        continue;
+      }
+      if (event.event === 'done') {
+        doneMetadata = event.data && typeof event.data === 'object' ? event.data : null;
+        continue;
+      }
+      if (event.event === 'error') {
+        throw new PathPilotApiError(event.data?.error || 'The streamed response failed.', {
+          code: event.data?.code || 'STREAM_FAILED',
+          requestId: event.requestId,
+          details: event.data,
+        });
+      }
+    }
+
+    if (!answer.trim()) {
+      throw new PathPilotApiError('The AI provider returned an empty stream.', { code: 'EMPTY_STREAM_RESPONSE' });
+    }
+
+    const result = {
+      answer: answer.trim(),
+      source: 'live',
+      degraded: false,
+      sources: [],
+      sourceCount: 0,
+      targetReached: true,
+      route: doneMetadata?.route || 'direct-ai-stream',
+      streamed: true,
+      latencyMs: Number(doneMetadata?.latencyMs || 0),
+    };
+    cacheStore(args, contextualPrompt, effectivePreferences, result);
+    return withAgentMetadata(result, plan);
+  } catch (error) {
+    if (shouldRethrow(error, args.signal) || emitted) throw error;
+    console.warn('PathPilot live stream could not start; falling back to the existing answer pipeline.', error);
+    const fallback = await generateRoutedAssistantResponse(args);
+    onDelta?.(fallback.answer, fallback.answer);
+    return fallback;
+  }
 }

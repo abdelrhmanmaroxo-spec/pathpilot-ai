@@ -12,6 +12,7 @@ This file is the execution tracker for the two approved 50-item roadmaps. Status
 
 ## Progress notes
 
+- 2026-08-29: Privileged Chat streaming v1 implemented end-to-end for the live direct-AI route. The production server now exposes a secured POST SSE stream that forwards only visible provider output deltas, never provider reasoning fields; the central API client can consume SSE with request IDs, aborts, timeouts, normalized pre-stream errors, and stream cancellation; Chat now inserts the user turn immediately and renders the answer incrementally with a real Stop path. Internal auto-tool/debug chips were removed from the normal answer view so the experience feels like a conversational assistant rather than a developer console. Existing research and local-WebLLM paths remain compatible but still complete as non-streamed fallbacks, so A26 remains IN_PROGRESS until those routes stream natively too.
 - 2026-08-29: Natural Chat fast path hardened after production-style testing exposed Egyptian casual variants such as `عامل اي` falling through to the heavy reasoning/provider path. Privileged Chat now recognizes common Egyptian greeting/status variants before model routing, returns an immediate conversational response without RAG/search/report framing, and avoids showing unused agent-tool metadata for those lightweight turns. Regression coverage now includes `عامل اي`, `عامل اية؟`, `إيه الأخبار؟`, and `الدنيا ايه` while substantive prompts still fall through to the reasoning pipeline.
 - 2026-08-29: Chat Agent Orchestrator v1 added for the privileged Chat preview. The chat now selects helper capabilities automatically from a registry of 40 context, research, RAG, reasoning, specialist, verification, runtime, and voice capabilities; users can opt out of optional capability groups while context, safety, model routing, confidence checks, and the final quality gate remain mandatory. Search is now treated as a freshness/verification tool rather than a prerequisite for answering stable questions: privileged Chat prefers the evolving local LLM + RAG for stable requests when enabled, while freshness-sensitive requests can automatically route to grounded research. Casual conversation is classified separately so simple prompts such as “انت بتعمل اي؟” stay lightweight and conversational instead of triggering RAG/report templates. The local LLM was split into dedicated model-policy and prompt/review-policy modules, and voice dictation is wired into the Chat composer.
 - 2026-08-29: Added an Admin/Owner-only experimental Chat workspace with persistent on-device chat sessions, explicit Search and Deep Think controls, long-history relevance retrieval across up to 30 stored turns while keeping the final model context bounded to the most relevant turns, and role-gated access. Regular users can see the Chat entry but receive a development notice stating that the feature is under development by Abdelrhman. Search can force grounded research; Deep Think enables stricter provider-side verification without exposing hidden reasoning. Account/cloud conversation sync remains TODO and no production SQLite data model was changed.
@@ -35,7 +36,7 @@ This file is the execution tracker for the two approved 50-item roadmaps. Status
 | A02 | IN_PROGRESS | Split Admin Dashboard into feature modules |
 | A03 | TODO | Split authentication UI by flow |
 | A04 | TODO | Archive/remove legacy intelligence servers after parity verification |
-| A05 | DONE | Central API client |
+| A05 | DONE | Central API client, including JSON contracts, request IDs, abort/timeout handling, and SSE event streaming |
 | A06 | DONE | Startup configuration validator |
 | A07 | DONE | Deep health checks for DB, Gemini, Tavily, Gmail API |
 | A08 | DONE | React Error Boundary |
@@ -56,7 +57,7 @@ This file is the execution tracker for the two approved 50-item roadmaps. Status
 | A23 | DONE | Edit and resubmit |
 | A24 | DONE | Regenerate answer |
 | A25 | DONE | Stop generation with request abort |
-| A26 | TODO | Streaming responses |
+| A26 | IN_PROGRESS | True live SSE streaming is active for the direct provider Chat route with immediate user turns and abortable incremental rendering; research and local-WebLLM native streaming remain TODO |
 | A27 | DONE | Markdown renderer |
 | A28 | DONE | Rich code blocks and copy |
 | A29 | DONE | Dedicated structured sources UI |

@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 import ConversationThread from './components/ConversationThread.jsx';
 import VoiceControls from './components/VoiceControls.jsx';
-import { generateRoutedAssistantResponse } from './lib/assistant-router.js';
+import { streamRoutedAssistantResponse } from './lib/assistant-router.js';
 import { CHAT_AGENT_OPTION_GROUPS } from './lib/chat-agent-orchestrator.js';
 import { loadChatAgentSettings, toggleChatAgentGroup } from './lib/chat-agent-settings.js';
 import {
@@ -62,11 +62,10 @@ export default function ChatWorkspace({ preferences, notify }) {
   const [forceDeepThink, setForceDeepThink] = useState(false);
   const [toolPanelOpen, setToolPanelOpen] = useState(false);
   const [agentSettings, setAgentSettings] = useState(loadChatAgentSettings);
-  const [agentTools, setAgentTools] = useState([]);
-  const [agentPlan, setAgentPlan] = useState(null);
   const [voiceInputUsed, setVoiceInputUsed] = useState(false);
   const [loading, setLoading] = useState(false);
   const [sources, setSources] = useState([]);
+  const [streamingTurn, setStreamingTurn] = useState(null);
   const abortRef = useRef(null);
   const runTokenRef = useRef(0);
   const en = isEnglish();
@@ -75,34 +74,46 @@ export default function ChatWorkspace({ preferences, notify }) {
     () => sessions.find((session) => session.id === activeId) || sessions[0] || null,
     [activeId, sessions],
   );
-  const lastAnswer = activeSession?.turns?.at(-1)?.answer || '';
+  const visibleTurns = useMemo(() => {
+    const turns = activeSession?.turns || [];
+    if (streamingTurn?.sessionId !== activeSession?.id) return turns;
+    return [...turns, streamingTurn];
+  }, [activeSession, streamingTurn]);
+  const lastAnswer = streamingTurn?.sessionId === activeSession?.id && streamingTurn.answer
+    ? streamingTurn.answer
+    : activeSession?.turns?.at(-1)?.answer || '';
   const searchDisabled = agentSettings.disabledGroups.includes('search');
   const deepDisabled = agentSettings.disabledGroups.includes('deep');
+
+  const clearTransientResponse = () => {
+    setStreamingTurn(null);
+    setSources([]);
+    setLoading(false);
+  };
 
   const selectSession = (sessionId) => {
     abortRef.current?.abort();
     runTokenRef.current += 1;
     setActiveId(sessionId);
     setPrompt('');
-    setSources([]);
-    setAgentTools([]);
-    setAgentPlan(null);
-    setLoading(false);
+    clearTransientResponse();
   };
 
   const createNewChat = () => {
+    abortRef.current?.abort();
+    runTokenRef.current += 1;
     const session = createChatSession();
     const next = upsertChatSession(sessions, session);
     setSessions(next);
     setActiveId(session.id);
     setPrompt('');
-    setSources([]);
-    setAgentTools([]);
-    setAgentPlan(null);
-    setLoading(false);
+    clearTransientResponse();
   };
 
   const removeChat = (sessionId) => {
+    abortRef.current?.abort();
+    runTokenRef.current += 1;
+    setStreamingTurn(null);
     const next = deleteChatSession(sessions, sessionId);
     if (next.length) {
       setSessions(next);
@@ -130,11 +141,21 @@ export default function ChatWorkspace({ preferences, notify }) {
     const controller = new AbortController();
     abortRef.current = controller;
     const runToken = runTokenRef.current + 1;
+    const streamId = `stream-${runToken}-${Date.now()}`;
+    let streamedAnswer = '';
     runTokenRef.current = runToken;
     setLoading(true);
     setSources([]);
-    setAgentTools([]);
-    setAgentPlan(null);
+    setPrompt('');
+    setStreamingTurn({
+      id: streamId,
+      sessionId: activeSession.id,
+      prompt: text,
+      answer: '',
+      source: 'streaming',
+      tool: 'ask',
+      streaming: true,
+    });
 
     const contextualPrompt = buildConversationPrompt({
       prompt: text,
@@ -144,12 +165,13 @@ export default function ChatWorkspace({ preferences, notify }) {
     });
 
     try {
-      const result = await generateRoutedAssistantResponse({
+      const result = await streamRoutedAssistantResponse({
         mode: 'general',
         tool: 'ask',
         prompt: contextualPrompt,
         preferences,
         routeOptions: {
+          agentMode: 'auto',
           forceResearch: forceSearch && !searchDisabled,
           deepThink: forceDeepThink && !deepDisabled,
           disabledToolIds: agentSettings.disabledToolIds,
@@ -157,6 +179,16 @@ export default function ChatWorkspace({ preferences, notify }) {
           voiceInput: voiceInputUsed,
         },
         signal: controller.signal,
+      }, {
+        onDelta: (_delta, fullAnswer) => {
+          if (controller.signal.aborted || runToken !== runTokenRef.current) return;
+          streamedAnswer = fullAnswer;
+          setStreamingTurn((turn) => (
+            turn?.id === streamId
+              ? { ...turn, answer: fullAnswer, streaming: true }
+              : turn
+          ));
+        },
       });
       if (controller.signal.aborted || runToken !== runTokenRef.current) return;
 
@@ -169,13 +201,13 @@ export default function ChatWorkspace({ preferences, notify }) {
       const next = appendChatTurn(sessions, activeSession.id, turn);
       setSessions(next);
       setActiveId(activeSession.id);
-      setPrompt('');
+      setStreamingTurn(null);
       setVoiceInputUsed(false);
       setSources(Array.isArray(result.sources) ? result.sources : []);
-      setAgentTools(Array.isArray(result.agentTools) ? result.agentTools : []);
-      setAgentPlan(result.agentPlan || null);
     } catch (error) {
       if (controller.signal.aborted || runToken !== runTokenRef.current) return;
+      if (!streamedAnswer) setStreamingTurn(null);
+      else setStreamingTurn((turn) => (turn?.id === streamId ? { ...turn, streaming: false } : turn));
       notify(error?.message || (en ? 'Chat request failed.' : 'تعذر إكمال طلب الشات.'));
     } finally {
       if (runToken === runTokenRef.current) setLoading(false);
@@ -186,6 +218,7 @@ export default function ChatWorkspace({ preferences, notify }) {
     abortRef.current?.abort();
     runTokenRef.current += 1;
     setLoading(false);
+    setStreamingTurn((turn) => (turn?.answer ? { ...turn, streaming: false } : null));
     notify(en ? 'Generation stopped.' : 'تم إيقاف إنشاء الإجابة.');
   };
 
@@ -218,37 +251,33 @@ export default function ChatWorkspace({ preferences, notify }) {
           <header className="chat-heading">
             <div>
               <span>PATHPILOT CHAT</span>
-              <h1>{en ? 'One conversation. Many expert tools.' : 'محادثة واحدة. أدوات خبرة كتير.'}</h1>
-              <p>{en ? 'PathPilot chooses memory, local intelligence, RAG, search, analysis and verification automatically. Search is a tool, not a dependency.' : 'PathPilot بيختار الذاكرة والمحلي والـRAG والبحث والتحليل والتحقق تلقائيًا. البحث أداة مساعدة، مش شرط عشان يعرف يرد.'}</p>
+              <h1>{en ? 'A live chat that remembers.' : 'شات حي بيفهمك وبيفتكر.'}</h1>
+              <p>{en ? 'Talk naturally. PathPilot keeps the useful context, responds live, and brings in search or deeper analysis only when the request needs it.' : 'اتكلم طبيعي. PathPilot بيربط الكلام بالسياق، بيرد بشكل حي، ويدخل البحث أو التحليل الأعمق بس لما السؤال يحتاجهم.'}</p>
             </div>
-            <div className="chat-memory-badge"><WandSparkles size={17} /> {en ? 'Auto tools on' : 'الأدوات التلقائية مفعّلة'}</div>
+            <div className="chat-memory-badge"><WandSparkles size={17} /> {en ? 'Live context on' : 'السياق الحي مفعّل'}</div>
           </header>
 
           <div className="chat-thread-panel">
-            {activeSession?.turns.length ? (
+            {visibleTurns.length ? (
               <ConversationThread
-                turns={activeSession.turns}
+                turns={visibleTurns}
                 maxTurns={20}
                 onReuse={(value) => setPrompt(value)}
               />
             ) : (
               <div className="chat-empty-state">
                 <MessageSquareText size={32} />
-                <strong>{en ? 'Just ask normally' : 'اسأل عادي جدًا'}</strong>
-                <span>{en ? 'PathPilot will decide which capabilities are useful and keep the relevant context as the conversation develops.' : 'PathPilot هو اللي هيقرر الأدوات المناسبة ويحافظ على السياق المفيد مع تطور الكلام.'}</span>
+                <strong>{en ? 'Just talk to PathPilot' : 'اتكلم مع PathPilot عادي'}</strong>
+                <span>{en ? 'It will keep relevant context and choose the right help automatically.' : 'هيحافظ على السياق المفيد ويختار طريقة المساعدة المناسبة تلقائيًا.'}</span>
               </div>
             )}
 
-            {agentPlan && (
-              <div className="chat-agent-status" role="status">
-                <strong><BrainCircuit size={16} /> {en ? 'Auto reasoning' : 'تحليل تلقائي'}</strong>
-                <span>{agentPlan.intent} · {agentPlan.domain} · {agentPlan.toolIds?.length || 0} {en ? 'capabilities selected' : 'أداة مساعدة مختارة'}</span>
-              </div>
-            )}
-
-            {agentTools.length > 0 && (
-              <div className="chat-agent-tools" aria-label={en ? 'Automatically selected capabilities' : 'الأدوات المختارة تلقائيًا'}>
-                {agentTools.map((tool) => <span key={tool.id}>{tool.label}</span>)}
+            {loading && (
+              <div className="chat-live-status" role="status" aria-live="polite">
+                <LoaderCircle className="spin" size={15} />
+                {streamingTurn?.answer
+                  ? (en ? 'PathPilot is responding…' : 'PathPilot بيرد…')
+                  : (en ? 'PathPilot is thinking…' : 'PathPilot بيفكر…')}
               </div>
             )}
 
@@ -357,7 +386,7 @@ export default function ChatWorkspace({ preferences, notify }) {
                   <Send size={17} /> {en ? 'Send' : 'إرسال'}
                 </button>
               )}
-              {loading && <span className="chat-loading"><LoaderCircle className="spin" size={16} /> {en ? 'Selecting tools and building the answer…' : 'بيختار الأدوات ويبني الإجابة…'}</span>}
+              {loading && <span className="chat-loading"><LoaderCircle className="spin" size={16} /> {en ? 'Live response in progress…' : 'الرد الحي شغال…'}</span>}
             </div>
           </section>
         </section>
