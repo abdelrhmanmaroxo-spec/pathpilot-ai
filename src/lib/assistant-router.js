@@ -1,4 +1,5 @@
 import { createApiClient } from './api-client.js';
+import { answerCache } from './answer-cache.js';
 import { generateAssistantResponse } from './assistant.js';
 import { routeAssistantRequest } from './smart-router.js';
 
@@ -31,6 +32,14 @@ export async function generateRoutedAssistantResponse(args) {
   });
 
   if (decision.route === 'direct-ai' && directClient) {
+    const cached = answerCache.find({
+      mode: args.mode,
+      tool: args.tool,
+      prompt: args.prompt,
+      preferences: args.preferences,
+    });
+    if (cached) return cached;
+
     try {
       const payload = await directClient.request('/api/assistant', {
         method: 'POST',
@@ -43,7 +52,15 @@ export async function generateRoutedAssistantResponse(args) {
         signal: args.signal,
         timeoutMs: 65_000,
       });
-      return normalizedResult(payload, 'direct-ai');
+      const result = normalizedResult(payload, 'direct-ai');
+      answerCache.store({
+        mode: args.mode,
+        tool: args.tool,
+        prompt: args.prompt,
+        preferences: args.preferences,
+        result,
+      });
+      return result;
     } catch (error) {
       if (args.signal?.aborted || error?.code === 'REQUEST_ABORTED') throw error;
       console.warn('PathPilot direct route failed; falling back to grounded route.', error);
