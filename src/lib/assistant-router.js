@@ -81,6 +81,7 @@ function compactAgentPlan(plan) {
 }
 
 function withAgentMetadata(result, plan) {
+  if (plan?.mode !== 'auto') return result;
   return {
     ...result,
     agentPlan: compactAgentPlan(plan),
@@ -88,8 +89,25 @@ function withAgentMetadata(result, plan) {
   };
 }
 
+function legacyPlan(routeOptions = {}) {
+  return {
+    version: 'legacy',
+    mode: 'legacy',
+    intent: '',
+    domain: '',
+    risk: 'normal',
+    freshnessNeeded: false,
+    allowResearch: true,
+    forceResearch: routeOptions.forceResearch === true,
+    deepReview: routeOptions.deepThink === true,
+    disabledToolIds: [],
+    toolIds: [],
+    tools: [],
+  };
+}
+
 async function tryPreferredLocalAgent({ args, contextualPrompt, effectivePreferences, plan }) {
-  if (!args.routeOptions?.preferLocalModel || !effectivePreferences.localLlmEnabled || plan.freshnessNeeded) return null;
+  if (plan?.mode !== 'auto' || !args.routeOptions?.preferLocalModel || !effectivePreferences.localLlmEnabled || plan.freshnessNeeded) return null;
   const local = await generateLocalAgentResponse({
     mode: args.mode,
     tool: args.tool,
@@ -105,20 +123,25 @@ async function tryPreferredLocalAgent({ args, contextualPrompt, effectivePrefere
 export async function generateRoutedAssistantResponse(args) {
   const contextualPrompt = String(args.prompt || '').trim();
   const latestPrompt = latestRequestFromContext(contextualPrompt);
-  const plan = planChatAgent({
-    prompt: latestPrompt,
-    forceResearch: args.routeOptions?.forceResearch === true,
-    deepThink: args.routeOptions?.deepThink === true,
-    voiceInput: args.routeOptions?.voiceInput === true,
-    disabledToolIds: args.routeOptions?.disabledToolIds || [],
-  });
+  const agentEnabled = args.routeOptions?.agentMode === 'auto';
+  const plan = agentEnabled
+    ? planChatAgent({
+      prompt: latestPrompt,
+      forceResearch: args.routeOptions?.forceResearch === true,
+      deepThink: args.routeOptions?.deepThink === true,
+      voiceInput: args.routeOptions?.voiceInput === true,
+      disabledToolIds: args.routeOptions?.disabledToolIds || [],
+    })
+    : legacyPlan(args.routeOptions);
   const deepThink = plan.deepReview;
   const effectivePreferences = {
     ...(args.preferences || {}),
     responseStyle: deepThink ? 'detailed' : (args.preferences?.responseStyle || 'balanced'),
     deepThinkEnabled: deepThink,
-    agentPlan: compactAgentPlan(plan),
-    agentGuidance: agentPlanGuidance(plan),
+    ...(agentEnabled ? {
+      agentPlan: compactAgentPlan(plan),
+      agentGuidance: agentPlanGuidance(plan),
+    } : {}),
   };
   assertSafePrompt(latestPrompt);
   await assertSystemAvailable(args.signal);
@@ -166,11 +189,13 @@ export async function generateRoutedAssistantResponse(args) {
       return withAgentMetadata(result, plan);
     } catch (error) {
       if (args.signal?.aborted || error?.code === 'REQUEST_ABORTED' || error?.code === 'SYSTEM_PAUSED' || error?.code === 'UNSAFE_INPUT_BLOCKED') throw error;
-      console.warn('PathPilot direct route failed; falling back to the next allowed agent tier.', error);
+      console.warn(agentEnabled
+        ? 'PathPilot direct route failed; falling back to the next allowed agent tier.'
+        : 'PathPilot direct route failed; falling back to grounded route.', error);
     }
   }
 
-  if (decision.route !== 'research') {
+  if (agentEnabled && decision.route !== 'research') {
     const local = await generateLocalAgentResponse({
       mode: args.mode,
       tool: args.tool,
@@ -189,8 +214,9 @@ export async function generateRoutedAssistantResponse(args) {
     latestPrompt,
     preferences: effectivePreferences,
   });
-  return withAgentMetadata({
+  const routed = {
     ...result,
-    route: 'research',
-  }, plan);
+    route: decision.route === 'research' ? 'research' : result.route || 'fallback',
+  };
+  return withAgentMetadata(routed, plan);
 }
