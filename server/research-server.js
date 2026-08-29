@@ -6,7 +6,6 @@ import { initializeDatabase } from './lib/database.js';
 
 const MAX_SOURCES = 18;
 const MIN_TARGET_SOURCES = 16;
-const MAX_SEARCH_ROUNDS = 3;
 
 const TOOL_LABELS = {
   explain: 'شرح مفهوم بدقة وبأمثلة',
@@ -103,7 +102,7 @@ function buildResearchQuery({ prompt, tool, mode, round }) {
   const roundInstruction = [
     'اعتمد على مصادر موثوقة وحديثة ومتنوعة، ووازن بين المصادر الرسمية والمستقلة.',
     'ابحث عن مصادر إضافية مستقلة، بيانات رسمية، دراسات، أدلة عملية، وآراء مخالفة إن وجدت.',
-    'راجع الادعاءات الأساسية من زوايا مختلفة وابحث عن مصادر لم تظهر في الجولات السابقة.',
+    'راجع الادعاءات الأساسية من زوايا مختلفة وابحث عن مصادر لم تظهر في الجولة الأساسية.',
   ][Math.min(round, 2)];
 
   return `المهمة: ${goal}. مساحة PathPilot: ${mode || 'general'}. طلب المستخدم الأصلي: ${cleanPrompt}. ${roundInstruction} أجب على الطلب نفسه مباشرة وبشكل عملي، ولا تكتفِ بوصف عملية البحث. إذا كان الطلب كتابة أو تخطيطًا، استخدم البحث لتحسين الناتج ثم قدّم الناتج المطلوب نفسه.`;
@@ -123,7 +122,7 @@ async function tavilySearch(apiKey, query) {
       include_raw_content: false,
       include_images: false,
     }),
-    signal: AbortSignal.timeout(45_000),
+    signal: AbortSignal.timeout(18_000),
   });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(`SEARCH_PROVIDER_${response.status}`);
@@ -187,13 +186,17 @@ export function createResearchHandler({ env = process.env, baseApp }) {
           return sendJson(response, 400, { error: 'Research query length is invalid.' }, origin, allowedOrigins);
         }
 
-        const rounds = [];
-        let sources = [];
-        for (let round = 0; round < MAX_SEARCH_ROUNDS; round += 1) {
-          const result = await tavilySearch(tavilyApiKey, buildResearchQuery({ prompt, tool, mode, round }));
-          rounds.push(result);
+        const primary = await tavilySearch(tavilyApiKey, buildResearchQuery({ prompt, tool, mode, round: 0 }));
+        let rounds = [primary];
+        let sources = uniqueSources(primary.results);
+
+        if (sources.length < MIN_TARGET_SOURCES) {
+          const supplemental = await Promise.all([
+            tavilySearch(tavilyApiKey, buildResearchQuery({ prompt, tool, mode, round: 1 })),
+            tavilySearch(tavilyApiKey, buildResearchQuery({ prompt, tool, mode, round: 2 })),
+          ]);
+          rounds = [primary, ...supplemental];
           sources = mergeUniqueSources(rounds.map((item) => item.results));
-          if (sources.length >= MIN_TARGET_SOURCES) break;
         }
 
         const answer = combineAnswers(rounds);
