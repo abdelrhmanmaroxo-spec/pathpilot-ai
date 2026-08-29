@@ -1,4 +1,4 @@
-import { Copy, ExternalLink } from 'lucide-react';
+import { Copy, ExternalLink, FileText, Globe2 } from 'lucide-react';
 
 function language() {
   return document.body?.dataset?.language === 'en' ? 'en' : 'ar';
@@ -9,8 +9,18 @@ function extractUrls(text) {
   return [...new Set(matches.map((url) => url.replace(/[.,;:!?]+$/, '')))];
 }
 
+function cleanDisplayAnswer(value) {
+  return String(value || '')
+    .replace(/\r\n/g, '\n')
+    .replace(/^🌐\s*PathPilot Research Beta\s*\n(?:تم (?:تحليل|اختيار|التحقق)[^\n]*\n)?/i, '')
+    .replace(/^🧠\s*PathPilot AI(?: fallback)? Beta\s*\n/i, '')
+    .replace(/\n\nالمصادر المختارة\s*\(\d+\)[\s\S]*$/i, '')
+    .replace(/\n\nSelected sources\s*\(\d+\)[\s\S]*$/i, '')
+    .trim();
+}
+
 function splitBlocks(value) {
-  const text = String(value || '').replace(/\r\n/g, '\n');
+  const text = cleanDisplayAnswer(value);
   const blocks = [];
   const fence = /```([^\n]*)\n([\s\S]*?)```/g;
   let cursor = 0;
@@ -86,23 +96,47 @@ function TextBlock({ value }) {
   return nodes;
 }
 
-export function SourceList({ answer }) {
-  const urls = extractUrls(answer);
-  if (!urls.length) return null;
+function normalizeSources(answer, sources) {
+  if (Array.isArray(sources) && sources.length) {
+    return sources.slice(0, 8).map((source) => ({
+      title: String(source?.title || source?.domain || source?.url || '').trim(),
+      url: String(source?.url || '').trim(),
+      domain: String(source?.domain || '').trim(),
+      snippet: String(source?.snippet || '').trim(),
+      quality: Number(source?.quality || 0),
+    })).filter((source) => source.url);
+  }
+  return extractUrls(answer).slice(0, 8).map((url) => {
+    let domain = url;
+    try { domain = new URL(url).hostname.replace(/^www\./, ''); } catch { /* keep URL */ }
+    return { title: domain, url, domain, snippet: '', quality: 0 };
+  });
+}
+
+export function SourceList({ answer, sources = [] }) {
+  const items = normalizeSources(answer, sources);
+  if (!items.length) return null;
   const en = language() === 'en';
   return (
-    <section className="answer-sources" aria-label={en ? 'Sources' : 'المصادر'} style={{ marginTop: 18, display: 'grid', gap: 8 }}>
-      <strong>{en ? 'Sources' : 'المصادر'}</strong>
-      {urls.slice(0, 8).map((url, index) => {
-        let host = url;
-        try { host = new URL(url).hostname.replace(/^www\./, ''); } catch { /* keep URL */ }
-        return (
-          <a key={url} href={url} target="_blank" rel="noreferrer" style={{ display: 'flex', gap: 8, alignItems: 'center', overflowWrap: 'anywhere' }}>
-            <ExternalLink size={14} /> {index + 1}. {host}
+    <aside className="answer-sources" aria-label={en ? 'Sources' : 'المصادر'}>
+      <div className="source-panel-heading">
+        <span><Globe2 size={17} /></span>
+        <div><strong>{en ? 'Sources' : 'المصادر'}</strong><small>{items.length} {en ? 'selected references' : 'مراجع مختارة'}</small></div>
+      </div>
+      <div className="source-card-list">
+        {items.map((source, index) => (
+          <a className="source-card" key={`${source.url}-${index}`} href={source.url} target="_blank" rel="noreferrer">
+            <span className="source-number">{index + 1}</span>
+            <span className="source-card-icon"><FileText size={16} /></span>
+            <span className="source-card-copy">
+              <strong>{source.title || source.domain}</strong>
+              <small>{source.domain || source.url}</small>
+            </span>
+            <ExternalLink className="source-external" size={14} />
           </a>
-        );
-      })}
-    </section>
+        ))}
+      </div>
+    </aside>
   );
 }
 
@@ -113,16 +147,15 @@ export default function ResponseContent({ answer }) {
     <div className="response-content">
       {splitBlocks(answer).map((block, index) => (
         block.type === 'code' ? (
-          <section key={`code-${index}`} className="answer-code" style={{ margin: '14px 0', border: '1px solid rgba(148,163,184,.18)', borderRadius: 12, overflow: 'hidden' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 10px', background: 'rgba(15,23,42,.55)' }}>
+          <section key={`code-${index}`} className="answer-code">
+            <div className="answer-code-head">
               <small>{block.language || (en ? 'code' : 'كود')}</small>
               <button type="button" onClick={() => copyCode(block.value)} title={en ? 'Copy code' : 'نسخ الكود'} aria-label={en ? 'Copy code' : 'نسخ الكود'}><Copy size={14} /></button>
             </div>
-            <pre style={{ margin: 0, padding: 12, overflowX: 'auto', whiteSpace: 'pre' }}><code>{block.value}</code></pre>
+            <pre><code>{block.value}</code></pre>
           </section>
         ) : <div key={`text-${index}`}>{TextBlock({ value: block.value })}</div>
       ))}
-      <SourceList answer={answer} />
     </div>
   );
 }
