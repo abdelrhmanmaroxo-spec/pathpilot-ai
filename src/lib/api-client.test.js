@@ -20,6 +20,44 @@ test('central API client returns JSON payloads', async () => {
   assert.deepEqual(payload, { ok: true });
 });
 
+test('central API client serializes explicit json payloads without leaking client metadata to fetch', async () => {
+  const client = createApiClient({
+    baseUrl: 'https://example.test/',
+    sendClientRequestId: true,
+    fetchImpl: async (url, options) => {
+      assert.equal(url, 'https://example.test/api/profile');
+      assert.equal(options.method, 'POST');
+      assert.equal(options.headers.get('Content-Type'), 'application/json');
+      assert.equal(options.headers.get('X-Request-ID'), 'client-123');
+      assert.equal(options.body, JSON.stringify({ displayName: 'Path Pilot' }));
+      assert.equal('json' in options, false);
+      assert.equal('requestId' in options, false);
+      assert.equal('timeoutMs' in options, false);
+      return new Response(JSON.stringify({ saved: true }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json', 'X-Request-ID': 'server-123' },
+      });
+    },
+  });
+
+  const payload = await client.request('/api/profile', {
+    method: 'POST',
+    requestId: 'client-123',
+    timeoutMs: 1000,
+    json: { displayName: 'Path Pilot' },
+  });
+  assert.deepEqual(payload, { saved: true });
+});
+
+test('central API client rejects ambiguous json and body options', async () => {
+  const client = createApiClient({ baseUrl: 'https://example.test', fetchImpl: async () => new Response('{}') });
+
+  await assert.rejects(
+    () => client.request('/api/profile', { json: { enabled: true }, body: '{}' }),
+    (error) => error instanceof PathPilotApiError && error.code === 'INVALID_REQUEST_OPTIONS',
+  );
+});
+
 test('central API client normalizes server errors', async () => {
   const client = createApiClient({
     baseUrl: 'https://example.test',
