@@ -1,11 +1,13 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { MessageSquareShare, Trash2, X } from 'lucide-react';
-import { loadHistory, saveHistory } from './lib/storage.js';
+import { MessageSquareShare, Search, Star, Trash2, X } from 'lucide-react';
+import { loadHistory, saveHistory, searchHistory, updateHistoryItem } from './lib/storage.js';
 
 function readCurrentConversation() {
-  const prompt = document.querySelector('#assistant-prompt')?.value?.trim() || '';
-  const answer = document.querySelector('.result-card pre')?.textContent?.trim() || '';
+  const prompt = document.querySelector('#assistant-prompt')?.value?.trim()
+    || document.querySelector('.conversation-thread article:last-child p')?.textContent?.trim()
+    || '';
+  const answer = document.querySelector('.result-card .response-content')?.textContent?.trim() || '';
   return { prompt, answer };
 }
 
@@ -15,13 +17,20 @@ function shareText({ prompt, answer }) {
 
 function HistoryManager({ onClose, notify }) {
   const [items, setItems] = useState(() => loadHistory());
+  const [query, setQuery] = useState('');
+  const visibleItems = useMemo(() => searchHistory(items, query), [items, query]);
 
   const removeItem = (item) => {
     if (!window.confirm(`حذف هذه المحادثة فقط؟\n\n${String(item.prompt || '').slice(0, 120)}`)) return;
     const next = saveHistory(items.filter((entry) => entry.id !== item.id));
     setItems(next);
     notify('تم حذف المحادثة المحددة فقط.');
-    window.setTimeout(() => window.location.reload(), 500);
+  };
+
+  const patchItem = (item, patch) => {
+    const next = updateHistoryItem(items, item.id, patch);
+    setItems(next);
+    window.dispatchEvent(new CustomEvent('pathpilot:history-updated'));
   };
 
   return createPortal(
@@ -32,18 +41,43 @@ function HistoryManager({ onClose, notify }) {
           <span className="conversation-icon"><Trash2 size={20} /></span>
           <div><small>PATHPILOT HISTORY</small><h2 id="history-manager-title">إدارة المحادثات</h2></div>
         </div>
-        <p className="conversation-help">احذف محادثة واحدة فقط من غير ما باقي السجل يتلمس.</p>
-        {items.length === 0 ? (
-          <div className="conversation-empty">مفيش محادثات محفوظة حاليًا.</div>
+        <p className="conversation-help">ابحث، ثبّت المهم، ونظّم المحادثات في مجلدات وTags بدون لمس باقي السجل.</p>
+        <label style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12 }}>
+          <Search size={17} />
+          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="ابحث في السؤال، الإجابة، المجلد أو Tag…" style={{ flex: 1 }} />
+        </label>
+        {visibleItems.length === 0 ? (
+          <div className="conversation-empty">{items.length ? 'مفيش نتائج مطابقة للبحث.' : 'مفيش محادثات محفوظة حاليًا.'}</div>
         ) : (
           <div className="conversation-history-list">
-            {items.map((item) => (
-              <div className="conversation-history-item" key={item.id}>
-                <div>
+            {visibleItems.map((item) => (
+              <div className="conversation-history-item" key={item.id} style={{ alignItems: 'start', gap: 10 }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
                   <strong>{item.prompt}</strong>
                   <small>{new Date(item.createdAt).toLocaleString('ar-EG')}</small>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
+                    <select value={item.folder || ''} onChange={(event) => patchItem(item, { folder: event.target.value })} aria-label="مجلد المحادثة">
+                      <option value="">بدون مجلد</option>
+                      <option value="Study">Study</option>
+                      <option value="Work">Work</option>
+                      <option value="Projects">Projects</option>
+                      <option value="Personal">Personal</option>
+                    </select>
+                    <input
+                      defaultValue={(item.tags || []).join(', ')}
+                      onBlur={(event) => patchItem(item, { tags: event.target.value.split(',').map((tag) => tag.trim()).filter(Boolean) })}
+                      placeholder="Tags: Python, Career…"
+                      aria-label="وسوم المحادثة"
+                      style={{ minWidth: 150, flex: 1 }}
+                    />
+                  </div>
                 </div>
-                <button type="button" onClick={() => removeItem(item)} title="حذف هذه المحادثة فقط" aria-label="حذف هذه المحادثة فقط"><Trash2 size={17} /></button>
+                <div style={{ display: 'flex', gap: 4 }}>
+                  <button type="button" onClick={() => patchItem(item, { favorite: !item.favorite })} title={item.favorite ? 'إزالة من المفضلة' : 'إضافة للمفضلة'} aria-label={item.favorite ? 'إزالة من المفضلة' : 'إضافة للمفضلة'}>
+                    <Star size={17} fill={item.favorite ? 'currentColor' : 'none'} />
+                  </button>
+                  <button type="button" onClick={() => removeItem(item)} title="حذف هذه المحادثة فقط" aria-label="حذف هذه المحادثة فقط"><Trash2 size={17} /></button>
+                </div>
               </div>
             ))}
           </div>
@@ -114,7 +148,7 @@ export default function ConversationExperience() {
   ) : null;
 
   const historyPortal = targets.historyHead ? createPortal(
-    <button className="history-manage-button" type="button" onClick={() => setManagerOpen(true)} title="إدارة وحذف محادثة محددة">
+    <button className="history-manage-button" type="button" onClick={() => setManagerOpen(true)} title="إدارة وتنظيم المحادثات">
       <Trash2 size={15} /> إدارة
     </button>,
     targets.historyHead,
