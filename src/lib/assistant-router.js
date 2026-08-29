@@ -43,19 +43,6 @@ function latestRequestFromContext(prompt) {
   return latest || value;
 }
 
-function deepAnalysisPrompt(prompt) {
-  return [
-    String(prompt || '').trim(),
-    '',
-    'DEEP ANALYSIS MODE',
-    '- Analyze the request more carefully than normal before composing the final answer.',
-    '- Check assumptions, constraints, contradictions, edge cases, failure modes, and meaningful trade-offs.',
-    '- Prefer a complete, decision-useful final answer over a fast first draft.',
-    '- If evidence is uncertain, state the useful uncertainty instead of inventing confidence.',
-    '- Do not reveal hidden chain-of-thought or private reasoning. Return only the final answer and concise supporting rationale when useful.',
-  ].join('\n');
-}
-
 function assertSafePrompt(prompt) {
   if (!hasExploitLikePayload(prompt)) return;
   throw new PathPilotApiError(
@@ -82,8 +69,11 @@ export async function generateRoutedAssistantResponse(args) {
   const latestPrompt = latestRequestFromContext(contextualPrompt);
   const forceResearch = args.routeOptions?.forceResearch === true;
   const deepThink = args.routeOptions?.deepThink === true;
-  const modelPrompt = deepThink ? deepAnalysisPrompt(contextualPrompt) : contextualPrompt;
-  const effectivePreferences = { ...(args.preferences || {}), deepThinkEnabled: deepThink };
+  const effectivePreferences = {
+    ...(args.preferences || {}),
+    responseStyle: deepThink ? 'detailed' : (args.preferences?.responseStyle || 'balanced'),
+    deepThinkEnabled: deepThink,
+  };
   assertSafePrompt(latestPrompt);
   await assertSystemAvailable(args.signal);
 
@@ -99,7 +89,7 @@ export async function generateRoutedAssistantResponse(args) {
     const cached = answerCache.find({
       mode: args.mode,
       tool: args.tool,
-      prompt: modelPrompt,
+      prompt: contextualPrompt,
       preferences: effectivePreferences,
     });
     if (cached) return cached;
@@ -110,7 +100,7 @@ export async function generateRoutedAssistantResponse(args) {
         body: JSON.stringify({
           mode: args.mode,
           tool: args.tool,
-          prompt: modelPrompt,
+          prompt: contextualPrompt,
           preferences: effectivePreferences,
         }),
         signal: args.signal,
@@ -120,7 +110,7 @@ export async function generateRoutedAssistantResponse(args) {
       answerCache.store({
         mode: args.mode,
         tool: args.tool,
-        prompt: modelPrompt,
+        prompt: contextualPrompt,
         preferences: effectivePreferences,
         result,
       });
@@ -133,7 +123,7 @@ export async function generateRoutedAssistantResponse(args) {
 
   const result = await generateAssistantResponse({
     ...args,
-    prompt: modelPrompt,
+    prompt: contextualPrompt,
     latestPrompt,
     preferences: effectivePreferences,
   });
