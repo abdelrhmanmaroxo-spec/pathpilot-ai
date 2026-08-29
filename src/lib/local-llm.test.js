@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { localDeviceProfile, selectLocalModelId } from './local-llm.js';
+import { localDeviceProfile, localModelCandidates, selectLocalModelId } from './local-llm.js';
 
 const IDS = [
   'Qwen3-4B-q4f16_1-MLC',
@@ -30,4 +30,20 @@ test('lite devices prioritize small models to reduce memory pressure', () => {
 
 test('model selector falls back to compatible instruct models', () => {
   assert.equal(selectLocalModelId(['Tiny-1B-Instruct-q4f16_1-MLC'], 8), 'Tiny-1B-Instruct-q4f16_1-MLC');
+});
+
+test('expert model candidates degrade progressively instead of ending at one model', () => {
+  const candidates = localModelCandidates(IDS, 16);
+  assert.deepEqual(candidates.slice(0, 3), [
+    'Qwen3-4B-q4f16_1-MLC',
+    'Qwen3-1.7B-q4f16_1-MLC',
+    'Qwen3.5-0.8B-q4f16_1-MLC',
+  ]);
+  assert.equal(new Set(candidates).size, candidates.length);
+});
+
+test('lite model candidates never start with the 4B model', () => {
+  const candidates = localModelCandidates(IDS, 4);
+  assert.equal(candidates[0], 'Qwen3.5-0.8B-q4f16_1-MLC');
+  assert.notEqual(candidates[0], 'Qwen3-4B-q4f16_1-MLC');
 });
