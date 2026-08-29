@@ -25,8 +25,8 @@ test('advanced local response exposes plan and freshness boundary', () => {
   });
   assert.match(answer, /PathPilot Local Reasoner/);
   assert.match(answer, /نوع المهمة: research/);
-  assert.match(answer, /خطة التفكير/);
-  assert.match(answer, /معلومات زمنية أو متغيرة/);
+  assert.match(answer, /خطة المعالجة/);
+  assert.match(answer, /معلومات متغيرة زمنيًا/);
   assert.match(answer, /ai/i);
 });
 
