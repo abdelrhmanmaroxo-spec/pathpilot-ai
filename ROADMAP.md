@@ -12,6 +12,7 @@ This file is the execution tracker for the two approved 50-item roadmaps. Status
 
 ## Progress notes
 
+- 2026-08-29: Conversation intelligence upgraded with a relevance-aware context analyzer. PathPilot now classifies the latest message as standalone/new-topic/related/continuation/follow-up, keeps only relevant prior turns, carries forward explicit constraints only when continuity justifies it, gives the newest request precedence over conflicting history, routes using the latest request instead of the full context envelope, and keeps local RAG retrieval focused on the latest request while the LLM still receives selected conversational context. Regression tests cover follow-ups without lexical overlap, unrelated topic resets, inherited constraints, and RAG query isolation.
 - 2026-08-29: Top utility controls cleaned up. Global search and the Arabic/English switch now stay in the document's top utility row and scroll away with the page instead of following the user. Shared responsive sizing, visible keyboard focus, reduced-motion handling, and regression tests were added so the controls remain aligned and non-sticky on desktop and mobile.
 - 2026-08-29: Global search privacy tightened. Regular users no longer receive admin-mode history in search, and the global search is not mounted on an unauthorized `#/admin` route. Admin/Owner search access is preserved and covered by regression tests.
 - 2026-08-29: Local final-answer quality gate now understands negative constraints such as `without backend changes` / `بدون تغيير backend`. Contradictory reviewed answers receive an explicit penalty and `contradicted-constraints` flag, preventing a stylistically polished review from replacing a draft that actually obeyed the user's hard constraint. Regression tests cover Arabic negative constraints and draft-vs-review selection.
@@ -48,7 +49,7 @@ This file is the execution tracker for the two approved 50-item roadmaps. Status
 | A19 | TODO | Unified toast system |
 | A20 | TODO | First-run onboarding |
 | A21 | DONE | True multi-message chat |
-| A22 | DONE | Conversation context and follow-ups |
+| A22 | DONE | Relevance-aware conversation context, follow-up resolution, and new-topic isolation |
 | A23 | DONE | Edit and resubmit |
 | A24 | DONE | Regenerate answer |
 | A25 | DONE | Stop generation with request abort |
@@ -57,7 +58,7 @@ This file is the execution tracker for the two approved 50-item roadmaps. Status
 | A28 | DONE | Rich code blocks and copy |
 | A29 | DONE | Dedicated structured sources UI |
 | A30 | IN_PROGRESS | Source quality score; backend ranking active, richer user-facing score pending |
-| A31 | DONE | Smart request router |
+| A31 | DONE | Smart request router; contextual prompts are routed using the latest user request |
 | A32 | DONE | Stronger freshness detector |
 | A33 | DONE | Natural local final answers for current local-reasoner scope |
 | A34 | DONE | Stronger local challenge pass |
@@ -68,7 +69,7 @@ This file is the execution tracker for the two approved 50-item roadmaps. Status
 | A39 | IN_PROGRESS | Knowledge-pack versioning; runtime version metadata active, migration/compatibility policy pending |
 | A40 | TODO | Local LLM manager UI |
 | A41 | DONE | Device-aware local model selection with automatic lighter-model fallback |
-| A42 | DONE | Context budget manager for bounded recent conversation context |
+| A42 | DONE | Context budget manager with relevance filtering and bounded selected-turn context |
 | A43 | TODO | Optional account conversation storage |
 | A44 | TODO | Cross-device conversation sync |
 | A45 | DONE | Conversation/history search foundation |

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildExpertKnowledgeContext } from './local-knowledge-augment.js';
+import { buildExpertKnowledgeContext, latestPromptForRetrieval } from './local-knowledge-augment.js';
 import { LOCAL_EXPERTISE_PRO_STATS } from './local-expertise-pro.js';
 
 test('professional pack materially expands local specialist coverage', () => {
@@ -32,4 +32,27 @@ test('augmented retrieval adds product and UX expertise for product questions', 
   });
 
   assert.ok(result.domains.some((id) => /product-management|ux-research|statistics-experimentation/.test(id)));
+});
+
+test('local RAG retrieves against the latest request instead of the context envelope', () => {
+  const contextual = [
+    'LATEST USER REQUEST',
+    'اشرح DNS وركز على caching',
+    '',
+    'CONVERSATION CONTEXT ANALYSIS',
+    'Relationship: follow_up',
+    'Relevant prior turns: 1',
+    '',
+    'RELEVANT PRIOR TURNS',
+    '[Relevant turn 1 · tool=cv]',
+    'User: حسن الـCV بتاعي',
+    'Assistant: استخدم bullet أقوى للخبرة.',
+  ].join('\n');
+
+  assert.equal(latestPromptForRetrieval(contextual), 'اشرح DNS وركز على caching');
+});
+
+test('plain prompts remain unchanged for backward compatibility', () => {
+  const prompt = 'قارن OAuth مع session cookies';
+  assert.equal(latestPromptForRetrieval(prompt), prompt);
 });
