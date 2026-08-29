@@ -1,4 +1,5 @@
 const MAX_TURNS = 6;
+const MAX_CHAT_HISTORY_TURNS = 30;
 const MAX_CONTEXT_CHARS = 9_000;
 const MAX_MESSAGE_CHARS = 3_000;
 const MAX_RELEVANT_TURNS = 4;
@@ -79,8 +80,9 @@ export function createConversationTurn({ prompt, answer, source = 'unknown', too
   };
 }
 
-export function normalizeConversationTurns(turns) {
+export function normalizeConversationTurns(turns, maxTurns = MAX_TURNS) {
   if (!Array.isArray(turns)) return [];
+  const boundedLimit = Math.max(1, Math.min(MAX_CHAT_HISTORY_TURNS, Number(maxTurns || MAX_TURNS)));
   return turns
     .filter((turn) => turn && clean(turn.prompt) && clean(turn.answer))
     .map((turn) => ({
@@ -88,7 +90,7 @@ export function normalizeConversationTurns(turns) {
       prompt: clip(turn.prompt),
       answer: clip(turn.answer),
     }))
-    .slice(-MAX_TURNS);
+    .slice(-boundedLimit);
 }
 
 export function isFollowUpPrompt(prompt) {
@@ -102,7 +104,7 @@ function scoreTurn(turn, latestTokens, index, count, currentTool, followUp) {
   const promptOverlap = semanticOverlap(latestTokens, tokens(turn.prompt));
   const answerOverlap = semanticOverlap(latestTokens, tokens(turn.answer));
   const age = count - 1 - index;
-  const recency = Math.max(0, 0.18 - age * 0.035);
+  const recency = Math.max(0, 0.18 - age * 0.01);
   const toolBoost = currentTool && turn.tool === currentTool ? 0.07 : 0;
   const followUpBoost = followUp && age === 0 ? 1 : followUp && age === 1 ? 0.32 : 0;
   return promptOverlap * 0.72 + answerOverlap * 0.28 + recency + toolBoost + followUpBoost;
@@ -198,9 +200,9 @@ function buildContextPrompt({ latestPrompt, relationship, relevantTurns, inherit
   ].join('\n');
 }
 
-export function analyzeConversationContext({ prompt, turns = [], currentTool = '', maxChars = MAX_CONTEXT_CHARS } = {}) {
+export function analyzeConversationContext({ prompt, turns = [], currentTool = '', maxChars = MAX_CONTEXT_CHARS, historyLimit = MAX_TURNS } = {}) {
   const latestPrompt = clean(prompt);
-  const normalized = normalizeConversationTurns(turns);
+  const normalized = normalizeConversationTurns(turns, historyLimit);
   const selection = chooseRelevantTurns({ prompt: latestPrompt, turns: normalized, currentTool });
   const canInherit = selection.relationship === 'follow_up' || selection.relationship === 'continuation';
   const inheritedConstraints = canInherit
@@ -226,20 +228,21 @@ export function analyzeConversationContext({ prompt, turns = [], currentTool = '
       relevantTurns: selection.selected.length,
       contextChars: Math.max(0, contextPrompt.length - latestPrompt.length),
       maxChars,
+      historyLimit: Math.min(MAX_CHAT_HISTORY_TURNS, Math.max(1, Number(historyLimit || MAX_TURNS))),
     },
   };
 }
 
-export function buildConversationPrompt({ prompt, turns = [], currentTool = '', maxChars = MAX_CONTEXT_CHARS }) {
-  return analyzeConversationContext({ prompt, turns, currentTool, maxChars }).prompt;
+export function buildConversationPrompt({ prompt, turns = [], currentTool = '', maxChars = MAX_CONTEXT_CHARS, historyLimit = MAX_TURNS }) {
+  return analyzeConversationContext({ prompt, turns, currentTool, maxChars, historyLimit }).prompt;
 }
 
-export function conversationContextStats(turns = []) {
-  const normalized = normalizeConversationTurns(turns);
+export function conversationContextStats(turns = [], historyLimit = MAX_TURNS) {
+  const normalized = normalizeConversationTurns(turns, historyLimit);
   return {
     turns: normalized.length,
     chars: normalized.reduce((total, turn) => total + turn.prompt.length + turn.answer.length, 0),
-    maxTurns: MAX_TURNS,
+    maxTurns: Math.min(MAX_CHAT_HISTORY_TURNS, Math.max(1, Number(historyLimit || MAX_TURNS))),
     maxChars: MAX_CONTEXT_CHARS,
   };
 }

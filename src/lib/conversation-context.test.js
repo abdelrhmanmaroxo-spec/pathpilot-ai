@@ -16,11 +16,29 @@ test('detects short follow-up prompts in Arabic and English', () => {
   assert.equal(isFollowUpPrompt('اشرح قواعد البيانات من البداية'), false);
 });
 
-test('keeps only bounded recent conversation turns', () => {
+test('keeps only bounded recent conversation turns by default', () => {
   const turns = Array.from({ length: 10 }, (_, index) => ({ prompt: `question ${index}`, answer: `answer ${index}` }));
   const normalized = normalizeConversationTurns(turns);
   assert.equal(normalized.length, 6);
   assert.equal(normalized[0].prompt, 'question 4');
+});
+
+test('dedicated chat can retrieve a relevant older turn beyond the default six-turn window', () => {
+  const turns = Array.from({ length: 14 }, (_, index) => ({
+    prompt: index === 1 ? 'مشروع React لازم يفضل بدون تغيير backend' : `موضوع جانبي ${index}`,
+    answer: index === 1 ? 'هنركز على تحسين الواجهة فقط.' : `رد جانبي ${index}`,
+    tool: 'ask',
+  }));
+  const result = analyzeConversationContext({
+    prompt: 'بالنسبة لمشروع React حسن الأداء مع الحفاظ على backend',
+    turns,
+    currentTool: 'ask',
+    historyLimit: 30,
+  });
+
+  assert.equal(result.stats.availableTurns, 14);
+  assert.ok(result.relevantTurns.some((turn) => /مشروع React/.test(turn.prompt)));
+  assert.match(result.prompt, /بدون تغيير backend/);
 });
 
 test('follow-up analysis keeps the latest relevant turn even without lexical overlap', () => {

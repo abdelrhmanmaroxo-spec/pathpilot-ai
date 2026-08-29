@@ -2,10 +2,12 @@ import { useEffect, useState } from 'react';
 import { BadgeCheck } from 'lucide-react';
 import AdminDashboard from './AdminDashboard.jsx';
 import AuthDialog from './AuthDialog.jsx';
+import ChatWorkspace, { ChatDevelopmentNotice } from './ChatWorkspace.jsx';
 import CommandPalette from './components/CommandPalette.jsx';
 import Landing from './components/Landing.jsx';
 import { Footer, Header, InstallDialog } from './components/AppChrome.jsx';
 import Workspace from './Workspace.jsx';
+import { canAccessExperimentalChat } from './lib/chat-access.js';
 import { canAccessAdminSearch, filterSearchHistory } from './lib/search-access.js';
 import {
   clearHistory,
@@ -22,7 +24,7 @@ import {
 
 function routeFromHash() {
   const route = window.location.hash.replace('#/', '').replace('#', '');
-  return ['study', 'work', 'general', 'admin'].includes(route) ? route : null;
+  return ['chat', 'study', 'work', 'general', 'admin'].includes(route) ? route : null;
 }
 
 export default function App() {
@@ -130,6 +132,7 @@ export default function App() {
   };
 
   const canSeeAdminSearch = canAccessAdminSearch(user);
+  const canUseExperimentalChat = canAccessExperimentalChat(user);
   const searchHistory = filterSearchHistory(historyItems, user);
   const showGlobalSearch = mode !== 'admin' || canSeeAdminSearch;
 
@@ -146,6 +149,10 @@ export default function App() {
         <Landing onSelect={selectMode} onInstall={() => setInstallOpen(true)} />
       ) : mode === 'admin' ? (
         <AdminDashboard user={user} onBack={() => { window.location.hash = ''; }} />
+      ) : mode === 'chat' ? (
+        canUseExperimentalChat
+          ? <ChatWorkspace preferences={preferences} notify={setToast} />
+          : <ChatDevelopmentNotice />
       ) : (
         <Workspace
           mode={mode}

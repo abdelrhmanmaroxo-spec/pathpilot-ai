@@ -67,6 +67,13 @@ function normalizedResult(payload, route) {
 export async function generateRoutedAssistantResponse(args) {
   const contextualPrompt = String(args.prompt || '').trim();
   const latestPrompt = latestRequestFromContext(contextualPrompt);
+  const forceResearch = args.routeOptions?.forceResearch === true;
+  const deepThink = args.routeOptions?.deepThink === true;
+  const effectivePreferences = {
+    ...(args.preferences || {}),
+    responseStyle: deepThink ? 'detailed' : (args.preferences?.responseStyle || 'balanced'),
+    deepThinkEnabled: deepThink,
+  };
   assertSafePrompt(latestPrompt);
   await assertSystemAvailable(args.signal);
 
@@ -75,6 +82,7 @@ export async function generateRoutedAssistantResponse(args) {
     tool: args.tool,
     hasResearch: researchAvailable,
     hasDirectAI: directAvailable,
+    forceResearch,
   });
 
   if (decision.route === 'direct-ai' && directClient) {
@@ -82,7 +90,7 @@ export async function generateRoutedAssistantResponse(args) {
       mode: args.mode,
       tool: args.tool,
       prompt: contextualPrompt,
-      preferences: args.preferences,
+      preferences: effectivePreferences,
     });
     if (cached) return cached;
 
@@ -93,17 +101,17 @@ export async function generateRoutedAssistantResponse(args) {
           mode: args.mode,
           tool: args.tool,
           prompt: contextualPrompt,
-          preferences: args.preferences || {},
+          preferences: effectivePreferences,
         }),
         signal: args.signal,
-        timeoutMs: 65_000,
+        timeoutMs: deepThink ? 85_000 : 65_000,
       });
       const result = normalizedResult(payload, 'direct-ai');
       answerCache.store({
         mode: args.mode,
         tool: args.tool,
         prompt: contextualPrompt,
-        preferences: args.preferences,
+        preferences: effectivePreferences,
         result,
       });
       return result;
@@ -117,6 +125,7 @@ export async function generateRoutedAssistantResponse(args) {
     ...args,
     prompt: contextualPrompt,
     latestPrompt,
+    preferences: effectivePreferences,
   });
   return {
     ...result,

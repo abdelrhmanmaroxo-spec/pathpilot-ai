@@ -9,6 +9,17 @@ test('system prompt adapts to workspace and protects accuracy', () => {
   assert.match(prompt, /Never invent/i);
 });
 
+test('deep analysis preference adds stricter verification without exposing chain of thought', () => {
+  const prompt = buildSystemPrompt({
+    mode: 'general',
+    tool: 'ask',
+    preferences: { deepThinkEnabled: true, responseStyle: 'detailed' },
+  });
+  assert.match(prompt, /Deep analysis mode is enabled/i);
+  assert.match(prompt, /verification pass/i);
+  assert.match(prompt, /Do not reveal hidden chain-of-thought/i);
+});
+
 test('provider request supports optional reasoning without requiring it', () => {
   const chat = buildProviderRequest({ apiMode: 'chat-completions', model: 'model-a', prompt: 'مرحبا', reasoningEffort: '' });
   const responses = buildProviderRequest({ apiMode: 'responses', model: 'model-b', prompt: 'مرحبا', reasoningEffort: 'medium' });

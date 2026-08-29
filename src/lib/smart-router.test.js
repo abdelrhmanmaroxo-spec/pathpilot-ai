@@ -17,6 +17,30 @@ test('research tool always requests grounding', () => {
   assert.equal(needsFreshResearch('تاريخ قواعد البيانات', 'research'), true);
 });
 
+test('chat search toggle forces grounded research for stable questions', () => {
+  const result = routeAssistantRequest({
+    prompt: 'اشرح DNS ببساطة',
+    tool: 'ask',
+    hasResearch: true,
+    hasDirectAI: true,
+    forceResearch: true,
+  });
+  assert.equal(result.route, 'research');
+  assert.equal(result.reason, 'user-enabled-search');
+  assert.equal(shouldBypassAnswerCache('اشرح DNS ببساطة', 'ask', { forceResearch: true }), true);
+});
+
+test('search toggle degrades safely when research is unavailable', () => {
+  const result = routeAssistantRequest({
+    prompt: 'اشرح DNS ببساطة',
+    tool: 'ask',
+    hasResearch: false,
+    hasDirectAI: true,
+    forceResearch: true,
+  });
+  assert.equal(result.route, 'direct-ai');
+});
+
 test('fresh requests bypass answer cache', () => {
   assert.equal(shouldBypassAnswerCache('سعر الدولار اليوم'), true);
   assert.equal(shouldBypassAnswerCache('اشرح لي recursion', 'explain'), false);

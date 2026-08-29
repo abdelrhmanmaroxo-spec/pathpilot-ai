@@ -12,6 +12,7 @@ This file is the execution tracker for the two approved 50-item roadmaps. Status
 
 ## Progress notes
 
+- 2026-08-29: Added an Admin/Owner-only experimental Chat workspace with persistent on-device chat sessions, explicit Search and Deep Think controls, long-history relevance retrieval across up to 30 stored turns while keeping the final model context bounded to the most relevant turns, and role-gated access. Regular users can see the Chat entry but receive a development notice stating that the feature is under development by Abdelrhman. Search can force grounded research; Deep Think enables stricter provider-side verification without exposing hidden reasoning. Account/cloud conversation sync remains TODO and no production SQLite data model was changed.
 - 2026-08-29: Conversation intelligence upgraded with a relevance-aware context analyzer. PathPilot now classifies the latest message as standalone/new-topic/related/continuation/follow-up, keeps only relevant prior turns, carries forward explicit constraints only when continuity justifies it, gives the newest request precedence over conflicting history, routes using the latest request instead of the full context envelope, and keeps local RAG retrieval focused on the latest request while the LLM still receives selected conversational context. Regression tests cover follow-ups without lexical overlap, unrelated topic resets, inherited constraints, and RAG query isolation.
 - 2026-08-29: Top utility controls cleaned up. Global search and the Arabic/English switch now stay in the document's top utility row and scroll away with the page instead of following the user. Shared responsive sizing, visible keyboard focus, reduced-motion handling, and regression tests were added so the controls remain aligned and non-sticky on desktop and mobile.
 - 2026-08-29: Global search privacy tightened. Regular users no longer receive admin-mode history in search, and the global search is not mounted on an unauthorized `#/admin` route. Admin/Owner search access is preserved and covered by regression tests.
@@ -48,8 +49,8 @@ This file is the execution tracker for the two approved 50-item roadmaps. Status
 | A18 | TODO | Skeleton loading states |
 | A19 | TODO | Unified toast system |
 | A20 | TODO | First-run onboarding |
-| A21 | DONE | True multi-message chat |
-| A22 | DONE | Relevance-aware conversation context, follow-up resolution, and new-topic isolation |
+| A21 | DONE | True multi-message chat; dedicated privileged chat preview now uses persistent local sessions |
+| A22 | DONE | Relevance-aware conversation context, follow-up resolution, new-topic isolation, and long-chat relevant-turn retrieval |
 | A23 | DONE | Edit and resubmit |
 | A24 | DONE | Regenerate answer |
 | A25 | DONE | Stop generation with request abort |
@@ -69,7 +70,7 @@ This file is the execution tracker for the two approved 50-item roadmaps. Status
 | A39 | IN_PROGRESS | Knowledge-pack versioning; runtime version metadata active, migration/compatibility policy pending |
 | A40 | TODO | Local LLM manager UI |
 | A41 | DONE | Device-aware local model selection with automatic lighter-model fallback |
-| A42 | DONE | Context budget manager with relevance filtering and bounded selected-turn context |
+| A42 | DONE | Context budget manager with relevance filtering; privileged Chat scans up to 30 stored turns but injects only the most relevant bounded context |
 | A43 | TODO | Optional account conversation storage |
 | A44 | TODO | Cross-device conversation sync |
 | A45 | DONE | Conversation/history search foundation |
@@ -97,7 +98,7 @@ This file is the execution tracker for the two approved 50-item roadmaps. Status
 | B12 | DONE | Research query cache |
 | B13 | TODO | Dynamic model selection |
 | B14 | TODO | Provider quality scoring |
-| B15 | IN_PROGRESS | Answer verification pass; local Draft → Review quality gate and contradiction-aware constraint verification active |
+| B15 | IN_PROGRESS | Answer verification pass; local Draft → Review quality gate and contradiction-aware constraint verification active; Deep Think adds stricter provider verification in privileged Chat |
 | B16 | TODO | Citation-to-claim matching |
 | B17 | IN_PROGRESS | Local LLM confidence scoring is active and influences review; dedicated user-facing indicator pending |
 | B18 | IN_PROGRESS | Explicit uncertainty handling in prompts/fallbacks; dedicated UI pending |
