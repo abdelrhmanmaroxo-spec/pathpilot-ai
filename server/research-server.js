@@ -158,7 +158,7 @@ export function createResearchHandler({ env = process.env, baseApp, database }) 
     const url = new URL(request.url || '/', 'http://localhost');
     const path = url.pathname;
 
-    if (handleAdminExtension && path.startsWith('/api/admin/')) {
+    if (handleAdminExtension && (path.startsWith('/api/admin/') || path.startsWith('/api/security/'))) {
       const handled = await handleAdminExtension(request, response, origin, path);
       if (handled) return;
     }
