@@ -12,6 +12,7 @@ This file is the execution tracker for the two approved 50-item roadmaps. Status
 
 ## Progress notes
 
+- 2026-08-29: Added an automated i18n catalog integrity test that runs in the existing CI suite. It enforces a stable translation baseline, non-empty trimmed entries, Arabic source keys, and one-to-one English translations so the generated reverse catalog cannot silently lose entries. A13 remains in progress until UI-literal coverage is also enforced.
 - 2026-08-29: Premium workspace layer shipped with responsive glass/depth UI, animated 3D-style AI core, structured source rail, long-form voice dictation with browser auto-resume, live request processing timer, final response-time badge, public changelog, public user guide, and restored `Built by Abdelrhman Essam` attribution.
 - 2026-08-29: Research flow changed to prioritize AI synthesis as soon as a sufficient evidence set exists. The configured Gemini OpenAI-compatible path is preferred when appropriate, with native Gemini fallback. A regression test now requires grounded research to complete through `research-ai` when search and AI are healthy.
 - 2026-08-29: Multi-turn context, edit/resubmit, regenerate, real AbortController stop, Markdown/code rendering, sources UI, smart routing, freshness detection, semantic answer cache, Tavily query cache, voice input/read aloud, keyboard shortcuts, history organization foundations, provider resilience, and retrieved-content prompt-injection filtering added.
@@ -33,7 +34,7 @@ This file is the execution tracker for the two approved 50-item roadmaps. Status
 | A10 | IN_PROGRESS | Update README and deployment docs; changelog/user guide are now current |
 | A11 | IN_PROGRESS | Key-based i18n architecture |
 | A12 | IN_PROGRESS | Merge legacy i18n runtime layers |
-| A13 | TODO | Translation coverage CI test |
+| A13 | IN_PROGRESS | Translation coverage CI test; catalog integrity enforced, UI-literal coverage pending |
 | A14 | TODO | Automated LTR/RTL UI checks |
 | A15 | IN_PROGRESS | Full mobile UX pass; premium workspace responsive pass completed |
 | A16 | IN_PROGRESS | Accessibility pass; focus states and reduced-motion support active |
