@@ -86,6 +86,7 @@ const EXTRA_AR_TO_EN = {
 };
 
 const EXTRA_EN_TO_AR = Object.fromEntries(Object.entries(EXTRA_AR_TO_EN).map(([ar, en]) => [en, ar]));
+const ARABIC_DIGITS = '٠١٢٣٤٥٦٧٨٩';
 let busy = false;
 let queued = false;
 
@@ -93,14 +94,34 @@ function language() {
   return document.body?.dataset?.language === 'en' ? 'en' : 'ar';
 }
 
+function normalizeEnglishNumerals(value) {
+  return value
+    .replace(/[٠-٩]/g, (digit) => String(ARABIC_DIGITS.indexOf(digit)))
+    .replace(/٬/g, ',')
+    .replace(/٫/g, '.');
+}
+
 function translate(value, targetLanguage) {
   if (!value) return value;
   const trimmed = value.trim();
   const table = targetLanguage === 'en' ? EXTRA_AR_TO_EN : EXTRA_EN_TO_AR;
   const replacement = table[trimmed];
-  if (!replacement) return value;
-  const start = value.indexOf(trimmed);
-  return `${value.slice(0, start)}${replacement}${value.slice(start + trimmed.length)}`;
+  let result = value;
+  if (replacement) {
+    const start = value.indexOf(trimmed);
+    result = `${value.slice(0, start)}${replacement}${value.slice(start + trimmed.length)}`;
+  }
+  return targetLanguage === 'en' ? normalizeEnglishNumerals(result) : result;
+}
+
+function polishLanguageSpecificUi(targetLanguage) {
+  const proof = document.querySelector('.proof-grid > div:last-child');
+  if (proof) {
+    const metric = proof.querySelector('strong');
+    const label = proof.querySelector('span');
+    if (metric) metric.textContent = targetLanguage === 'en' ? 'LTR' : 'RTL';
+    if (label) label.textContent = targetLanguage === 'en' ? 'English experience' : 'تجربة عربية أصلية';
+  }
 }
 
 function translateRoot() {
@@ -126,6 +147,7 @@ function translateRoot() {
         if (next !== current) element.setAttribute(attribute, next);
       });
     });
+    polishLanguageSpecificUi(targetLanguage);
   } finally {
     busy = false;
   }
