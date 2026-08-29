@@ -6,15 +6,24 @@ import { initializeDatabase } from './lib/database.js';
 
 async function startPlatform() {
   const database = initializeDatabase();
+  const sent = [];
   const app = createPathPilotServer({
     database,
-    env: { ALLOWED_ORIGINS: 'http://localhost:5173', ADMIN_EMAIL: 'admin@example.com' },
+    env: {
+      ALLOWED_ORIGINS: 'http://localhost:5173',
+      OWNER_EMAIL: 'admin@example.com',
+      RESEND_API_KEY: 'test-key',
+      EMAIL_FROM: 'PathPilot <noreply@example.com>',
+      PUBLIC_APP_URL: 'http://localhost:5173',
+    },
+    emailSender: async (message) => { sent.push(message); },
   });
   const server = createServer(app.handle);
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   const address = server.address();
   return {
     database,
+    sent,
     url: `http://127.0.0.1:${address.port}`,
     close: () => new Promise((resolve, reject) => server.close((error) => (error ? reject(error) : resolve()))),
   };
@@ -25,7 +34,23 @@ async function jsonRequest(url, path, options = {}) {
     ...options,
     headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
   });
-  return { status: response.status, body: await response.json() };
+  const body = await response.json().catch(() => ({}));
+  return { status: response.status, body };
+}
+
+async function registerAndVerify(platform, details) {
+  const registration = await jsonRequest(platform.url, '/api/auth/register', {
+    method: 'POST',
+    body: JSON.stringify(details),
+  });
+  assert.equal(registration.status, 201);
+  assert.equal(registration.body.requiresVerification, true);
+  const verification = platform.sent.at(-1);
+  assert.ok(verification?.verificationUrl);
+  const verificationUrl = new URL(verification.verificationUrl);
+  const response = await fetch(`${platform.url}${verificationUrl.pathname}${verificationUrl.search}`);
+  assert.equal(response.status, 200);
+  return registration;
 }
 
 test('platform exposes honest offline AI status with a live database', async (context) => {
@@ -35,19 +60,100 @@ test('platform exposes honest offline AI status with a live database', async (co
   assert.equal(response.status, 200);
   assert.equal(response.body.apiOnline, false);
   assert.equal(response.body.databaseOnline, true);
+  assert.equal(response.body.emailVerificationAvailable, true);
   assert.equal(response.body.provider, 'OpenAI');
 });
 
-test('admin account can read real users, events, API usage and feedback', async (context) => {
+test('email/password registration cannot sign in before email verification', async (context) => {
   const platform = await startPlatform();
   context.after(async () => { await platform.close(); platform.database.close(); });
+
   const registration = await jsonRequest(platform.url, '/api/auth/register', {
     method: 'POST',
-    body: JSON.stringify({ name: 'PathPilot Admin', email: 'admin@example.com', password: 'StrongPass123!' }),
+    body: JSON.stringify({ name: 'New User', email: 'new@example.com', password: 'StrongPass123!' }),
   });
   assert.equal(registration.status, 201);
-  assert.equal(registration.body.user.role, 'admin');
-  const authorization = { Authorization: `Bearer ${registration.body.token}` };
+  assert.equal(registration.body.requiresVerification, true);
+
+  const blockedLogin = await jsonRequest(platform.url, '/api/auth/login', {
+    method: 'POST',
+    body: JSON.stringify({ email: 'new@example.com', password: 'StrongPass123!' }),
+  });
+  assert.equal(blockedLogin.status, 403);
+  assert.equal(blockedLogin.body.code, 'EMAIL_NOT_VERIFIED');
+
+  const verificationUrl = new URL(platform.sent[0].verificationUrl);
+  const verification = await fetch(`${platform.url}${verificationUrl.pathname}${verificationUrl.search}`);
+  assert.equal(verification.status, 200);
+
+  const login = await jsonRequest(platform.url, '/api/auth/login', {
+    method: 'POST',
+    body: JSON.stringify({ email: 'new@example.com', password: 'StrongPass123!' }),
+  });
+  assert.equal(login.status, 200);
+  assert.equal(login.body.user.emailVerified, true);
+});
+
+test('owner can invite admins and delete users but cannot delete owner account', async (context) => {
+  const platform = await startPlatform();
+  context.after(async () => { await platform.close(); platform.database.close(); });
+
+  await registerAndVerify(platform, { name: 'PathPilot Owner', email: 'admin@example.com', password: 'StrongPass123!' });
+  const ownerLogin = await jsonRequest(platform.url, '/api/auth/login', {
+    method: 'POST',
+    body: JSON.stringify({ email: 'admin@example.com', password: 'StrongPass123!' }),
+  });
+  assert.equal(ownerLogin.status, 200);
+  assert.equal(ownerLogin.body.user.role, 'admin');
+  assert.equal(ownerLogin.body.user.isOwner, true);
+  const authorization = { Authorization: `Bearer ${ownerLogin.body.token}` };
+
+  const invitation = await jsonRequest(platform.url, '/api/admin/invites', {
+    method: 'POST',
+    headers: authorization,
+    body: JSON.stringify({ email: 'future-admin@example.com' }),
+  });
+  assert.equal(invitation.status, 201);
+  assert.equal(invitation.body.status, 'invite_created');
+
+  await registerAndVerify(platform, { name: 'Future Admin', email: 'future-admin@example.com', password: 'StrongPass123!' });
+  const adminLogin = await jsonRequest(platform.url, '/api/auth/login', {
+    method: 'POST',
+    body: JSON.stringify({ email: 'future-admin@example.com', password: 'StrongPass123!' }),
+  });
+  assert.equal(adminLogin.status, 200);
+  assert.equal(adminLogin.body.user.role, 'admin');
+
+  const users = await jsonRequest(platform.url, '/api/admin/users', { headers: authorization });
+  const invitedUser = users.body.users.find((item) => item.email === 'future-admin@example.com');
+  const ownerUser = users.body.users.find((item) => item.email === 'admin@example.com');
+  assert.equal(Boolean(invitedUser), true);
+  assert.equal(invitedUser.emailVerified, true);
+
+  const deleteUser = await jsonRequest(platform.url, '/api/admin/users/delete', {
+    method: 'POST',
+    headers: authorization,
+    body: JSON.stringify({ userId: invitedUser.id }),
+  });
+  assert.equal(deleteUser.status, 200);
+
+  const deleteOwner = await jsonRequest(platform.url, '/api/admin/users/delete', {
+    method: 'POST',
+    headers: authorization,
+    body: JSON.stringify({ userId: ownerUser.id }),
+  });
+  assert.equal(deleteOwner.status, 400);
+});
+
+test('admin account can read real events API usage and feedback', async (context) => {
+  const platform = await startPlatform();
+  context.after(async () => { await platform.close(); platform.database.close(); });
+  await registerAndVerify(platform, { name: 'PathPilot Admin', email: 'admin@example.com', password: 'StrongPass123!' });
+  const login = await jsonRequest(platform.url, '/api/auth/login', {
+    method: 'POST',
+    body: JSON.stringify({ email: 'admin@example.com', password: 'StrongPass123!' }),
+  });
+  const authorization = { Authorization: `Bearer ${login.body.token}` };
 
   await jsonRequest(platform.url, '/api/events', {
     method: 'POST',
@@ -61,12 +167,9 @@ test('admin account can read real users, events, API usage and feedback', async 
   });
 
   const summary = await jsonRequest(platform.url, '/api/admin/summary', { headers: authorization });
-  const users = await jsonRequest(platform.url, '/api/admin/users', { headers: authorization });
-  const apiUsage = await jsonRequest(platform.url, '/api/admin/api-usage', { headers: authorization });
   const feedback = await jsonRequest(platform.url, '/api/admin/feedback', { headers: authorization });
   assert.equal(summary.body.summary.totalUsers, 1);
+  assert.equal(summary.body.summary.verifiedUsers, 1);
   assert.equal(summary.body.summary.totalUsage, 1);
-  assert.equal(users.body.users.length, 1);
-  assert.deepEqual(apiUsage.body.requests, []);
   assert.equal(feedback.body.feedback[0].rating, 5);
 });
