@@ -1,3 +1,5 @@
+import { createApiClient } from './api-client.js';
+
 const explicitBase = import.meta.env?.VITE_PLATFORM_API_URL?.trim();
 const aiUrl = import.meta.env?.VITE_AI_API_URL?.trim();
 export const PLATFORM_API_URL = explicitBase || aiUrl?.replace(/\/api\/assistant\/?$/, '') || '';
@@ -28,25 +30,14 @@ function anonymousId() {
   return value;
 }
 
+const apiClient = createApiClient({
+  baseUrl: PLATFORM_API_URL,
+  getToken: getSessionToken,
+  timeoutMs: 25_000,
+});
+
 async function request(path, options = {}) {
-  if (!hasPlatformBackend) throw new Error('BACKEND_NOT_CONFIGURED');
-  const token = getSessionToken();
-  const response = await fetch(`${PLATFORM_API_URL}${path}`, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(options.headers || {}),
-    },
-  });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    const error = new Error(payload.error || `Request failed with ${response.status}`);
-    error.code = payload.code || '';
-    error.status = response.status;
-    throw error;
-  }
-  return payload;
+  return apiClient.request(path, options);
 }
 
 function loginDeviceDetails() {
@@ -135,7 +126,12 @@ export function reportClientError(error, context = '') {
   if (!hasPlatformBackend) return Promise.resolve();
   return request('/api/client-errors', {
     method: 'POST',
-    body: JSON.stringify({ message: error?.message || String(error), context }),
+    body: JSON.stringify({
+      message: error?.message || String(error),
+      context,
+      code: error?.code || '',
+      requestId: error?.requestId || '',
+    }),
   }).catch(() => undefined);
 }
 
