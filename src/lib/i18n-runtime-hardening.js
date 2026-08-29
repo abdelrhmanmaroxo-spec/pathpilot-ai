@@ -52,6 +52,15 @@ const AR_TO_EN = {
   'Local LLM مفعّل': 'Local LLM enabled',
   'سيحاول PathPilot تشغيل نموذج لغوي محلي على جهازك، ثم يعود إلى الموسوعة ومحرك الاستدلال إذا تعذر.': 'PathPilot will try to run a local language model on your device, then fall back to the encyclopedia and reasoning engine if needed.',
   'يستخدم PathPilot الموسوعة المحلية ومحرك الاستدلال. يمكنك تفعيل Local LLM من إعدادات النتيجة على الأجهزة الداعمة.': 'PathPilot uses its local encyclopedia and reasoning engine. You can enable the Local LLM on supported devices.',
+  'ابحث في PathPilot، الأدوات، الصفحات…': 'Search PathPilot, tools, pages…',
+  'البحث في PathPilot بالكامل': 'Search all PathPilot',
+  'البحث الشامل في PathPilot': 'Search PathPilot',
+  'دوّر على صفحة، أداة، إعداد، نتيجة سابقة…': 'Search pages, tools, settings, history…',
+  'ملقتش نتيجة مطابقة. جرّب كلمة تانية.': 'Nothing matched. Try another word.',
+  'موجود في الصفحة الحالية': 'On this page',
+  'فتح / إغلاق': 'Open / close',
+  'فتح أول نتيجة': 'Open first result',
+  'إغلاق': 'Close',
 };
 
 const EN_TO_AR = Object.fromEntries(Object.entries(AR_TO_EN).map(([ar, en]) => [en, ar]));
@@ -126,6 +135,7 @@ export function initI18nRuntimeHardening() {
     attributes: true,
     attributeFilter: ['data-language', 'placeholder', 'title', 'aria-label'],
   });
+  window.addEventListener('pathpilot:language-changed', schedule);
   window.addEventListener('hashchange', schedule);
   window.addEventListener('pageshow', schedule);
   schedule();
