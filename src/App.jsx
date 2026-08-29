@@ -58,6 +58,12 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    const refreshHistory = () => setHistoryItems(loadHistory());
+    window.addEventListener('pathpilot:history-updated', refreshHistory);
+    return () => window.removeEventListener('pathpilot:history-updated', refreshHistory);
+  }, []);
+
+  useEffect(() => {
     let active = true;
     getCurrentUser().then((currentUser) => {
       if (active) setUser(currentUser);
