@@ -6,6 +6,28 @@ import { initializeDatabase } from './lib/database.js';
 
 const MAX_SOURCES = 18;
 const MIN_TARGET_SOURCES = 16;
+const MAX_SEARCH_ROUNDS = 3;
+
+const TOOL_LABELS = {
+  explain: 'شرح مفهوم بدقة وبأمثلة',
+  summarize: 'تلخيص وتحقيق أهم النقاط',
+  plan: 'بناء خطة عملية واقعية',
+  quiz: 'إنشاء أسئلة مراجعة دقيقة',
+  flashcards: 'إنشاء بطاقات مراجعة صحيحة',
+  research: 'بحث وتحليل متعمق',
+  email: 'كتابة بريد مهني مع معلومات صحيحة',
+  tasks: 'تحويل الطلب إلى مهام عملية',
+  meeting: 'تحليل وترتيب معلومات الاجتماع',
+  cv: 'صياغة خبرة للسيرة دون ادعاءات غير موثقة',
+  cover: 'صياغة خطاب تقديم مخصص',
+  qa: 'تحليل مشكلة وكتابة تقرير جودة',
+  ask: 'الإجابة الدقيقة على السؤال',
+  rewrite: 'تحسين النص مع الحفاظ على الحقائق',
+  brainstorm: 'توليد أفكار مدعومة باتجاهات وأمثلة حقيقية',
+  decide: 'مقارنة الخيارات بأدلة حديثة',
+  organize: 'تنظيم خطة واقعية بناءً على الطلب',
+  content: 'إنشاء محتوى عملي ومخصص للمنصة والجمهور',
+};
 
 function normalizeOriginList(value) {
   return new Set(String(value || 'http://localhost:5173')
@@ -75,15 +97,16 @@ function mergeUniqueSources(groups, limit = MAX_SOURCES) {
   return uniqueSources(groups.flatMap((group) => Array.isArray(group) ? group : []), limit);
 }
 
-function buildResearchQuery(prompt, tool) {
-  const clean = String(prompt || '').replace(/\s+/g, ' ').trim().slice(0, 650);
-  const prefixes = {
-    content: 'ابحث عن أحدث المعلومات والأمثلة وأفضل الممارسات الموثوقة التي تساعد على إنشاء محتوى عملي عالي الجودة حول:',
-    decide: 'اجمع أدلة ومقارنات ومراجعات مستقلة تساعد على اتخاذ قرار دقيق حول:',
-    brainstorm: 'اجمع اتجاهات وأمثلة حقيقية وفرصًا حديثة تساعد على توليد أفكار قوية حول:',
-    ask: 'تحقق من الحقائق والمصادر الحديثة وأهم وجهات النظر الموثوقة حول:',
-  };
-  return `${prefixes[tool] || prefixes.ask} ${clean}`;
+function buildResearchQuery({ prompt, tool, mode, round }) {
+  const cleanPrompt = String(prompt || '').replace(/\s+/g, ' ').trim().slice(0, 900);
+  const goal = TOOL_LABELS[tool] || 'الإجابة على الطلب بدقة';
+  const roundInstruction = [
+    'اعتمد على مصادر موثوقة وحديثة ومتنوعة، ووازن بين المصادر الرسمية والمستقلة.',
+    'ابحث عن مصادر إضافية مستقلة، بيانات رسمية، دراسات، أدلة عملية، وآراء مخالفة إن وجدت.',
+    'راجع الادعاءات الأساسية من زوايا مختلفة وابحث عن مصادر لم تظهر في الجولات السابقة.',
+  ][Math.min(round, 2)];
+
+  return `المهمة: ${goal}. مساحة PathPilot: ${mode || 'general'}. طلب المستخدم الأصلي: ${cleanPrompt}. ${roundInstruction} أجب على الطلب نفسه مباشرة وبشكل عملي، ولا تكتفِ بوصف عملية البحث. إذا كان الطلب كتابة أو تخطيطًا، استخدم البحث لتحسين الناتج ثم قدّم الناتج المطلوب نفسه.`;
 }
 
 async function tavilySearch(apiKey, query) {
@@ -110,7 +133,16 @@ async function tavilySearch(apiKey, query) {
 function sourceAppendix(sources) {
   if (!sources.length) return '';
   const lines = sources.map((source, index) => `[${index + 1}] ${source.title}\n${source.url}`);
-  return `\n\nالمصادر التي تم فحصها (${sources.length} مصدرًا من مواقع مختلفة)\n${lines.join('\n\n')}`;
+  return `\n\nالمصادر التي تم فحصها (${sources.length} موقعًا مختلفًا)\n${lines.join('\n\n')}`;
+}
+
+function combineAnswers(rounds) {
+  const answers = rounds
+    .map((round) => String(round?.answer || '').trim())
+    .filter(Boolean);
+  if (!answers.length) return 'تم جمع المصادر، لكن مزود البحث لم يُرجع ملخصًا نصيًا.';
+  if (answers.length === 1) return answers[0];
+  return `${answers[0]}\n\nمراجعة تحقق إضافية\n${answers.slice(1).join('\n\n')}`;
 }
 
 export function createResearchHandler({ env = process.env, baseApp }) {
@@ -134,6 +166,7 @@ export function createResearchHandler({ env = process.env, baseApp }) {
         provider: researchAvailable ? 'Tavily' : null,
         targetSources: MAX_SOURCES,
         minimumTargetSources: MIN_TARGET_SOURCES,
+        appliesToAllTools: true,
       }, origin, allowedOrigins);
     }
 
@@ -149,31 +182,27 @@ export function createResearchHandler({ env = process.env, baseApp }) {
         const body = await readJson(request);
         const prompt = String(body.prompt || body.query || '').trim();
         const tool = String(body.tool || 'ask').slice(0, 40);
+        const mode = String(body.mode || 'general').slice(0, 30);
         if (prompt.length < 3 || prompt.length > 12_000) {
           return sendJson(response, 400, { error: 'Research query length is invalid.' }, origin, allowedOrigins);
         }
 
-        const primaryQuery = buildResearchQuery(prompt, tool);
-        const primary = await tavilySearch(tavilyApiKey, primaryQuery);
-        let sources = uniqueSources(primary.results);
-        let secondary = null;
-
-        if (sources.length < MIN_TARGET_SOURCES) {
-          const supplementalQuery = `${primaryQuery} مصادر مستقلة إضافية، آراء مختلفة، بيانات رسمية، ودراسات أو تقارير حديثة`;
-          secondary = await tavilySearch(tavilyApiKey, supplementalQuery);
-          sources = mergeUniqueSources([primary.results, secondary.results]);
+        const rounds = [];
+        let sources = [];
+        for (let round = 0; round < MAX_SEARCH_ROUNDS; round += 1) {
+          const result = await tavilySearch(tavilyApiKey, buildResearchQuery({ prompt, tool, mode, round }));
+          rounds.push(result);
+          sources = mergeUniqueSources(rounds.map((item) => item.results));
+          if (sources.length >= MIN_TARGET_SOURCES) break;
         }
 
-        const primaryAnswer = String(primary.answer || '').trim();
-        const secondaryAnswer = String(secondary?.answer || '').trim();
-        const answerParts = [primaryAnswer];
-        if (secondaryAnswer && secondaryAnswer !== primaryAnswer) {
-          answerParts.push(`مراجعة إضافية للمصادر\n${secondaryAnswer}`);
-        }
-        const answer = answerParts.filter(Boolean).join('\n\n') || 'تم جمع المصادر، لكن مزود البحث لم يُرجع ملخصًا نصيًا.';
+        const answer = combineAnswers(rounds);
+        const verificationNote = sources.length >= MIN_TARGET_SOURCES
+          ? `تمت مراجعة ${sources.length} موقعًا/دومينًا مختلفًا قبل تكوين النتيجة.`
+          : `تمت مراجعة ${sources.length} مواقع مختلفة متاحة لهذا الطلب. لم تتوفر 16 مصادر مستقلة مناسبة، لذلك لا يدّعي PathPilot أنه حقق العدد المستهدف.`;
 
         return sendJson(response, 200, {
-          answer: `🌐 بحث ويب متعدد المصادر\n\n${answer}${sourceAppendix(sources)}`,
+          answer: `🌐 نتيجة مدعومة ببحث ويب\n${verificationNote}\n\n${answer}${sourceAppendix(sources)}`,
           sources,
           sourceCount: sources.length,
           targetReached: sources.length >= MIN_TARGET_SOURCES,
