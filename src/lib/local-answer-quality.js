@@ -3,6 +3,11 @@ const STOP = new Set([
   'على','الى','إلى','من','في','عن','مع','هذا','هذه','عايز','اريد','أريد','ايه','كيف','ليه','هو','هي','كان','تكون','يكون',
 ]);
 
+const NEGATION_TOKENS = new Set([
+  'بدون', 'لا', 'ليس', 'ممنوع', 'غير',
+  'without', 'not', 'never', 'no', 'mustnt', 'dont',
+]);
+
 function normalize(value) {
   return String(value || '')
     .toLowerCase()
@@ -36,15 +41,70 @@ function coverageScore(answer, prompt) {
   return Math.min(1, hits / Math.max(3, Math.min(8, terms.length)));
 }
 
-function constraintScore(answer, constraints = []) {
-  if (!constraints.length) return 0.76;
+function isNegativeConstraint(value) {
+  const text = ` ${normalize(value)} `;
+  return [
+    ' بدون ', ' من غير ', ' لا ', ' ليس ', ' ممنوع ',
+    ' without ', ' do not ', ' must not ', ' never ', ' no ',
+  ].some((marker) => text.includes(marker));
+}
+
+function constraintTerms(value) {
+  return keywords(value, 6).filter((token) => !NEGATION_TOKENS.has(token));
+}
+
+function hasNearbyNegation(tokens, index, radius = 4) {
+  const start = Math.max(0, index - radius);
+  const end = Math.min(tokens.length, index + radius + 1);
+  const window = tokens.slice(start, end);
+  if (window.some((token) => NEGATION_TOKENS.has(token))) return true;
+  const phrase = window.join(' ');
+  return phrase.includes('من غير') || phrase.includes('do not') || phrase.includes('must not');
+}
+
+function assessNegativeConstraint(answer, constraint) {
+  const tokens = normalize(answer).split(' ').filter(Boolean);
+  const terms = constraintTerms(constraint);
+  if (!terms.length) return { satisfied: true, contradicted: false };
+
+  let mentioned = false;
+  let negatedMention = false;
+  for (const term of terms) {
+    tokens.forEach((token, index) => {
+      if (token !== term) return;
+      mentioned = true;
+      if (hasNearbyNegation(tokens, index)) negatedMention = true;
+    });
+  }
+
+  return {
+    satisfied: mentioned && negatedMention,
+    contradicted: mentioned && !negatedMention,
+  };
+}
+
+function constraintAssessment(answer, constraints = []) {
+  if (!constraints.length) return { score: 0.76, contradictions: 0 };
   const text = normalize(answer);
   let hits = 0;
+  let contradictions = 0;
+
   for (const constraint of constraints) {
-    const parts = keywords(constraint, 4);
+    if (isNegativeConstraint(constraint)) {
+      const assessment = assessNegativeConstraint(answer, constraint);
+      if (assessment.satisfied) hits += 1;
+      if (assessment.contradicted) contradictions += 1;
+      continue;
+    }
+
+    const parts = constraintTerms(constraint);
     if (!parts.length || parts.some((part) => text.includes(part))) hits += 1;
   }
-  return Math.min(1, hits / constraints.length);
+
+  return {
+    score: Math.min(1, hits / constraints.length),
+    contradictions,
+  };
 }
 
 function repetitionPenalty(answer) {
@@ -91,18 +151,21 @@ export function scoreLocalAnswer({ answer, prompt = '', knowledge = {}, style = 
   if (!trimmed) return { score: 0, components: {}, flags: ['empty'] };
 
   const coverage = coverageScore(trimmed, prompt);
-  const constraints = constraintScore(trimmed, knowledge.constraints || []);
+  const constraintResult = constraintAssessment(trimmed, knowledge.constraints || []);
+  const constraints = constraintResult.score;
   const length = lengthFitness(trimmed, style);
   const actionable = Math.min(1, actionableScore(trimmed));
   const repetition = repetitionPenalty(trimmed);
   const generic = genericPenalty(trimmed);
+  const contradiction = Math.min(0.24, constraintResult.contradictions * 0.16);
   const score = Math.max(0, Math.min(1,
-    coverage * 0.32 + constraints * 0.28 + length * 0.2 + actionable * 0.2 - repetition - generic,
+    coverage * 0.32 + constraints * 0.28 + length * 0.2 + actionable * 0.2 - repetition - generic - contradiction,
   ));
 
   const flags = [];
   if (coverage < 0.45) flags.push('weak-prompt-coverage');
   if (constraints < 0.6) flags.push('missed-constraints');
+  if (constraintResult.contradictions > 0) flags.push('contradicted-constraints');
   if (length < 0.55) flags.push('too-thin');
   if (repetition > 0.08) flags.push('repetitive');
   if (generic > 0.08) flags.push('too-generic');
@@ -116,6 +179,7 @@ export function scoreLocalAnswer({ answer, prompt = '', knowledge = {}, style = 
       actionable: Number(actionable.toFixed(2)),
       repetition: Number(repetition.toFixed(2)),
       generic: Number(generic.toFixed(2)),
+      contradiction: Number(contradiction.toFixed(2)),
     },
     flags,
   };
