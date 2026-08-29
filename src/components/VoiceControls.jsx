@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Mic, MicOff, Volume2, VolumeX } from 'lucide-react';
+import PinnedPrompts from './PinnedPrompts.jsx';
 
 function isEnglish() {
   return document.body?.dataset?.language === 'en';
@@ -93,8 +94,6 @@ export default function VoiceControls({ value, onChange, answer, notify }) {
         setListening(false);
         return;
       }
-      // Browsers often terminate Web Speech sessions after silence or an internal time limit.
-      // Restarting keeps long-form dictation continuous until the user explicitly stops it.
       globalThis.clearTimeout(restartTimerRef.current);
       restartTimerRef.current = globalThis.setTimeout(() => {
         if (shouldListenRef.current) startRecognitionCycle();
@@ -163,18 +162,21 @@ export default function VoiceControls({ value, onChange, answer, notify }) {
   };
 
   return (
-    <div className={listening ? 'voice-controls is-listening' : 'voice-controls'}>
-      <button className="voice-record-button" type="button" onClick={toggleListening} disabled={!voiceInputSupported} title={en ? 'Long-form voice input' : 'تسجيل صوتي طويل'} aria-label={en ? 'Long-form voice input' : 'تسجيل صوتي طويل'}>
-        <span className="voice-record-icon">{listening ? <MicOff size={19} /> : <Mic size={19} />}</span>
-        <span>
-          <strong>{listening ? (en ? 'Stop recording' : 'إيقاف التسجيل') : (en ? 'Long voice input' : 'تسجيل صوتي طويل')}</strong>
-          <small>{listening ? `${formatElapsed(elapsed)} · ${en ? 'auto-resume active' : 'استكمال تلقائي مفعّل'}` : (en ? 'Keeps listening until you stop it' : 'يكمل لحد ما توقفه بنفسك')}</small>
-        </span>
-      </button>
-      <button className="voice-read-button" type="button" onClick={toggleSpeaking} disabled={!readAloudSupported || !answer} title={en ? 'Read answer aloud' : 'اقرأ الإجابة بصوت'} aria-label={en ? 'Read answer aloud' : 'اقرأ الإجابة بصوت'}>
-        {speaking ? <VolumeX size={17} /> : <Volume2 size={17} />}
-        {speaking ? (en ? 'Stop audio' : 'وقف الصوت') : (en ? 'Read aloud' : 'اقرأ الرد')}
-      </button>
+    <div className="voice-controls-shell">
+      <div className={listening ? 'voice-controls is-listening' : 'voice-controls'}>
+        <button className="voice-record-button" type="button" onClick={toggleListening} disabled={!voiceInputSupported} title={en ? 'Long-form voice input' : 'تسجيل صوتي طويل'} aria-label={en ? 'Long-form voice input' : 'تسجيل صوتي طويل'}>
+          <span className="voice-record-icon">{listening ? <MicOff size={19} /> : <Mic size={19} />}</span>
+          <span>
+            <strong>{listening ? (en ? 'Stop recording' : 'إيقاف التسجيل') : (en ? 'Long voice input' : 'تسجيل صوتي طويل')}</strong>
+            <small>{listening ? `${formatElapsed(elapsed)} · ${en ? 'auto-resume active' : 'استكمال تلقائي مفعّل'}` : (en ? 'Keeps listening until you stop it' : 'يكمل لحد ما توقفه بنفسك')}</small>
+          </span>
+        </button>
+        <button className="voice-read-button" type="button" onClick={toggleSpeaking} disabled={!readAloudSupported || !answer} title={en ? 'Read answer aloud' : 'اقرأ الإجابة بصوت'} aria-label={en ? 'Read answer aloud' : 'اقرأ الإجابة بصوت'}>
+          {speaking ? <VolumeX size={17} /> : <Volume2 size={17} />}
+          {speaking ? (en ? 'Stop audio' : 'وقف الصوت') : (en ? 'Read aloud' : 'اقرأ الرد')}
+        </button>
+      </div>
+      <PinnedPrompts currentPrompt={value} onSelect={onChange} notify={notify} />
     </div>
   );
 }
