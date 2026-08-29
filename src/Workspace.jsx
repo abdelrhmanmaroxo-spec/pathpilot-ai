@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   BriefcaseBusiness,
   CircleHelp,
@@ -7,6 +7,7 @@ import {
   RotateCcw,
   Send,
   Sparkles,
+  Square,
 } from 'lucide-react';
 import {
   generateAssistantResponse,
@@ -18,6 +19,8 @@ import { supportsBrowserLLM } from './lib/local-llm.js';
 import { createHistoryItem } from './lib/storage.js';
 import { hasPlatformBackend, reportClientError, sendFeedback, trackUsage } from './lib/platform.js';
 import { TOOL_ICONS } from './lib/tool-icons.js';
+import { buildConversationPrompt, createConversationTurn } from './lib/conversation-context.js';
+import ConversationThread from './components/ConversationThread.jsx';
 import { HistoryPanel, PreferencesPanel, ResultCard, ToolRail } from './components/WorkspacePanels.jsx';
 
 const MODE_CONTENT = {
@@ -26,6 +29,10 @@ const MODE_CONTENT = {
   general: { eyebrow: 'UNIVERSAL WORKSPACE', title: 'اكتب أي حاجة. وابدأ من هنا.', description: 'أسئلة، مشاكل، نصوص، أفكار، قرارات، وتنظيم يومك في مساحة واحدة مرنة.', icon: Sparkles },
 };
 
+function isEnglish() {
+  return document.body?.dataset?.language === 'en';
+}
+
 export default function Workspace({ mode, history, preferences, onPreferencesChange, onNewHistory, onClearHistory, notify }) {
   const tools = TOOL_LIBRARY[mode];
   const [selectedTool, setSelectedTool] = useState(tools[0].id);
@@ -33,36 +40,115 @@ export default function Workspace({ mode, history, preferences, onPreferencesCha
   const [answer, setAnswer] = useState('');
   const [source, setSource] = useState('demo');
   const [loading, setLoading] = useState(false);
+  const [turns, setTurns] = useState([]);
+  const abortRef = useRef(null);
+  const runTokenRef = useRef(0);
   const content = MODE_CONTENT[mode];
   const tool = tools.find((item) => item.id === selectedTool) || tools[0];
   const ModeIcon = content.icon;
   const localLlmSupported = supportsBrowserLLM();
+  const en = isEnglish();
 
   const handleToolSelect = (toolId) => {
+    abortRef.current?.abort();
+    runTokenRef.current += 1;
     setSelectedTool(toolId);
+    setPrompt('');
     setAnswer('');
+    setTurns([]);
+    setLoading(false);
     trackUsage({ eventType: 'tool_selected', workspace: mode, tool: toolId });
+  };
+
+  const runPrompt = async (userPrompt, { replaceLast = false } = {}) => {
+    const trimmed = String(userPrompt || '').trim();
+    if (trimmed.length < 4) {
+      notify('اكتب تفاصيل أكثر قبل الإرسال.');
+      return;
+    }
+
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    const runToken = runTokenRef.current + 1;
+    runTokenRef.current = runToken;
+    const previousTurns = replaceLast ? turns.slice(0, -1) : turns;
+    const contextualPrompt = buildConversationPrompt({ prompt: trimmed, turns: previousTurns });
+
+    setLoading(true);
+    setAnswer('');
+    try {
+      const result = await generateAssistantResponse({
+        mode,
+        tool: selectedTool,
+        prompt: contextualPrompt,
+        preferences,
+        signal: controller.signal,
+      });
+      if (controller.signal.aborted || runToken !== runTokenRef.current) return;
+
+      const nextTurn = createConversationTurn({
+        prompt: trimmed,
+        answer: result.answer,
+        source: result.source,
+        tool: selectedTool,
+      });
+      setAnswer(result.answer);
+      setSource(result.source);
+      setTurns((current) => (
+        replaceLast
+          ? [...current.slice(0, -1), nextTurn]
+          : [...current, nextTurn].slice(-6)
+      ));
+      setPrompt('');
+      onNewHistory(createHistoryItem({ mode, tool: selectedTool, prompt: trimmed, answer: result.answer, source: result.source }));
+      trackUsage({
+        eventType: replaceLast ? 'answer_regenerated' : 'tool_request',
+        workspace: mode,
+        tool: selectedTool,
+        metadata: { source: result.source, contextTurns: previousTurns.length },
+      });
+    } catch (error) {
+      if (controller.signal.aborted || runToken !== runTokenRef.current) return;
+      notify(error.message || 'حدث خطأ غير متوقع.');
+      reportClientError(error, `${mode}:${selectedTool}`);
+    } finally {
+      if (runToken === runTokenRef.current) setLoading(false);
+    }
   };
 
   const handleSubmit = async (event) => {
     event.preventDefault();
-    if (prompt.trim().length < 4) {
-      notify('اكتب تفاصيل أكثر قبل الإرسال.');
-      return;
-    }
-    setLoading(true);
-    try {
-      const result = await generateAssistantResponse({ mode, tool: selectedTool, prompt, preferences });
-      setAnswer(result.answer);
-      setSource(result.source);
-      onNewHistory(createHistoryItem({ mode, tool: selectedTool, prompt: prompt.trim(), answer: result.answer, source: result.source }));
-      trackUsage({ eventType: 'tool_request', workspace: mode, tool: selectedTool, metadata: { source: result.source } });
-    } catch (error) {
-      notify(error.message || 'حدث خطأ غير متوقع.');
-      reportClientError(error, `${mode}:${selectedTool}`);
-    } finally {
-      setLoading(false);
-    }
+    await runPrompt(prompt);
+  };
+
+  const stopGeneration = () => {
+    abortRef.current?.abort();
+    runTokenRef.current += 1;
+    setLoading(false);
+    notify(en ? 'Generation stopped.' : 'تم إيقاف إنشاء الإجابة.');
+    trackUsage({ eventType: 'generation_stopped', workspace: mode, tool: selectedTool });
+  };
+
+  const regenerateAnswer = async () => {
+    const latest = turns.at(-1);
+    if (!latest) return;
+    await runPrompt(latest.prompt, { replaceLast: true });
+  };
+
+  const reusePrompt = (value) => {
+    setPrompt(value);
+    window.setTimeout(() => document.querySelector('#assistant-prompt')?.focus(), 0);
+  };
+
+  const newConversation = () => {
+    abortRef.current?.abort();
+    runTokenRef.current += 1;
+    setPrompt('');
+    setAnswer('');
+    setTurns([]);
+    setLoading(false);
+    notify(en ? 'New conversation started.' : 'بدأت محادثة جديدة.');
   };
 
   const copyAnswer = async () => {
@@ -109,10 +195,18 @@ export default function Workspace({ mode, history, preferences, onPreferencesCha
       window.setTimeout(() => window.dispatchEvent(new CustomEvent('pathpilot:history', { detail: item })), 50);
       return;
     }
+    const restored = createConversationTurn({
+      prompt: item.prompt,
+      answer: item.answer,
+      source: item.source,
+      tool: item.tool,
+      createdAt: new Date(item.createdAt || Date.now()).getTime(),
+    });
     setSelectedTool(item.tool);
-    setPrompt(item.prompt);
+    setPrompt('');
     setAnswer(item.answer);
     setSource(item.source);
+    setTurns([restored]);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -120,14 +214,29 @@ export default function Workspace({ mode, history, preferences, onPreferencesCha
     const handler = (event) => {
       const item = event.detail;
       if (item?.mode !== mode) return;
+      const restored = createConversationTurn({
+        prompt: item.prompt,
+        answer: item.answer,
+        source: item.source,
+        tool: item.tool,
+        createdAt: new Date(item.createdAt || Date.now()).getTime(),
+      });
       setSelectedTool(item.tool);
-      setPrompt(item.prompt);
+      setPrompt('');
       setAnswer(item.answer);
       setSource(item.source);
+      setTurns([restored]);
     };
     window.addEventListener('pathpilot:history', handler);
     return () => window.removeEventListener('pathpilot:history', handler);
   }, [mode]);
+
+  useEffect(() => () => {
+    abortRef.current?.abort();
+    runTokenRef.current += 1;
+  }, []);
+
+  const previousTurns = answer ? turns.slice(0, -1) : turns;
 
   return (
     <main className={`workspace-page ${mode}`}>
@@ -147,6 +256,7 @@ export default function Workspace({ mode, history, preferences, onPreferencesCha
       <div className="page-shell workspace-layout">
         <ToolRail mode={mode} selectedTool={selectedTool} onSelect={handleToolSelect} />
         <div className="assistant-column">
+          <ConversationThread turns={previousTurns} onReuse={reusePrompt} />
           <section className="composer-card">
             <div className="composer-head">
               <div className="selected-tool-icon">{(() => { const Icon = TOOL_ICONS[tool.id]; return <Icon />; })()}</div>
@@ -155,20 +265,25 @@ export default function Workspace({ mode, history, preferences, onPreferencesCha
             <form onSubmit={handleSubmit}>
               <PreferencesPanel preferences={preferences} onChange={onPreferencesChange} />
               <label htmlFor="assistant-prompt">اكتب طلبك بالتفصيل</label>
-              <textarea id="assistant-prompt" value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder={tool.placeholder} maxLength={12000} rows={7} />
-              <div className="starter-row">{tool.starters.map((starter) => <button type="button" key={starter} onClick={() => setPrompt(starter)}>{starter}</button>)}</div>
+              <textarea id="assistant-prompt" value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder={turns.length ? (en ? 'Continue the conversation…' : 'كمّل المحادثة…') : tool.placeholder} maxLength={12000} rows={7} />
+              {!turns.length && <div className="starter-row">{tool.starters.map((starter) => <button type="button" key={starter} onClick={() => setPrompt(starter)}>{starter}</button>)}</div>}
               <div className="composer-footer">
-                <span>{prompt.length.toLocaleString('ar-EG')} / ١٢٬٠٠٠</span>
+                <span>{prompt.length.toLocaleString('ar-EG')} / ١٢٬٠٠٠{turns.length ? ` · ${en ? 'context' : 'سياق'} ${turns.length}/6` : ''}</span>
                 <div>
-                  {(prompt || answer) && <button className="reset-button" type="button" onClick={() => { setPrompt(''); setAnswer(''); }}><RotateCcw size={16} /> جديد</button>}
-                  <button className="button button-primary submit-button" type="submit" disabled={loading}>
-                    {loading ? <><LoaderCircle className="spin" size={18} /> جاري التجهيز</> : <><Send size={18} /> أنشئ النتيجة</>}
-                  </button>
+                  {(prompt || answer || turns.length > 0) && <button className="reset-button" type="button" onClick={newConversation}><RotateCcw size={16} /> {en ? 'New chat' : 'محادثة جديدة'}</button>}
+                  {loading ? (
+                    <button className="button button-secondary submit-button" type="button" onClick={stopGeneration}><Square size={16} /> {en ? 'Stop' : 'إيقاف'}</button>
+                  ) : (
+                    <button className="button button-primary submit-button" type="submit">
+                      <Send size={18} /> {turns.length ? (en ? 'Send' : 'إرسال') : 'أنشئ النتيجة'}
+                    </button>
+                  )}
+                  {loading && <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><LoaderCircle className="spin" size={16} /> {en ? 'Working…' : 'جاري التجهيز…'}</span>}
                 </div>
               </div>
             </form>
           </section>
-          <ResultCard answer={answer} source={source} onCopy={copyAnswer} onDownload={downloadAnswer} onShare={shareAnswer} onRate={rateAnswer} feedbackEnabled={hasPlatformBackend} />
+          <ResultCard answer={answer} source={source} onCopy={copyAnswer} onDownload={downloadAnswer} onShare={shareAnswer} onRate={rateAnswer} onRegenerate={regenerateAnswer} loading={loading} feedbackEnabled={hasPlatformBackend} />
         </div>
         <HistoryPanel items={history} onOpen={openHistory} onClear={onClearHistory} />
       </div>
