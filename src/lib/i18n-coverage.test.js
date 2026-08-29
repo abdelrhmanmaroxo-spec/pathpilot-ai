@@ -115,6 +115,20 @@ function extractJsxArabicText(source) {
   return [...literals].sort();
 }
 
+function stripExplicitBilingualTernaries(line) {
+  return line.replace(
+    /\?\s*(['"])(.*?)\1\s*:\s*(['"])(.*?)\3/g,
+    (match, _leftQuote, left, _rightQuote, right) => {
+      const leftArabic = /[\u0600-\u06FF]/.test(left);
+      const rightArabic = /[\u0600-\u06FF]/.test(right);
+      const leftLatin = /[A-Za-z]/.test(left);
+      const rightLatin = /[A-Za-z]/.test(right);
+      const isBilingualPair = (leftArabic && rightLatin) || (rightArabic && leftLatin);
+      return isBilingualPair ? '? __BILINGUAL__ : __BILINGUAL__' : match;
+    },
+  );
+}
+
 function extractCatalogBackedArabicLiterals(source) {
   const literals = new Set();
 
@@ -122,16 +136,33 @@ function extractCatalogBackedArabicLiterals(source) {
     const trimmed = line.trim();
     if (!trimmed || trimmed.startsWith('//')) continue;
 
-    // Newer components can render explicit bilingual ternaries such as
-    // `en ? 'English' : 'العربية'`. Those do not depend on the runtime catalog.
-    if (line.includes('?') && line.includes(':')) continue;
+    // Newer components may render an explicit bilingual ternary such as
+    // `en ? 'English' : 'العربية'`. Strip only that exact pair rather than
+    // skipping the entire line, so unrelated Arabic-only UI copy on the same
+    // line is still required to exist in the runtime translation catalog.
+    const catalogBackedLine = stripExplicitBilingualTernaries(line);
 
-    for (const literal of extractQuotedArabicLiterals(line)) literals.add(literal);
-    for (const literal of extractJsxArabicText(line)) literals.add(literal);
+    for (const literal of extractQuotedArabicLiterals(catalogBackedLine)) literals.add(literal);
+    for (const literal of extractJsxArabicText(catalogBackedLine)) literals.add(literal);
   }
 
   return [...literals].sort();
 }
+
+test('bilingual ternary filtering ignores only the paired translation', () => {
+  assert.deepEqual(
+    extractCatalogBackedArabicLiterals("const label = en ? 'Settings' : 'الإعدادات';"),
+    [],
+  );
+  assert.deepEqual(
+    extractCatalogBackedArabicLiterals("const label = en ? 'Settings' : 'الإعدادات'; const title = 'عنوان ناقص';"),
+    ['عنوان ناقص'],
+  );
+  assert.deepEqual(
+    extractCatalogBackedArabicLiterals("const label = ready ? 'جاهز' : 'غير جاهز';"),
+    ['جاهز', 'غير جاهز'],
+  );
+});
 
 test('i18n catalogs keep every Arabic entry complete and reverse-safe', async () => {
   const catalog = await loadTranslationCatalog();
