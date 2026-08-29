@@ -1,4 +1,4 @@
-import { createApiClient } from './api-client.js';
+import { createApiClient, PathPilotApiError } from './api-client.js';
 import { answerCache } from './answer-cache.js';
 import { generateAssistantResponse } from './assistant.js';
 import { routeAssistantRequest } from './smart-router.js';
@@ -9,6 +9,28 @@ const directAvailable = Boolean(platformBase);
 const directClient = directAvailable
   ? createApiClient({ baseUrl: platformBase, timeoutMs: 65_000, sendClientRequestId: true })
   : null;
+
+let systemStatusCache = { checkedAt: 0, value: null };
+
+async function assertSystemAvailable(signal) {
+  if (!directClient) return;
+  const now = Date.now();
+  if (!systemStatusCache.value || now - systemStatusCache.checkedAt > 5_000) {
+    try {
+      const value = await directClient.request('/api/system/status', { signal, timeoutMs: 8_000 });
+      systemStatusCache = { checkedAt: now, value };
+    } catch (error) {
+      if (error?.code === 'REQUEST_ABORTED') throw error;
+      return;
+    }
+  }
+  if (systemStatusCache.value?.paused) {
+    throw new PathPilotApiError(
+      systemStatusCache.value.reason || 'PathPilot is temporarily paused by administration.',
+      { code: 'SYSTEM_PAUSED', status: 503, details: systemStatusCache.value },
+    );
+  }
+}
 
 function normalizedResult(payload, route) {
   if (typeof payload?.answer !== 'string' || !payload.answer.trim()) throw new Error('Invalid AI response');
@@ -24,6 +46,8 @@ function normalizedResult(payload, route) {
 }
 
 export async function generateRoutedAssistantResponse(args) {
+  await assertSystemAvailable(args.signal);
+
   const decision = routeAssistantRequest({
     prompt: args.prompt,
     tool: args.tool,
@@ -62,14 +86,19 @@ export async function generateRoutedAssistantResponse(args) {
       });
       return result;
     } catch (error) {
-      if (args.signal?.aborted || error?.code === 'REQUEST_ABORTED') throw error;
+      if (args.signal?.aborted || error?.code === 'REQUEST_ABORTED' || error?.code === 'SYSTEM_PAUSED' || error?.code === 'UNSAFE_INPUT_BLOCKED') throw error;
       console.warn('PathPilot direct route failed; falling back to grounded route.', error);
     }
   }
 
-  const result = await generateAssistantResponse(args);
-  return {
-    ...result,
-    route: decision.route === 'research' ? 'research' : result.route || 'fallback',
-  };
+  try {
+    const result = await generateAssistantResponse(args);
+    return {
+      ...result,
+      route: decision.route === 'research' ? 'research' : result.route || 'fallback',
+    };
+  } catch (error) {
+    if (error?.code === 'SYSTEM_PAUSED' || error?.code === 'UNSAFE_INPUT_BLOCKED') throw error;
+    throw error;
+  }
 }
