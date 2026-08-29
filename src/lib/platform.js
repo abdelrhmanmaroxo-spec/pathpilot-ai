@@ -56,6 +56,16 @@ export async function loginAccount(details) {
   return payload.user;
 }
 
+export async function loginWithGoogleCredential(credential) {
+  const payload = await request('/api/auth/google', { method: 'POST', body: JSON.stringify({ credential }) });
+  setSessionToken(payload.token);
+  return payload.user;
+}
+
+export async function getPlatformStatus() {
+  return request('/api/status');
+}
+
 export async function logoutAccount() {
   try { await request('/api/auth/logout', { method: 'POST' }); } finally { setSessionToken(''); }
 }
@@ -89,6 +99,11 @@ export function reportClientError(error, context = '') {
     method: 'POST',
     body: JSON.stringify({ message: error?.message || String(error), context }),
   }).catch(() => undefined);
+}
+
+export async function updateUserRole(userId, role) {
+  const payload = await request('/api/admin/users/role', { method: 'POST', body: JSON.stringify({ userId, role }) });
+  return payload.user;
 }
 
 export async function loadAdminDashboard() {
