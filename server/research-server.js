@@ -3,30 +3,32 @@ import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { createPathPilotServer } from './index.js';
 import { createAdminExtensions } from './admin-extensions.js';
+import { buildProviderRequest, extractProviderText } from './lib/ai-provider.js';
 import { initializeDatabase } from './lib/database.js';
+import { applySecurityHeaders, createSecurityGuard } from './lib/security.js';
 
 const MAX_SOURCES = 18;
 const MIN_TARGET_SOURCES = 16;
 
 const TOOL_LABELS = {
-  explain: 'شرح مفهوم بدقة وبأمثلة',
-  summarize: 'تلخيص وتحقيق أهم النقاط',
-  plan: 'بناء خطة عملية واقعية',
-  quiz: 'إنشاء أسئلة مراجعة دقيقة',
-  flashcards: 'إنشاء بطاقات مراجعة صحيحة',
-  research: 'بحث وتحليل متعمق',
-  email: 'كتابة بريد مهني مع معلومات صحيحة',
-  tasks: 'تحويل الطلب إلى مهام عملية',
-  meeting: 'تحليل وترتيب معلومات الاجتماع',
-  cv: 'صياغة خبرة للسيرة دون ادعاءات غير موثقة',
-  cover: 'صياغة خطاب تقديم مخصص',
-  qa: 'تحليل مشكلة وكتابة تقرير جودة',
-  ask: 'الإجابة الدقيقة على السؤال',
-  rewrite: 'تحسين النص مع الحفاظ على الحقائق',
-  brainstorm: 'توليد أفكار مدعومة باتجاهات وأمثلة حقيقية',
-  decide: 'مقارنة الخيارات بأدلة حديثة',
-  organize: 'تنظيم خطة واقعية بناءً على الطلب',
-  content: 'إنشاء محتوى عملي ومخصص للمنصة والجمهور',
+  explain: 'شرح مفهوم بدقة من الأساسيات إلى التطبيق مع أمثلة وتصحيح المفاهيم الخاطئة',
+  summarize: 'تلخيص المحتوى مع الحفاظ على الحقائق والأرقام والقرارات والقيود المهمة',
+  plan: 'بناء خطة عملية واقعية مع مراحل واعتماديات ومخاطر ونقاط مراجعة',
+  quiz: 'إنشاء اختبار يقيس الفهم والتطبيق وليس الحفظ فقط',
+  flashcards: 'إنشاء بطاقات مراجعة دقيقة ومختصرة وعالية القيمة',
+  research: 'بحث وتحليل متعمق مع تقييم جودة المصادر وحل التعارضات',
+  email: 'كتابة بريد مهني دقيق ومخصص مع خطوة تالية واضحة',
+  tasks: 'تحويل الهدف إلى مهام قابلة للتنفيذ بترتيب واعتماديات ومخرجات',
+  meeting: 'تحليل الاجتماع واستخراج القرارات والمسؤوليات والمخاطر والأسئلة المفتوحة',
+  cv: 'صياغة خبرة للسيرة بشكل ATS-friendly دون ادعاءات أو أرقام مختلقة',
+  cover: 'صياغة خطاب تقديم يربط الخبرة الحقيقية بمتطلبات الوظيفة',
+  qa: 'تحليل المشكلة كمهندس QA مع خطوات إعادة الإنتاج والأثر ونطاق الخطأ وخطة إعادة الاختبار',
+  ask: 'الإجابة الدقيقة على السؤال مع حل المشكلة الحقيقية وراءه',
+  rewrite: 'تحسين النص مع الحفاظ على المعنى والحقائق وعدم إضافة ادعاءات',
+  brainstorm: 'توليد أفكار مختلفة فعليًا وترتيبها حسب الجدوى والتأثير والمخاطر',
+  decide: 'مقارنة الخيارات بمعايير صريحة وأدلة حديثة وتوضيح المفاضلات',
+  organize: 'تنظيم الوقت والمهام وفق القيود والأولويات والاعتماديات',
+  content: 'إنشاء محتوى عملي ومخصص للمنصة والجمهور ومدعوم بالمعلومات الصحيحة',
 };
 
 function normalizeOriginList(value) {
@@ -46,13 +48,14 @@ function corsHeaders(origin, allowedOrigins) {
   };
 }
 
-function sendJson(response, status, body, origin, allowedOrigins) {
+function sendJson(response, status, body, origin, allowedOrigins, extraHeaders = {}) {
   response.writeHead(status, {
     'Content-Type': 'application/json; charset=utf-8',
     'Cache-Control': 'no-store',
     'X-Content-Type-Options': 'nosniff',
     'Referrer-Policy': 'no-referrer',
     ...corsHeaders(origin, allowedOrigins),
+    ...extraHeaders,
   });
   response.end(JSON.stringify(body));
 }
@@ -61,7 +64,7 @@ async function readJson(request) {
   let body = '';
   for await (const chunk of request) {
     body += chunk;
-    if (body.length > 100_000) throw new Error('REQUEST_TOO_LARGE');
+    if (body.length > 128_000) throw new Error('REQUEST_TOO_LARGE');
   }
   return JSON.parse(body || '{}');
 }
@@ -80,12 +83,15 @@ function uniqueSources(results, limit = MAX_SOURCES) {
   for (const result of Array.isArray(results) ? results : []) {
     const domain = hostname(result?.url);
     if (!domain || seen.has(domain)) continue;
+    const title = String(result?.title || domain).trim().slice(0, 220);
+    const snippet = String(result?.content || '').replace(/\s+/g, ' ').trim().slice(0, 900);
+    if (!title && !snippet) continue;
     seen.add(domain);
     sources.push({
-      title: String(result?.title || domain).trim().slice(0, 220),
+      title,
       url: String(result?.url || '').trim(),
       domain,
-      snippet: String(result?.content || '').replace(/\s+/g, ' ').trim().slice(0, 700),
+      snippet,
       score: Number.isFinite(Number(result?.score)) ? Number(result.score) : null,
     });
     if (sources.length >= limit) break;
@@ -98,15 +104,15 @@ function mergeUniqueSources(groups, limit = MAX_SOURCES) {
 }
 
 function buildResearchQuery({ prompt, tool, mode, round }) {
-  const cleanPrompt = String(prompt || '').replace(/\s+/g, ' ').trim().slice(0, 900);
-  const goal = TOOL_LABELS[tool] || 'الإجابة على الطلب بدقة';
+  const cleanPrompt = String(prompt || '').replace(/\s+/g, ' ').trim().slice(0, 1100);
+  const goal = TOOL_LABELS[tool] || TOOL_LABELS.ask;
   const roundInstruction = [
-    'اعتمد على مصادر موثوقة وحديثة ومتنوعة، ووازن بين المصادر الرسمية والمستقلة.',
-    'ابحث عن مصادر إضافية مستقلة، بيانات رسمية، دراسات، أدلة عملية، وآراء مخالفة إن وجدت.',
-    'راجع الادعاءات الأساسية من زوايا مختلفة وابحث عن مصادر لم تظهر في الجولة الأساسية.',
+    'ابدأ بالمصادر الرسمية أو الأولية كلما أمكن، ثم أضف مصادر مستقلة موثوقة للتحقق.',
+    'ابحث عن أدلة إضافية مستقلة ودراسات أو توثيق تقني أو بيانات رسمية، وتعمّد البحث عن معلومات قد تناقض النتيجة الأولى.',
+    'نفّذ جولة تحقق نهائية من زوايا مختلفة وركز على مصادر لم تظهر سابقًا وعلى التفاصيل التي قد تكون قديمة أو محل خلاف.',
   ][Math.min(round, 2)];
 
-  return `المهمة: ${goal}. مساحة PathPilot: ${mode || 'general'}. طلب المستخدم الأصلي: ${cleanPrompt}. ${roundInstruction} أجب على الطلب نفسه مباشرة وبشكل عملي، ولا تكتفِ بوصف عملية البحث. إذا كان الطلب كتابة أو تخطيطًا، استخدم البحث لتحسين الناتج ثم قدّم الناتج المطلوب نفسه.`;
+  return `المهمة: ${goal}. مساحة PathPilot: ${mode || 'general'}. طلب المستخدم الأصلي: ${cleanPrompt}. ${roundInstruction} ابحث عن أدلة مرتبطة مباشرة بالطلب، ولا تهدر النتائج على صفحات مكررة أو ضعيفة الصلة.`;
 }
 
 async function tavilySearch(apiKey, query) {
@@ -123,7 +129,7 @@ async function tavilySearch(apiKey, query) {
       include_raw_content: false,
       include_images: false,
     }),
-    signal: AbortSignal.timeout(18_000),
+    signal: AbortSignal.timeout(15_000),
   });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(`SEARCH_PROVIDER_${response.status}`);
@@ -133,30 +139,100 @@ async function tavilySearch(apiKey, query) {
 function sourceAppendix(sources) {
   if (!sources.length) return '';
   const lines = sources.map((source, index) => `[${index + 1}] ${source.title}\n${source.url}`);
-  return `\n\nالمصادر التي تم فحصها (${sources.length} موقعًا مختلفًا)\n${lines.join('\n\n')}`;
+  return `\n\nالمصادر (${sources.length} مواقع مختلفة)\n${lines.join('\n\n')}`;
 }
 
-function combineAnswers(rounds) {
+function fallbackSearchAnswer(rounds) {
   const answers = rounds
     .map((round) => String(round?.answer || '').trim())
     .filter(Boolean);
-  if (!answers.length) return 'تم جمع المصادر، لكن مزود البحث لم يُرجع ملخصًا نصيًا.';
-  if (answers.length === 1) return answers[0];
-  return `${answers[0]}\n\nمراجعة تحقق إضافية\n${answers.slice(1).join('\n\n')}`;
+  if (!answers.length) return 'تم جمع المصادر، لكن مزود البحث لم يُرجع ملخصًا نصيًا قابلًا للاستخدام.';
+  return answers[0];
+}
+
+function evidencePrompt({ prompt, mode, tool, sources }) {
+  const evidence = sources.map((source, index) => [
+    `[${index + 1}] ${source.title}`,
+    `Domain: ${source.domain}`,
+    `URL: ${source.url}`,
+    `Evidence: ${source.snippet || 'No snippet available.'}`,
+  ].join('\n')).join('\n\n');
+
+  return [
+    'أنت في مرحلة تركيب الإجابة النهائية بعد بحث ويب متعدد المصادر.',
+    `طلب المستخدم الأصلي:\n${prompt}`,
+    `المساحة: ${mode}. الأداة: ${tool}. الهدف: ${TOOL_LABELS[tool] || TOOL_LABELS.ask}.`,
+    'قواعد التركيب:',
+    '1) أجب على الطلب نفسه مباشرة وبأفضل صيغة عملية.',
+    '2) استخرج الادعاءات المهمة من الأدلة، قارن بينها، وحل التعارضات بترجيح المصادر الأولية والرسمية والأحدث والأكثر مباشرة.',
+    '3) لا تستخدم معلومة حديثة غير مدعومة بالأدلة أدناه. إذا كانت الأدلة غير كافية فاذكر ذلك بوضوح.',
+    '4) ضع [رقم] بعد الادعاءات المهمة للإشارة للمصدر المناسب، ولا تستخدم مرجعًا لا يدعم الجملة.',
+    '5) إذا كان الطلب كتابة أو CV أو Email أو خطة، قدّم الناتج المطلوب نفسه، واستخدم البحث لتحسين الدقة بدل تحويل الإجابة كلها إلى تقرير بحثي.',
+    '6) راجع الإجابة قبل الإخراج بحثًا عن التناقضات، الادعاءات غير المدعومة، الأرقام غير المؤكدة، والتعميمات الزائدة.',
+    '7) لا تعرض سلسلة التفكير الداخلية. اعرض فقط النتيجة، أهم أسبابها، والقيود أو نقاط عدم اليقين المفيدة.',
+    '',
+    'الأدلة المتاحة:',
+    evidence,
+  ].join('\n');
+}
+
+function aiConfiguration(env) {
+  const apiKey = String(env.AI_API_KEY || '').trim();
+  const model = String(env.AI_MODEL || '').trim();
+  const apiMode = env.AI_API_MODE === 'responses' ? 'responses' : 'chat-completions';
+  const baseUrl = String(env.AI_BASE_URL || 'https://api.openai.com/v1').replace(/\/$/, '');
+  const endpoint = String(env.AI_ENDPOINT || `${baseUrl}/${apiMode === 'responses' ? 'responses' : 'chat/completions'}`);
+  const reasoningEffort = String(env.AI_REASONING_EFFORT || '').trim();
+  return { apiKey, model, apiMode, endpoint, reasoningEffort, configured: Boolean(apiKey && model) };
+}
+
+async function synthesizeAnswer({ env, prompt, mode, tool, preferences, sources }) {
+  const config = aiConfiguration(env);
+  if (!config.configured || !sources.length) return null;
+  const providerRequest = buildProviderRequest({
+    apiMode: config.apiMode,
+    model: config.model,
+    prompt: evidencePrompt({ prompt, mode, tool, sources }),
+    mode,
+    tool,
+    preferences,
+    reasoningEffort: config.reasoningEffort,
+    groundedResearch: true,
+  });
+  const response = await fetch(config.endpoint, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${config.apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(providerRequest),
+    signal: AbortSignal.timeout(45_000),
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(`SYNTHESIS_PROVIDER_${response.status}`);
+  const answer = extractProviderText(payload, config.apiMode);
+  if (!answer) throw new Error('SYNTHESIS_EMPTY_RESPONSE');
+  return { answer, model: config.model };
 }
 
 export function createResearchHandler({ env = process.env, baseApp, database }) {
   const allowedOrigins = normalizeOriginList(env.ALLOWED_ORIGINS);
   const tavilyApiKey = String(env.TAVILY_API_KEY || '').trim();
   const researchAvailable = Boolean(tavilyApiKey);
+  const synthesisAvailable = aiConfiguration(env).configured;
+  const securityGuard = createSecurityGuard();
   const handleAdminExtension = database
     ? createAdminExtensions({ database, env, sendJson, allowedOrigins })
     : null;
 
   return async function researchHandler(request, response) {
+    applySecurityHeaders(request, response);
     const origin = request.headers.origin || '';
     const url = new URL(request.url || '/', 'http://localhost');
     const path = url.pathname;
+
+    const security = securityGuard.check(request);
+    if (!security.allowed) {
+      const headers = security.retryAfterSeconds ? { 'Retry-After': String(security.retryAfterSeconds) } : {};
+      return sendJson(response, security.status, { error: security.error, code: security.code }, origin, allowedOrigins, headers);
+    }
 
     if (handleAdminExtension && (path.startsWith('/api/admin/') || path.startsWith('/api/security/'))) {
       const handled = await handleAdminExtension(request, response, origin, path);
@@ -171,6 +247,7 @@ export function createResearchHandler({ env = process.env, baseApp, database }) 
     if (request.method === 'GET' && path === '/api/research/status') {
       return sendJson(response, 200, {
         researchAvailable,
+        synthesisAvailable,
         provider: researchAvailable ? 'Tavily' : null,
         targetSources: MAX_SOURCES,
         minimumTargetSources: MIN_TARGET_SOURCES,
@@ -181,7 +258,7 @@ export function createResearchHandler({ env = process.env, baseApp, database }) 
     if (request.method === 'POST' && path === '/api/research') {
       if (!researchAvailable) {
         return sendJson(response, 503, {
-          error: 'Web research is not configured yet.',
+          error: 'Web research is not configured yet. Add TAVILY_API_KEY on the server.',
           code: 'RESEARCH_NOT_CONFIGURED',
         }, origin, allowedOrigins);
       }
@@ -191,6 +268,7 @@ export function createResearchHandler({ env = process.env, baseApp, database }) 
         const prompt = String(body.prompt || body.query || '').trim();
         const tool = String(body.tool || 'ask').slice(0, 40);
         const mode = String(body.mode || 'general').slice(0, 30);
+        const preferences = body.preferences && typeof body.preferences === 'object' ? body.preferences : {};
         if (prompt.length < 3 || prompt.length > 12_000) {
           return sendJson(response, 400, { error: 'Research query length is invalid.' }, origin, allowedOrigins);
         }
@@ -200,25 +278,38 @@ export function createResearchHandler({ env = process.env, baseApp, database }) 
         let sources = uniqueSources(primary.results);
 
         if (sources.length < MIN_TARGET_SOURCES) {
-          const supplemental = await Promise.all([
+          const supplemental = await Promise.allSettled([
             tavilySearch(tavilyApiKey, buildResearchQuery({ prompt, tool, mode, round: 1 })),
             tavilySearch(tavilyApiKey, buildResearchQuery({ prompt, tool, mode, round: 2 })),
           ]);
-          rounds = [primary, ...supplemental];
+          const successful = supplemental.filter((item) => item.status === 'fulfilled').map((item) => item.value);
+          rounds = [primary, ...successful];
           sources = mergeUniqueSources(rounds.map((item) => item.results));
         }
 
-        const answer = combineAnswers(rounds);
+        let synthesis = null;
+        try {
+          synthesis = await synthesizeAnswer({ env, prompt, mode, tool, preferences, sources });
+        } catch (error) {
+          console.warn('PathPilot research synthesis fallback:', error?.message || error);
+        }
+
+        const baseAnswer = synthesis?.answer || fallbackSearchAnswer(rounds);
         const verificationNote = sources.length >= MIN_TARGET_SOURCES
           ? `تمت مراجعة ${sources.length} موقعًا/دومينًا مختلفًا قبل تكوين النتيجة.`
-          : `تمت مراجعة ${sources.length} مواقع مختلفة متاحة لهذا الطلب. لم تتوفر 16 مصادر مستقلة مناسبة، لذلك لا يدّعي PathPilot أنه حقق العدد المستهدف.`;
+          : `تمت مراجعة ${sources.length} مواقع مختلفة مناسبة ومتاحة لهذا الطلب. لم تتوفر ${MIN_TARGET_SOURCES} مصادر مستقلة مناسبة، لذلك لا يدّعي PathPilot أنه حقق العدد المستهدف.`;
+        const intelligenceNote = synthesis
+          ? `تم تحليل الأدلة وتركيب الإجابة بواسطة نموذج AI (${synthesis.model}) بعد البحث.`
+          : 'تم استخدام ملخص البحث مباشرة لأن طبقة AI synthesis غير متاحة حاليًا.';
 
         return sendJson(response, 200, {
-          answer: `🌐 نتيجة مدعومة ببحث ويب\n${verificationNote}\n\n${answer}${sourceAppendix(sources)}`,
+          answer: `🌐 نتيجة مدعومة ببحث ويب\n${verificationNote}\n${intelligenceNote}\n\n${baseAnswer}${sourceAppendix(sources)}`,
           sources,
           sourceCount: sources.length,
           targetReached: sources.length >= MIN_TARGET_SOURCES,
           provider: 'Tavily',
+          synthesisProvider: synthesis ? 'AI' : 'Tavily',
+          synthesisModel: synthesis?.model || null,
         }, origin, allowedOrigins);
       } catch (error) {
         return sendJson(response, 502, {
@@ -239,5 +330,9 @@ if (process.argv[1]?.endsWith('server/research-server.js')) {
   const baseApp = createPathPilotServer({ database });
   const handler = createResearchHandler({ baseApp, database });
   const port = Number(process.env.PORT || 8787);
-  createServer(handler).listen(port, () => console.log(`PathPilot research platform listening on port ${port}`));
+  const server = createServer(handler);
+  server.requestTimeout = 90_000;
+  server.headersTimeout = 15_000;
+  server.keepAliveTimeout = 5_000;
+  server.listen(port, '0.0.0.0', () => console.log(`PathPilot research platform listening on port ${port}`));
 }
