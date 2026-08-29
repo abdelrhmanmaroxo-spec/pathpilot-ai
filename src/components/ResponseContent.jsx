@@ -1,4 +1,4 @@
-import { Copy, ExternalLink, FileText, Globe2 } from 'lucide-react';
+import { BadgeCheck, Copy, ExternalLink, FileText, Globe2 } from 'lucide-react';
 
 function language() {
   return document.body?.dataset?.language === 'en' ? 'en' : 'ar';
@@ -113,6 +113,15 @@ function normalizeSources(answer, sources) {
   });
 }
 
+function sourceQuality(source, en) {
+  const domain = String(source.domain || '').toLowerCase();
+  const score = Number(source.quality || 0);
+  const authoritative = /(^|\.)gov\.|(^|\.)edu$|\.edu\.|\.ac\.|docs\.|developer\.|support\.|help\.|microsoft\.com$|google\.com$|apple\.com$|openai\.com$|mozilla\.org$|w3\.org$/.test(domain);
+  if (authoritative || score >= 6) return { key: 'primary', label: en ? 'Strong source' : 'مصدر قوي' };
+  if (score >= 3) return { key: 'good', label: en ? 'Good source' : 'مصدر جيد' };
+  return { key: 'supporting', label: en ? 'Supporting' : 'مصدر داعم' };
+}
+
 export function SourceList({ answer, sources = [] }) {
   const items = normalizeSources(answer, sources);
   if (!items.length) return null;
@@ -124,17 +133,21 @@ export function SourceList({ answer, sources = [] }) {
         <div><strong>{en ? 'Sources' : 'المصادر'}</strong><small>{items.length} {en ? 'selected references' : 'مراجع مختارة'}</small></div>
       </div>
       <div className="source-card-list">
-        {items.map((source, index) => (
-          <a className="source-card" key={`${source.url}-${index}`} href={source.url} target="_blank" rel="noreferrer">
-            <span className="source-number">{index + 1}</span>
-            <span className="source-card-icon"><FileText size={16} /></span>
-            <span className="source-card-copy">
-              <strong>{source.title || source.domain}</strong>
-              <small>{source.domain || source.url}</small>
-            </span>
-            <ExternalLink className="source-external" size={14} />
-          </a>
-        ))}
+        {items.map((source, index) => {
+          const quality = sourceQuality(source, en);
+          return (
+            <a className="source-card" key={`${source.url}-${index}`} href={source.url} target="_blank" rel="noreferrer">
+              <span className="source-number">{index + 1}</span>
+              <span className="source-card-icon"><FileText size={16} /></span>
+              <span className="source-card-copy">
+                <strong>{source.title || source.domain}</strong>
+                <small>{source.domain || source.url}</small>
+                <span className={`source-quality ${quality.key}`}><BadgeCheck size={10} /> {quality.label}</span>
+              </span>
+              <ExternalLink className="source-external" size={14} />
+            </a>
+          );
+        })}
       </div>
     </aside>
   );
