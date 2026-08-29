@@ -62,6 +62,10 @@ const AR_TO_EN = {
   'فتح أول نتيجة': 'Open first result',
   'إغلاق': 'Close',
   'Google Sign-In لسه محتاج GOOGLE_CLIENT_ID في إعدادات السيرفر.': 'Google Sign-In still needs GOOGLE_CLIENT_ID in the server configuration.',
+  'حساب': 'Account',
+  'محفوظ بالفعل، لكن مزود البريد لم يسلّم رسالة التفعيل في المحاولة الحالية.': 'is already saved, but the email provider did not deliver the verification message on this attempt.',
+  '. افتح الرسالة واضغط Verify email، وبعدها ارجع وسجل دخولك.': '. Open the message, select Verify email, then return here and sign in.',
+  'أو': 'or',
 };
 
 const EN_TO_AR = Object.fromEntries(Object.entries(AR_TO_EN).map(([ar, en]) => [en, ar]));
