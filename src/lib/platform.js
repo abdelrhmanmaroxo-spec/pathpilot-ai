@@ -49,6 +49,27 @@ async function request(path, options = {}) {
   return payload;
 }
 
+function loginDeviceDetails() {
+  const navigatorInfo = globalThis.navigator;
+  const screenInfo = globalThis.screen;
+  let timezone = '';
+  try { timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch { timezone = ''; }
+  return {
+    userAgent: navigatorInfo?.userAgent || '',
+    platform: navigatorInfo?.userAgentData?.platform || navigatorInfo?.platform || '',
+    language: navigatorInfo?.language || '',
+    timezone,
+    screen: screenInfo ? `${screenInfo.width}x${screenInfo.height}` : '',
+  };
+}
+
+async function reportLoginDevice() {
+  return request('/api/security/login-device', {
+    method: 'POST',
+    body: JSON.stringify(loginDeviceDetails()),
+  });
+}
+
 export async function registerAccount(details) {
   return request('/api/auth/register', { method: 'POST', body: JSON.stringify(details) });
 }
@@ -64,12 +85,14 @@ export async function requestPasswordReset(email) {
 export async function loginAccount(details) {
   const payload = await request('/api/auth/login', { method: 'POST', body: JSON.stringify(details) });
   setSessionToken(payload.token);
+  await reportLoginDevice().catch(() => undefined);
   return payload.user;
 }
 
 export async function loginWithGoogleCredential(credential) {
   const payload = await request('/api/auth/google', { method: 'POST', body: JSON.stringify({ credential }) });
   setSessionToken(payload.token);
+  await reportLoginDevice().catch(() => undefined);
   return payload.user;
 }
 
