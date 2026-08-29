@@ -7,6 +7,7 @@ import {
   Download,
   GraduationCap,
   History,
+  LoaderCircle,
   RotateCcw,
   Share2,
   SlidersHorizontal,
@@ -57,6 +58,22 @@ export function ToolRail({ mode, selectedTool, onSelect }) {
 
 export function ResultCard({ answer, source, sources = [], processingSeconds, onCopy, onDownload, onShare, onRate, onRegenerate, feedbackEnabled, loading = false }) {
   const en = isEnglish();
+  if (loading && !answer) {
+    return (
+      <section className="processing-card" aria-live="polite" aria-label={en ? 'PathPilot is processing your request' : 'PathPilot يعالج طلبك'}>
+        <div className="processing-card-head">
+          <span className="processing-card-icon"><LoaderCircle className="spin" size={20} /></span>
+          <div><strong>{en ? 'PathPilot is working on it' : 'PathPilot شغال على طلبك'}</strong><small>{en ? 'Routing, checking context, and preparing the best available answer.' : 'بيحدد المسار، يراجع السياق، ويجهز أفضل إجابة متاحة.'}</small></div>
+        </div>
+        <div className="processing-steps" aria-hidden="true">
+          <div className="processing-step active"><i /><span>{en ? 'Understanding the request and constraints' : 'فهم الطلب والقيود'}</span></div>
+          <div className="processing-step"><i /><span>{en ? 'Choosing live AI, research, or local fallback' : 'اختيار AI حي أو بحث أو fallback محلي'}</span></div>
+          <div className="processing-step"><i /><span>{en ? 'Preparing and checking the final response' : 'تجهيز ومراجعة النتيجة النهائية'}</span></div>
+        </div>
+        <div className="processing-lines" aria-hidden="true"><span /><span /><span /></div>
+      </section>
+    );
+  }
   if (!answer) {
     return (
       <div className="empty-result">
