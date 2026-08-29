@@ -2,11 +2,12 @@ import { useEffect, useState } from 'react';
 import { BadgeCheck } from 'lucide-react';
 import AdminDashboard from './AdminDashboard.jsx';
 import AuthDialog from './AuthDialog.jsx';
-import ChatWorkspace from './ChatWorkspace.jsx';
+import ChatWorkspace, { ChatDevelopmentNotice } from './ChatWorkspace.jsx';
 import CommandPalette from './components/CommandPalette.jsx';
 import Landing from './components/Landing.jsx';
 import { Footer, Header, InstallDialog } from './components/AppChrome.jsx';
 import Workspace from './Workspace.jsx';
+import { canAccessExperimentalChat } from './lib/chat-access.js';
 import { canAccessAdminSearch, filterSearchHistory } from './lib/search-access.js';
 import {
   clearHistory,
@@ -131,6 +132,7 @@ export default function App() {
   };
 
   const canSeeAdminSearch = canAccessAdminSearch(user);
+  const canUseExperimentalChat = canAccessExperimentalChat(user);
   const searchHistory = filterSearchHistory(historyItems, user);
   const showGlobalSearch = mode !== 'admin' || canSeeAdminSearch;
 
@@ -148,7 +150,9 @@ export default function App() {
       ) : mode === 'admin' ? (
         <AdminDashboard user={user} onBack={() => { window.location.hash = ''; }} />
       ) : mode === 'chat' ? (
-        <ChatWorkspace preferences={preferences} notify={setToast} />
+        canUseExperimentalChat
+          ? <ChatWorkspace preferences={preferences} notify={setToast} />
+          : <ChatDevelopmentNotice />
       ) : (
         <Workspace
           mode={mode}
