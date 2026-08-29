@@ -93,3 +93,67 @@ test('central API client converts aborts to stable error codes', async () => {
     (error) => error instanceof PathPilotApiError && error.code === 'API_TIMEOUT',
   );
 });
+
+test('central API client streams SSE events across arbitrary network chunks', async () => {
+  const encoder = new TextEncoder();
+  const client = createApiClient({
+    baseUrl: 'https://example.test',
+    sendClientRequestId: true,
+    fetchImpl: async (url, options) => {
+      assert.equal(url, 'https://example.test/api/assistant/stream');
+      assert.equal(options.headers.get('Accept'), 'text/event-stream');
+      assert.equal(options.headers.get('X-Request-ID'), 'stream-client-1');
+      const payload = [
+        'event: meta\ndata: {"source":"live"}\n\n',
+        'event: delta\ndata: {"text":"أهلا "}\n\n',
+        'event: delta\ndata: {"text":"بيك"}\n\n',
+        'event: done\ndata: {"route":"direct-ai-stream"}\n\n',
+      ].join('');
+      const body = new ReadableStream({
+        start(controller) {
+          controller.enqueue(encoder.encode(payload.slice(0, 31)));
+          controller.enqueue(encoder.encode(payload.slice(31, 79)));
+          controller.enqueue(encoder.encode(payload.slice(79)));
+          controller.close();
+        },
+      });
+      return new Response(body, {
+        status: 200,
+        headers: { 'Content-Type': 'text/event-stream', 'X-Request-ID': 'stream-server-1' },
+      });
+    },
+  });
+
+  const events = [];
+  for await (const event of client.streamEvents('/api/assistant/stream', {
+    method: 'POST',
+    requestId: 'stream-client-1',
+    json: { prompt: 'مرحبا' },
+  })) {
+    events.push(event);
+  }
+
+  assert.deepEqual(events.map((event) => event.event), ['meta', 'delta', 'delta', 'done']);
+  assert.equal(events[1].data.text, 'أهلا ');
+  assert.equal(events[2].data.text, 'بيك');
+  assert.ok(events.every((event) => event.requestId === 'stream-server-1'));
+});
+
+test('central API streaming client normalizes pre-stream HTTP errors', async () => {
+  const client = createApiClient({
+    baseUrl: 'https://example.test',
+    fetchImpl: async () => new Response(JSON.stringify({ error: 'Streaming unavailable', code: 'AI_NOT_CONFIGURED' }), {
+      status: 503,
+      headers: { 'Content-Type': 'application/json' },
+    }),
+  });
+
+  await assert.rejects(
+    async () => {
+      for await (const _event of client.streamEvents('/api/assistant/stream')) {
+        // Consume until the request fails.
+      }
+    },
+    (error) => error instanceof PathPilotApiError && error.code === 'AI_NOT_CONFIGURED' && error.status === 503,
+  );
+});
