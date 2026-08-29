@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
 import {
   BrainCircuit,
+  ChevronDown,
   Globe2,
   LoaderCircle,
   LockKeyhole,
@@ -8,11 +9,16 @@ import {
   Plus,
   Search,
   Send,
+  Settings2,
   Square,
   Trash2,
+  WandSparkles,
 } from 'lucide-react';
 import ConversationThread from './components/ConversationThread.jsx';
+import VoiceControls from './components/VoiceControls.jsx';
 import { generateRoutedAssistantResponse } from './lib/assistant-router.js';
+import { CHAT_AGENT_OPTION_GROUPS } from './lib/chat-agent-orchestrator.js';
+import { loadChatAgentSettings, toggleChatAgentGroup } from './lib/chat-agent-settings.js';
 import {
   appendChatTurn,
   createChatSession,
@@ -52,8 +58,13 @@ export default function ChatWorkspace({ preferences, notify }) {
   const [sessions, setSessions] = useState(initialChatState);
   const [activeId, setActiveId] = useState(() => initialChatState()[0]?.id || '');
   const [prompt, setPrompt] = useState('');
-  const [searchEnabled, setSearchEnabled] = useState(false);
-  const [deepThinkEnabled, setDeepThinkEnabled] = useState(false);
+  const [forceSearch, setForceSearch] = useState(false);
+  const [forceDeepThink, setForceDeepThink] = useState(false);
+  const [toolPanelOpen, setToolPanelOpen] = useState(false);
+  const [agentSettings, setAgentSettings] = useState(loadChatAgentSettings);
+  const [agentTools, setAgentTools] = useState([]);
+  const [agentPlan, setAgentPlan] = useState(null);
+  const [voiceInputUsed, setVoiceInputUsed] = useState(false);
   const [loading, setLoading] = useState(false);
   const [sources, setSources] = useState([]);
   const abortRef = useRef(null);
@@ -64,6 +75,9 @@ export default function ChatWorkspace({ preferences, notify }) {
     () => sessions.find((session) => session.id === activeId) || sessions[0] || null,
     [activeId, sessions],
   );
+  const lastAnswer = activeSession?.turns?.at(-1)?.answer || '';
+  const searchDisabled = agentSettings.disabledGroups.includes('search');
+  const deepDisabled = agentSettings.disabledGroups.includes('deep');
 
   const selectSession = (sessionId) => {
     abortRef.current?.abort();
@@ -71,6 +85,8 @@ export default function ChatWorkspace({ preferences, notify }) {
     setActiveId(sessionId);
     setPrompt('');
     setSources([]);
+    setAgentTools([]);
+    setAgentPlan(null);
     setLoading(false);
   };
 
@@ -81,6 +97,8 @@ export default function ChatWorkspace({ preferences, notify }) {
     setActiveId(session.id);
     setPrompt('');
     setSources([]);
+    setAgentTools([]);
+    setAgentPlan(null);
     setLoading(false);
   };
 
@@ -97,6 +115,13 @@ export default function ChatWorkspace({ preferences, notify }) {
     setActiveId(replacement.id);
   };
 
+  const toggleAgentGroup = (groupId) => {
+    const next = toggleChatAgentGroup(groupId, agentSettings);
+    setAgentSettings(next);
+    if (groupId === 'search' && next.disabledGroups.includes('search')) setForceSearch(false);
+    if (groupId === 'deep' && next.disabledGroups.includes('deep')) setForceDeepThink(false);
+  };
+
   const runPrompt = async () => {
     const text = String(prompt || '').trim();
     if (text.length < 2 || !activeSession) return;
@@ -108,6 +133,8 @@ export default function ChatWorkspace({ preferences, notify }) {
     runTokenRef.current = runToken;
     setLoading(true);
     setSources([]);
+    setAgentTools([]);
+    setAgentPlan(null);
 
     const contextualPrompt = buildConversationPrompt({
       prompt: text,
@@ -123,8 +150,11 @@ export default function ChatWorkspace({ preferences, notify }) {
         prompt: contextualPrompt,
         preferences,
         routeOptions: {
-          forceResearch: searchEnabled,
-          deepThink: deepThinkEnabled,
+          forceResearch: forceSearch && !searchDisabled,
+          deepThink: forceDeepThink && !deepDisabled,
+          disabledToolIds: agentSettings.disabledToolIds,
+          preferLocalModel: true,
+          voiceInput: voiceInputUsed,
         },
         signal: controller.signal,
       });
@@ -140,7 +170,10 @@ export default function ChatWorkspace({ preferences, notify }) {
       setSessions(next);
       setActiveId(activeSession.id);
       setPrompt('');
+      setVoiceInputUsed(false);
       setSources(Array.isArray(result.sources) ? result.sources : []);
+      setAgentTools(Array.isArray(result.agentTools) ? result.agentTools : []);
+      setAgentPlan(result.agentPlan || null);
     } catch (error) {
       if (controller.signal.aborted || runToken !== runTokenRef.current) return;
       notify(error?.message || (en ? 'Chat request failed.' : 'تعذر إكمال طلب الشات.'));
@@ -177,7 +210,7 @@ export default function ChatWorkspace({ preferences, notify }) {
             ))}
           </div>
           <p className="chat-memory-note">
-            {en ? 'Chat memory is saved on this device.' : 'ذاكرة الشات محفوظة على هذا الجهاز.'}
+            {en ? 'Chat memory is saved on this device and relevant older turns can be recalled automatically.' : 'ذاكرة الشات محفوظة على الجهاز، وPathPilot يقدر يرجع للكلام القديم المرتبط تلقائيًا.'}
           </p>
         </aside>
 
@@ -185,10 +218,10 @@ export default function ChatWorkspace({ preferences, notify }) {
           <header className="chat-heading">
             <div>
               <span>PATHPILOT CHAT</span>
-              <h1>{en ? 'Chat with context that remembers.' : 'شات فاهم السياق وبيفتكر.'}</h1>
-              <p>{en ? 'Keep a conversation going, search the web when needed, or switch on deeper analysis.' : 'كمّل نفس المحادثة، فعّل البحث وقت ما تحتاج، أو شغّل التحليل المعمق للأسئلة الصعبة.'}</p>
+              <h1>{en ? 'One conversation. Many expert tools.' : 'محادثة واحدة. أدوات خبرة كتير.'}</h1>
+              <p>{en ? 'PathPilot chooses memory, local intelligence, RAG, search, analysis and verification automatically. Search is a tool, not a dependency.' : 'PathPilot بيختار الذاكرة والمحلي والـRAG والبحث والتحليل والتحقق تلقائيًا. البحث أداة مساعدة، مش شرط عشان يعرف يرد.'}</p>
             </div>
-            <div className="chat-memory-badge"><BrainCircuit size={17} /> {en ? 'Context memory on' : 'ذاكرة السياق مفعّلة'}</div>
+            <div className="chat-memory-badge"><WandSparkles size={17} /> {en ? 'Auto tools on' : 'الأدوات التلقائية مفعّلة'}</div>
           </header>
 
           <div className="chat-thread-panel">
@@ -201,8 +234,21 @@ export default function ChatWorkspace({ preferences, notify }) {
             ) : (
               <div className="chat-empty-state">
                 <MessageSquareText size={32} />
-                <strong>{en ? 'Start a new conversation' : 'ابدأ محادثة جديدة'}</strong>
-                <span>{en ? 'PathPilot will keep the useful context as the chat develops.' : 'PathPilot هيحتفظ بالسياق المفيد مع تطور المحادثة.'}</span>
+                <strong>{en ? 'Just ask normally' : 'اسأل عادي جدًا'}</strong>
+                <span>{en ? 'PathPilot will decide which capabilities are useful and keep the relevant context as the conversation develops.' : 'PathPilot هو اللي هيقرر الأدوات المناسبة ويحافظ على السياق المفيد مع تطور الكلام.'}</span>
+              </div>
+            )}
+
+            {agentPlan && (
+              <div className="chat-agent-status" role="status">
+                <strong><BrainCircuit size={16} /> {en ? 'Auto reasoning' : 'تحليل تلقائي'}</strong>
+                <span>{agentPlan.intent} · {agentPlan.domain} · {agentPlan.toolIds?.length || 0} {en ? 'capabilities selected' : 'أداة مساعدة مختارة'}</span>
+              </div>
+            )}
+
+            {agentTools.length > 0 && (
+              <div className="chat-agent-tools" aria-label={en ? 'Automatically selected capabilities' : 'الأدوات المختارة تلقائيًا'}>
+                {agentTools.map((tool) => <span key={tool.id}>{tool.label}</span>)}
               </div>
             )}
 
@@ -219,28 +265,65 @@ export default function ChatWorkspace({ preferences, notify }) {
           </div>
 
           <section className="chat-composer">
-            <div className="chat-mode-row" aria-label={en ? 'Chat modes' : 'أوضاع الشات'}>
+            <div className="chat-mode-row" aria-label={en ? 'Chat controls' : 'تحكم الشات'}>
               <button
                 type="button"
-                className={searchEnabled ? 'chat-mode active' : 'chat-mode'}
-                aria-pressed={searchEnabled}
-                onClick={() => setSearchEnabled((value) => !value)}
+                className={forceSearch ? 'chat-mode active' : 'chat-mode'}
+                aria-pressed={forceSearch}
+                disabled={searchDisabled}
+                onClick={() => setForceSearch((value) => !value)}
               >
-                <Search size={16} /> {en ? 'Search' : 'بحث'}
+                <Search size={16} /> {en ? 'Force Search' : 'اجبر البحث'}
               </button>
               <button
                 type="button"
-                className={deepThinkEnabled ? 'chat-mode active' : 'chat-mode'}
-                aria-pressed={deepThinkEnabled}
-                onClick={() => setDeepThinkEnabled((value) => !value)}
+                className={forceDeepThink ? 'chat-mode active' : 'chat-mode'}
+                aria-pressed={forceDeepThink}
+                disabled={deepDisabled}
+                onClick={() => setForceDeepThink((value) => !value)}
               >
-                <BrainCircuit size={16} /> {en ? 'Deep Think' : 'تفكير معمق'}
+                <BrainCircuit size={16} /> {en ? 'Force Deep Think' : 'اجبر التفكير المعمق'}
+              </button>
+              <button
+                type="button"
+                className="chat-mode"
+                aria-expanded={toolPanelOpen}
+                onClick={() => setToolPanelOpen((value) => !value)}
+              >
+                <Settings2 size={16} /> {en ? 'Auto tools' : 'الأدوات التلقائية'} <ChevronDown size={14} />
               </button>
             </div>
 
+            {toolPanelOpen && (
+              <div className="chat-tool-panel">
+                <div>
+                  <strong>{en ? 'Automatic by default' : 'تلقائية افتراضيًا'}</strong>
+                  <p>{en ? 'PathPilot selects what it needs. Turn off only the optional capability groups you do not want used.' : 'PathPilot بيختار اللي محتاجه لوحده. اقفل فقط مجموعة اختيارية لو مش عايزه يستخدمها.'}</p>
+                </div>
+                <div className="chat-tool-grid">
+                  {CHAT_AGENT_OPTION_GROUPS.map((group) => {
+                    const disabled = agentSettings.disabledGroups.includes(group.id);
+                    return (
+                      <button
+                        key={group.id}
+                        type="button"
+                        className={disabled ? 'chat-tool-toggle disabled' : 'chat-tool-toggle'}
+                        aria-pressed={!disabled}
+                        onClick={() => toggleAgentGroup(group.id)}
+                      >
+                        <span>{group.label}</span>
+                        <small>{disabled ? (en ? 'Off' : 'مقفولة') : (en ? 'Auto' : 'تلقائي')}</small>
+                      </button>
+                    );
+                  })}
+                </div>
+                <small className="chat-tool-safety-note">{en ? 'Context, safety, model routing, confidence checks and the final quality gate cannot be disabled.' : 'السياق والأمان وتوجيه الموديل وفحص الثقة وبوابة الجودة النهائية لا يمكن تعطيلهم.'}</small>
+              </div>
+            )}
+
             <textarea
               value={prompt}
-              onChange={(event) => setPrompt(event.target.value)}
+              onChange={(event) => { setPrompt(event.target.value); setVoiceInputUsed(false); }}
               placeholder={en ? 'Message PathPilot…' : 'اكتب رسالتك لـ PathPilot…'}
               maxLength={12000}
               rows={5}
@@ -256,6 +339,13 @@ export default function ChatWorkspace({ preferences, notify }) {
               }}
             />
 
+            <VoiceControls
+              value={prompt}
+              onChange={(value) => { setPrompt(value); setVoiceInputUsed(true); }}
+              answer={lastAnswer}
+              notify={notify}
+            />
+
             <div className="chat-composer-footer">
               <span>{prompt.length.toLocaleString(en ? 'en-US' : 'ar-EG')} / 12,000</span>
               {loading ? (
@@ -267,7 +357,7 @@ export default function ChatWorkspace({ preferences, notify }) {
                   <Send size={17} /> {en ? 'Send' : 'إرسال'}
                 </button>
               )}
-              {loading && <span className="chat-loading"><LoaderCircle className="spin" size={16} /> {deepThinkEnabled ? (en ? 'Analyzing deeply…' : 'بيحلل بعمق…') : (en ? 'Thinking…' : 'بيفكر…')}</span>}
+              {loading && <span className="chat-loading"><LoaderCircle className="spin" size={16} /> {en ? 'Selecting tools and building the answer…' : 'بيختار الأدوات ويبني الإجابة…'}</span>}
             </div>
           </section>
         </section>
