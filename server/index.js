@@ -3,15 +3,18 @@ import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { buildProviderRequest, extractProviderText } from './lib/ai-provider.js';
 import { createSessionToken, hashPassword, hashToken, normalizeEmail, verifyPassword } from './lib/auth.js';
-import { sendVerificationEmail } from './lib/email.js';
+import { sendPasswordResetEmail, sendVerificationEmail } from './lib/email.js';
 import { verifyGoogleCredential } from './lib/google-auth.js';
 import {
   consumeEmailVerification,
+  consumePasswordReset,
   createEmailVerification,
   createFeedback,
+  createPasswordReset,
   createSession,
   createUser,
   deleteSession,
+  deleteSessionsForUser,
   deleteUser,
   findPendingAdminInvite,
   findUserByEmail,
@@ -27,6 +30,7 @@ import {
   markAdminInviteAccepted,
   revokeAdminInvite,
   setUserEmailVerified,
+  setUserPasswordHash,
   setUserRole,
   trackAiRequest,
   trackClientError,
@@ -58,12 +62,18 @@ function requestOrigin(request) {
   return host ? `${proto}://${host}` : '';
 }
 
-function verificationPage({ title, message, appUrl, success }) {
+function messagePage({ title, message, appUrl, success }) {
   const accent = success ? '#22c55e' : '#ef4444';
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title></head><body style="margin:0;background:#080d19;color:#f8fafc;font-family:Arial,sans-serif"><main style="max-width:620px;margin:10vh auto;padding:28px"><div style="background:#111827;border:1px solid #243047;border-radius:20px;padding:34px"><div style="width:46px;height:46px;border-radius:14px;background:${accent};display:grid;place-items:center;font-weight:900;color:white">P</div><h1>${title}</h1><p style="line-height:1.7;color:#cbd5e1">${message}</p><a href="${appUrl}" style="display:inline-block;margin-top:16px;padding:12px 18px;border-radius:10px;background:#6d5dfc;color:white;text-decoration:none;font-weight:700">Open PathPilot</a></div></main></body></html>`;
 }
 
-export function createPathPilotServer({ env = process.env, database = initializeDatabase(), emailSender = sendVerificationEmail } = {}) {
+function passwordResetPage({ token, appUrl }) {
+  const tokenJson = JSON.stringify(token);
+  const appUrlJson = JSON.stringify(appUrl);
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Reset PathPilot password</title></head><body style="margin:0;background:#080d19;color:#f8fafc;font-family:Arial,sans-serif"><main style="max-width:620px;margin:8vh auto;padding:28px"><div style="background:#111827;border:1px solid #243047;border-radius:20px;padding:34px"><div style="width:46px;height:46px;border-radius:14px;background:#6d5dfc;display:grid;place-items:center;font-weight:900;color:white">P</div><h1>Choose a new password</h1><p style="line-height:1.7;color:#cbd5e1">Use at least 8 characters. After the reset, all existing PathPilot sessions will be signed out.</p><form id="reset-form"><label style="display:block;margin:18px 0 8px">New password</label><input id="password" type="password" minlength="8" maxlength="128" required autocomplete="new-password" style="box-sizing:border-box;width:100%;padding:13px;border-radius:10px;border:1px solid #334155;background:#0b1220;color:white"><label style="display:block;margin:18px 0 8px">Confirm password</label><input id="confirm" type="password" minlength="8" maxlength="128" required autocomplete="new-password" style="box-sizing:border-box;width:100%;padding:13px;border-radius:10px;border:1px solid #334155;background:#0b1220;color:white"><div id="status" style="min-height:24px;margin:14px 0;color:#fca5a5"></div><button id="submit" type="submit" style="border:0;border-radius:10px;background:#6d5dfc;color:white;padding:12px 18px;font-weight:700;cursor:pointer">Reset password</button></form></div></main><script>const token=${tokenJson};const appUrl=${appUrlJson};const form=document.getElementById('reset-form');const status=document.getElementById('status');const submit=document.getElementById('submit');form.addEventListener('submit',async(e)=>{e.preventDefault();const password=document.getElementById('password').value;const confirm=document.getElementById('confirm').value;if(password!==confirm){status.textContent='Passwords do not match.';return;}submit.disabled=true;status.textContent='Resetting password...';try{const res=await fetch('/api/auth/reset-password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token,password})});const data=await res.json();if(!res.ok)throw new Error(data.error||'Reset failed.');form.innerHTML='<h2 style="color:#86efac">Password updated</h2><p>Your password was reset and old sessions were signed out.</p><a style="display:inline-block;margin-top:12px;color:#c4b5fd" href="'+appUrl+'">Return to PathPilot</a>';}catch(err){status.textContent=err.message;submit.disabled=false;}});</script></body></html>`;
+}
+
+export function createPathPilotServer({ env = process.env, database = initializeDatabase(), emailSender = sendVerificationEmail, passwordResetSender = sendPasswordResetEmail } = {}) {
   const apiKey = env.AI_API_KEY || '';
   const model = env.AI_MODEL || '';
   const apiMode = env.AI_API_MODE === 'responses' ? 'responses' : 'chat-completions';
@@ -108,6 +118,7 @@ export function createPathPilotServer({ env = process.env, database = initialize
       'Cache-Control': 'no-store',
       'X-Content-Type-Options': 'nosniff',
       'Referrer-Policy': 'no-referrer',
+      'Content-Security-Policy': "default-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'",
     });
     response.end(html);
   }
@@ -196,6 +207,20 @@ export function createPathPilotServer({ env = process.env, database = initialize
     });
   }
 
+  async function issuePasswordReset(request, userRecord) {
+    const token = createSessionToken();
+    createPasswordReset(database, { tokenHash: hashToken(token), userId: userRecord.id, minutes: 30 });
+    const apiOrigin = requestOrigin(request);
+    if (!apiOrigin) throw new Error('PUBLIC_API_ORIGIN');
+    await passwordResetSender({
+      apiKey: resendApiKey,
+      from: emailFrom,
+      to: userRecord.email,
+      name: userRecord.name,
+      resetUrl: `${apiOrigin}/api/auth/reset-password?token=${encodeURIComponent(token)}`,
+    });
+  }
+
   async function handle(request, response) {
     const origin = request.headers.origin || '';
     const requestUrl = new URL(request.url || '/', 'http://localhost');
@@ -207,7 +232,7 @@ export function createPathPilotServer({ env = process.env, database = initialize
       return;
     }
 
-    const rateLimit = path === '/api/assistant' ? 30 : ['/api/auth/register', '/api/auth/resend-verification'].includes(path) ? 5 : 90;
+    const rateLimit = path === '/api/assistant' ? 30 : ['/api/auth/register', '/api/auth/resend-verification', '/api/auth/forgot-password', '/api/auth/reset-password'].includes(path) ? 5 : 90;
     if (!checkRateLimit(request, rateLimit)) return sendJson(response, 429, { error: 'Too many requests. Try again shortly.' }, origin);
 
     if (request.method === 'GET' && ['/health', '/api/status'].includes(path)) {
@@ -221,6 +246,7 @@ export function createPathPilotServer({ env = process.env, database = initialize
         googleAuthAvailable: Boolean(googleClientId),
         googleClientId: googleClientId || null,
         emailVerificationAvailable: emailVerificationConfigured,
+        passwordResetAvailable: emailVerificationConfigured,
       }, origin);
     }
 
@@ -252,10 +278,10 @@ export function createPathPilotServer({ env = process.env, database = initialize
     if (request.method === 'GET' && path === '/api/auth/verify-email') {
       const token = String(requestUrl.searchParams.get('token') || '');
       const userRecord = token.length >= 20 ? consumeEmailVerification(database, hashToken(token)) : null;
-      if (!userRecord) return sendHtml(response, 400, verificationPage({ title: 'Verification link is invalid', message: 'This link is invalid or expired. Return to PathPilot and request a new verification email.', appUrl, success: false }));
+      if (!userRecord) return sendHtml(response, 400, messagePage({ title: 'Verification link is invalid', message: 'This link is invalid or expired. Return to PathPilot and request a new verification email.', appUrl, success: false }));
       const activated = acceptAdminInviteIfPresent(userRecord);
       trackEvent(database, { userId: activated.id, eventType: 'email_verified' });
-      return sendHtml(response, 200, verificationPage({ title: 'Email verified', message: 'Your PathPilot account is active. Return to the app and sign in.', appUrl, success: true }));
+      return sendHtml(response, 200, messagePage({ title: 'Email verified', message: 'Your PathPilot account is active. Return to the app and sign in.', appUrl, success: true }));
     }
 
     if (request.method === 'POST' && path === '/api/auth/resend-verification') {
@@ -272,6 +298,45 @@ export function createPathPilotServer({ env = process.env, database = initialize
         }
       }
       return sendJson(response, 200, { ok: true, message: 'If this account is waiting for verification, a new email has been sent.' }, origin);
+    }
+
+    if (request.method === 'POST' && path === '/api/auth/forgot-password') {
+      if (!emailVerificationConfigured) return sendJson(response, 503, { error: 'Password reset email is not configured yet.' }, origin);
+      const body = await readJson(request);
+      const email = normalizeEmail(body.email);
+      const userRecord = EMAIL_PATTERN.test(email) ? findUserByEmail(database, email) : null;
+      if (userRecord && !userRecord.disabled && userRecord.email_verified) {
+        try {
+          await issuePasswordReset(request, userRecord);
+          trackEvent(database, { userId: userRecord.id, eventType: 'password_reset_sent' });
+        } catch {
+          return sendJson(response, 502, { error: 'Could not send the password reset email. Please try again.' }, origin);
+        }
+      }
+      return sendJson(response, 200, { ok: true, message: 'If an eligible account exists for that email, a password reset link has been sent.' }, origin);
+    }
+
+    if (request.method === 'GET' && path === '/api/auth/reset-password') {
+      const token = String(requestUrl.searchParams.get('token') || '');
+      if (token.length < 20) return sendHtml(response, 400, messagePage({ title: 'Reset link is invalid', message: 'This password reset link is invalid. Request a new one from PathPilot.', appUrl, success: false }));
+      return sendHtml(response, 200, passwordResetPage({ token, appUrl }));
+    }
+
+    if (request.method === 'POST' && path === '/api/auth/reset-password') {
+      try {
+        const body = await readJson(request);
+        const token = String(body.token || '');
+        if (token.length < 20) return sendJson(response, 400, { error: 'Password reset link is invalid or expired.' }, origin);
+        const userRecord = consumePasswordReset(database, hashToken(token));
+        if (!userRecord || userRecord.disabled) return sendJson(response, 400, { error: 'Password reset link is invalid or expired.' }, origin);
+        const passwordHash = await hashPassword(body.password);
+        setUserPasswordHash(database, userRecord.id, passwordHash);
+        deleteSessionsForUser(database, userRecord.id);
+        trackEvent(database, { userId: userRecord.id, eventType: 'password_reset_completed' });
+        return sendJson(response, 200, { ok: true }, origin);
+      } catch (error) {
+        return sendJson(response, 400, { error: error.message === 'PASSWORD_LENGTH' ? 'Password must be 8–128 characters.' : 'Could not reset the password.' }, origin);
+      }
     }
 
     if (request.method === 'POST' && path === '/api/auth/login') {
