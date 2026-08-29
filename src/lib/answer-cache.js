@@ -27,11 +27,16 @@ export function semanticSimilarity(a, b) {
 }
 
 function preferenceSignature(preferences = {}) {
+  const agentToolIds = Array.isArray(preferences.agentPlan?.toolIds)
+    ? [...preferences.agentPlan.toolIds].map(String).sort()
+    : [];
   return JSON.stringify({
     audience: preferences.audience || 'self',
     responseStyle: preferences.responseStyle || 'balanced',
     displayName: String(preferences.displayName || '').trim().toLowerCase(),
     deepThinkEnabled: preferences.deepThinkEnabled === true,
+    agentMode: preferences.agentPlan?.mode || '',
+    agentToolIds,
   });
 }
 
