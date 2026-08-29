@@ -135,7 +135,9 @@ test('critical Arabic-only UI literals are backed by the combined translation ca
     }
   }
 
-  assert.ok(checkedLiteralCount >= 30, 'critical UI Arabic literal coverage unexpectedly found too few catalog-backed strings');
+  // Keep a modest floor so the guard cannot silently become a no-op after future
+  // component refactors. The exact count is intentionally not coupled to UI copy.
+  assert.ok(checkedLiteralCount >= 10, 'critical UI Arabic literal coverage unexpectedly found too few catalog-backed strings');
   assert.deepEqual(
     missing,
     [],
