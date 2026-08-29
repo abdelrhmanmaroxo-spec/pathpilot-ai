@@ -3,6 +3,7 @@ import {
   BrainCircuit,
   Globe2,
   LoaderCircle,
+  LockKeyhole,
   MessageSquareText,
   Plus,
   Search,
@@ -30,6 +31,21 @@ function initialChatState() {
   if (stored.length) return stored;
   const first = createChatSession();
   return upsertChatSession([], first);
+}
+
+export function ChatDevelopmentNotice() {
+  const en = isEnglish();
+  return (
+    <main className="chat-page">
+      <div className="page-shell chat-development-notice">
+        <LockKeyhole size={34} />
+        <span>PATHPILOT CHAT</span>
+        <h1>{en ? 'Chat is currently under development.' : 'قسم الشات قيد التطوير حاليًا.'}</h1>
+        <p>{en ? 'This experimental area is currently available to Admin and Owner accounts only while memory, search, and deep analysis are being validated.' : 'النسخة التجريبية متاحة حاليًا للـAdmin والـOwner فقط لحد ما نكمل اختبار الذاكرة والبحث والتفكير المعمق.'}</p>
+        <strong>{en ? 'Under development by Abdelrhman' : 'قيد التطوير من المطور Abdelrhman'}</strong>
+      </div>
+    </main>
+  );
 }
 
 export default function ChatWorkspace({ preferences, notify }) {
@@ -97,6 +113,7 @@ export default function ChatWorkspace({ preferences, notify }) {
       prompt: text,
       turns: activeSession.turns,
       currentTool: 'ask',
+      historyLimit: 30,
     });
 
     try {
