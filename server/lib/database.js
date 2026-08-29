@@ -79,6 +79,17 @@ export function findUserByEmail(database, email) {
   return database.prepare('SELECT * FROM users WHERE email = ?').get(email);
 }
 
+export function findUserById(database, id) {
+  return database.prepare('SELECT * FROM users WHERE id = ?').get(id);
+}
+
+export function setUserRole(database, userId, role) {
+  if (!['user', 'admin'].includes(role)) throw new Error('INVALID_ROLE');
+  database.prepare('UPDATE users SET role = ? WHERE id = ?').run(role, userId);
+  const user = findUserById(database, userId);
+  return user ? { id: user.id, name: user.name, email: user.email, role: user.role, disabled: user.disabled, created_at: user.created_at, last_seen_at: user.last_seen_at } : null;
+}
+
 export function createSession(database, { tokenHash, userId, days = 30 }) {
   const createdAt = now();
   const expiresAt = new Date(Date.now() + days * 86_400_000).toISOString();
