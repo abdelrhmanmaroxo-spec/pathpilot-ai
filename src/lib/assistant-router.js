@@ -123,7 +123,7 @@ async function tryPreferredLocalAgent({ args, contextualPrompt, effectivePrefere
 export async function generateRoutedAssistantResponse(args) {
   const contextualPrompt = String(args.prompt || '').trim();
   const latestPrompt = latestRequestFromContext(contextualPrompt);
-  const agentEnabled = args.routeOptions?.agentMode === 'auto';
+  const agentEnabled = args.routeOptions?.agentMode === 'auto' || args.routeOptions?.preferLocalModel === true;
   const plan = agentEnabled
     ? planChatAgent({
       prompt: latestPrompt,
