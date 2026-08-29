@@ -15,10 +15,11 @@ import {
   Trash2,
   UserRound,
 } from 'lucide-react';
-import { TOOL_LIBRARY } from '../lib/assistant.js';
+import { hasLiveAI, TOOL_LIBRARY } from '../lib/assistant.js';
 import { supportsBrowserLLM } from '../lib/local-llm.js';
 import { TOOL_ICONS } from '../lib/tool-icons.js';
-import ResponseContent from './ResponseContent.jsx';
+import AIOrb from './AIOrb.jsx';
+import ResponseContent, { SourceList } from './ResponseContent.jsx';
 
 function sourceLabel(source) {
   if (source === 'research-ai') return 'Web Research + AI · Beta';
@@ -36,22 +37,25 @@ function isEnglish() {
 export function ToolRail({ mode, selectedTool, onSelect }) {
   return (
     <aside className="tool-rail">
-      <p className="rail-label">الأدوات</p>
-      {TOOL_LIBRARY[mode].map((tool) => {
-        const Icon = TOOL_ICONS[tool.id];
-        return (
-          <button className={selectedTool === tool.id ? 'tool-button active' : 'tool-button'} type="button" key={tool.id} onClick={() => onSelect(tool.id)}>
-            <span><Icon size={20} /></span>
-            <span><strong>{tool.label}</strong><small>{tool.description}</small></span>
-            <ChevronLeft size={17} />
-          </button>
-        );
-      })}
+      <div className="tool-rail-main">
+        <p className="rail-label">الأدوات</p>
+        {TOOL_LIBRARY[mode].map((tool) => {
+          const Icon = TOOL_ICONS[tool.id];
+          return (
+            <button className={selectedTool === tool.id ? 'tool-button active' : 'tool-button'} type="button" key={tool.id} onClick={() => onSelect(tool.id)}>
+              <span><Icon size={20} /></span>
+              <span><strong>{tool.label}</strong><small>{tool.description}</small></span>
+              <ChevronLeft size={17} />
+            </button>
+          );
+        })}
+      </div>
+      <AIOrb live={hasLiveAI} />
     </aside>
   );
 }
 
-export function ResultCard({ answer, source, onCopy, onDownload, onShare, onRate, onRegenerate, feedbackEnabled, loading = false }) {
+export function ResultCard({ answer, source, sources = [], processingSeconds, onCopy, onDownload, onShare, onRate, onRegenerate, feedbackEnabled, loading = false }) {
   const en = isEnglish();
   if (!answer) {
     return (
@@ -63,24 +67,39 @@ export function ResultCard({ answer, source, onCopy, onDownload, onShare, onRate
     );
   }
 
+  const hasSources = Array.isArray(sources) && sources.length > 0;
+
   return (
-    <section className="result-card" aria-live="polite">
+    <section className={hasSources ? 'result-card has-source-rail' : 'result-card'} aria-live="polite">
       <div className="result-head">
-        <div><span className="assistant-avatar"><Sparkles size={18} /></span><div><strong>PathPilot Assistant</strong><small>{sourceLabel(source)}</small></div></div>
-        <div className="result-actions">
-          {onRegenerate && <button type="button" onClick={onRegenerate} disabled={loading} title={en ? 'Regenerate answer' : 'إعادة إنشاء الإجابة'} aria-label={en ? 'Regenerate answer' : 'إعادة إنشاء الإجابة'}><RotateCcw size={17} /></button>}
-          <button type="button" onClick={onCopy} title="نسخ النتيجة"><Copy size={17} /></button>
-          <button type="button" onClick={onShare} title="مشاركة النتيجة"><Share2 size={17} /></button>
-          <button type="button" onClick={onDownload} title="تنزيل النتيجة"><Download size={17} /></button>
+        <div className="result-identity">
+          <span className="assistant-avatar"><Sparkles size={18} /></span>
+          <div><strong>PathPilot Assistant</strong><small>{sourceLabel(source)}</small></div>
+        </div>
+        <div className="result-meta-actions">
+          {Number.isFinite(processingSeconds) && (
+            <span className="response-time-badge"><Clock3 size={14} /> {en ? 'Completed in' : 'اكتمل خلال'} {Number(processingSeconds).toFixed(1)}s</span>
+          )}
+          <div className="result-actions">
+            {onRegenerate && <button type="button" onClick={onRegenerate} disabled={loading} title={en ? 'Regenerate answer' : 'إعادة إنشاء الإجابة'} aria-label={en ? 'Regenerate answer' : 'إعادة إنشاء الإجابة'}><RotateCcw size={17} /></button>}
+            <button type="button" onClick={onCopy} title="نسخ النتيجة"><Copy size={17} /></button>
+            <button type="button" onClick={onShare} title="مشاركة النتيجة"><Share2 size={17} /></button>
+            <button type="button" onClick={onDownload} title="تنزيل النتيجة"><Download size={17} /></button>
+          </div>
         </div>
       </div>
-      <ResponseContent answer={answer} />
-      {feedbackEnabled && (
-        <div className="result-feedback">
-          <span>قيّم النتيجة</span>
-          <div>{[1, 2, 3, 4, 5].map((rating) => <button type="button" key={rating} onClick={() => onRate(rating)} title={`${rating} من 5`} aria-label={`تقييم ${rating} من 5`}><Star size={16} /></button>)}</div>
+      <div className={hasSources ? 'result-content-grid' : 'result-content-grid no-sources'}>
+        <div className="answer-main-panel">
+          <ResponseContent answer={answer} />
+          {feedbackEnabled && (
+            <div className="result-feedback">
+              <span>قيّم النتيجة</span>
+              <div>{[1, 2, 3, 4, 5].map((rating) => <button type="button" key={rating} onClick={() => onRate(rating)} title={`${rating} من 5`} aria-label={`تقييم ${rating} من 5`}><Star size={16} /></button>)}</div>
+            </div>
+          )}
         </div>
-      )}
+        {hasSources && <SourceList answer={answer} sources={sources} />}
+      </div>
     </section>
   );
 }
