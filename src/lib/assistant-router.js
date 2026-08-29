@@ -33,6 +33,16 @@ async function assertSystemAvailable(signal) {
   }
 }
 
+function latestRequestFromContext(prompt) {
+  const value = String(prompt || '').trim();
+  if (!value.startsWith('LATEST USER REQUEST\n')) return value;
+  const start = 'LATEST USER REQUEST\n'.length;
+  const end = value.indexOf('\n\nCONVERSATION CONTEXT ANALYSIS', start);
+  if (end < 0) return value;
+  const latest = value.slice(start, end).trim();
+  return latest || value;
+}
+
 function assertSafePrompt(prompt) {
   if (!hasExploitLikePayload(prompt)) return;
   throw new PathPilotApiError(
@@ -55,11 +65,13 @@ function normalizedResult(payload, route) {
 }
 
 export async function generateRoutedAssistantResponse(args) {
-  assertSafePrompt(args.prompt);
+  const contextualPrompt = String(args.prompt || '').trim();
+  const latestPrompt = latestRequestFromContext(contextualPrompt);
+  assertSafePrompt(latestPrompt);
   await assertSystemAvailable(args.signal);
 
   const decision = routeAssistantRequest({
-    prompt: args.prompt,
+    prompt: latestPrompt,
     tool: args.tool,
     hasResearch: researchAvailable,
     hasDirectAI: directAvailable,
@@ -69,7 +81,7 @@ export async function generateRoutedAssistantResponse(args) {
     const cached = answerCache.find({
       mode: args.mode,
       tool: args.tool,
-      prompt: args.prompt,
+      prompt: contextualPrompt,
       preferences: args.preferences,
     });
     if (cached) return cached;
@@ -80,7 +92,7 @@ export async function generateRoutedAssistantResponse(args) {
         body: JSON.stringify({
           mode: args.mode,
           tool: args.tool,
-          prompt: args.prompt,
+          prompt: contextualPrompt,
           preferences: args.preferences || {},
         }),
         signal: args.signal,
@@ -90,7 +102,7 @@ export async function generateRoutedAssistantResponse(args) {
       answerCache.store({
         mode: args.mode,
         tool: args.tool,
-        prompt: args.prompt,
+        prompt: contextualPrompt,
         preferences: args.preferences,
         result,
       });
@@ -101,7 +113,11 @@ export async function generateRoutedAssistantResponse(args) {
     }
   }
 
-  const result = await generateAssistantResponse(args);
+  const result = await generateAssistantResponse({
+    ...args,
+    prompt: contextualPrompt,
+    latestPrompt,
+  });
   return {
     ...result,
     route: decision.route === 'research' ? 'research' : result.route || 'fallback',
