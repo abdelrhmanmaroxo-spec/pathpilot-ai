@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   BookOpen,
   BriefcaseBusiness,
@@ -29,6 +29,15 @@ function normalize(value) {
     .toLowerCase()
     .replace(/[^\p{L}\p{N}]+/gu, ' ')
     .trim();
+}
+
+function goToHash(hash) {
+  const target = `${globalThis.location.pathname}${globalThis.location.search}${hash}`;
+  globalThis.location.assign(target);
+}
+
+function goToPage(url) {
+  globalThis.location.assign(url);
 }
 
 const TOOL_ALIASES = {
@@ -84,8 +93,8 @@ function collectVisiblePageEntries(close) {
           close();
           element.scrollIntoView({ behavior: 'smooth', block: 'center' });
           element.classList.add('pathpilot-search-hit');
-          window.setTimeout(() => element.classList.remove('pathpilot-search-hit'), 1500);
-          if (typeof element.focus === 'function') window.setTimeout(() => element.focus({ preventScroll: true }), 350);
+          globalThis.setTimeout(() => element.classList.remove('pathpilot-search-hit'), 1500);
+          if (typeof element.focus === 'function') globalThis.setTimeout(() => element.focus({ preventScroll: true }), 350);
         },
       };
     })
@@ -122,135 +131,166 @@ export default function CommandPalette({ user, history = [], onAccount, onInstal
     setQuery('');
   };
 
+  const openSearch = () => {
+    setPageEntries(collectVisiblePageEntries(close));
+    setOpen(true);
+  };
+
   const navigateWorkspace = (mode, toolId = null, prompt = '') => {
-    window.location.hash = `/${mode}`;
+    goToHash(`#/${mode}`);
     close();
-    window.setTimeout(() => {
-      if (toolId) window.dispatchEvent(new CustomEvent('pathpilot:select-tool', { detail: { toolId } }));
-      if (prompt) window.dispatchEvent(new CustomEvent('pathpilot:reuse-prompt', { detail: { prompt } }));
+    globalThis.setTimeout(() => {
+      if (toolId) globalThis.dispatchEvent(new CustomEvent('pathpilot:select-tool', { detail: { toolId } }));
+      if (prompt) globalThis.dispatchEvent(new CustomEvent('pathpilot:reuse-prompt', { detail: { prompt } }));
       else document.querySelector('#assistant-prompt')?.focus();
     }, 130);
   };
 
   const navigateAdmin = (tab) => {
     if (!isAdmin) return;
-    window.location.hash = '/admin';
+    globalThis.sessionStorage.setItem('pathpilot.admin.tab', tab);
+    goToHash('#/admin');
     close();
-    window.setTimeout(() => window.dispatchEvent(new CustomEvent('pathpilot:admin-tab', { detail: { tab } })), 130);
+    globalThis.setTimeout(() => globalThis.dispatchEvent(new CustomEvent('pathpilot:admin-tab', { detail: { tab } })), 130);
   };
 
-  const coreActions = useMemo(() => {
-    const actions = [
-      { id: 'home', label: en ? 'Home' : 'الرئيسية', hint: en ? 'PathPilot home page' : 'العودة للصفحة الرئيسية', keywords: 'home الرئيسية البداية', icon: Home, rank: 100, run: () => { window.location.hash = ''; close(); } },
-      { id: 'general', label: en ? 'Ask PathPilot anything' : 'اسأل PathPilot أي حاجة', hint: en ? 'General Assistant' : 'المساعد العام', keywords: 'assistant ask question chat مساعد سؤال محادثة', icon: Sparkles, rank: 110, run: () => navigateWorkspace('general') },
-      { id: 'study', label: en ? 'Open Study workspace' : 'افتح مساحة الدراسة', hint: en ? 'Study tools' : 'أدوات الدراسة', keywords: 'study school learn دراسة مذاكرة تعليم', icon: GraduationCap, rank: 95, run: () => navigateWorkspace('study') },
-      { id: 'work', label: en ? 'Open Work workspace' : 'افتح مساحة العمل', hint: en ? 'Professional tools' : 'أدوات العمل', keywords: 'work job professional عمل وظيفة شغل', icon: BriefcaseBusiness, rank: 95, run: () => navigateWorkspace('work') },
-      { id: 'focus', label: en ? 'Focus the current prompt' : 'روح لمربع السؤال الحالي', hint: en ? 'Continue typing' : 'كمّل كتابة طلبك', keywords: 'prompt input سؤال كتابة', icon: TextCursorInput, rank: 65, run: () => { close(); window.setTimeout(() => document.querySelector('#assistant-prompt')?.focus(), 0); } },
-      { id: 'account', label: user ? (en ? 'Account & settings' : 'الحساب والإعدادات') : (en ? 'Sign in or create account' : 'تسجيل الدخول أو إنشاء حساب'), hint: user?.email || (en ? 'Account access' : 'إدارة الحساب'), keywords: 'account settings login register signup password حساب اعدادات دخول تسجيل باسورد', icon: user ? Settings : UserRound, rank: 90, run: () => { close(); if (user) window.dispatchEvent(new CustomEvent('pathpilot:open-settings')); else onAccount?.(); } },
-      { id: 'feedback', label: en ? 'Send feedback' : 'إرسال ملاحظة', hint: en ? 'Suggestion or issue' : 'اقتراح أو مشكلة', keywords: 'feedback report issue suggestion ملاحظة اقتراح مشكلة', icon: MessageSquare, rank: 55, run: () => { close(); window.dispatchEvent(new CustomEvent('pathpilot:open-feedback')); } },
-      { id: 'install', label: en ? 'Install PathPilot' : 'تثبيت PathPilot', hint: en ? 'Install the PWA on this device' : 'ثبّت التطبيق على الجهاز', keywords: 'install pwa app download تثبيت تطبيق تنزيل', icon: Download, rank: 60, run: () => { close(); onInstall?.(); } },
-      { id: 'guide', label: en ? 'User guide' : 'دليل الاستخدام', hint: en ? 'How to use PathPilot' : 'شرح استخدام التطبيق', keywords: 'guide help tutorial docs دليل مساعدة شرح استخدام', icon: BookOpen, rank: 70, run: () => { window.location.href = `${base}guide.html`; } },
-      { id: 'updates', label: en ? 'What’s new' : 'آخر التحديثات', hint: en ? 'Product updates' : 'الجديد وفايدته للمستخدم', keywords: 'updates changelog new release تحديثات جديد', icon: History, rank: 62, run: () => { window.location.href = `${base}updates.html`; } },
-      { id: 'privacy', label: en ? 'Privacy policy' : 'سياسة الخصوصية', hint: en ? 'Privacy and data handling' : 'الخصوصية والتعامل مع البيانات', keywords: 'privacy data security خصوصية بيانات امان', icon: ShieldCheck, rank: 48, run: () => { window.location.href = `${base}privacy.html`; } },
-    ];
-
-    Object.entries(TOOL_LIBRARY).forEach(([mode, tools]) => {
-      tools.forEach((tool) => {
-        const [modeEn, modeAr] = MODE_LABELS[mode] || [mode, mode];
-        actions.push({
-          id: `tool-${mode}-${tool.id}`,
-          label: tool.label,
-          hint: en ? `${modeEn} tool · ${tool.description}` : `${modeAr} · ${tool.description}`,
-          keywords: `${TOOL_ALIASES[tool.id] || ''} ${tool.id} ${modeEn} ${modeAr}`,
-          icon: mode === 'study' ? GraduationCap : mode === 'work' ? BriefcaseBusiness : Sparkles,
-          rank: 75,
-          run: () => navigateWorkspace(mode, tool.id),
-        });
-      });
-    });
-
-    history.slice(0, 30).forEach((item, index) => {
-      const prompt = String(item?.prompt || '').trim();
-      if (!prompt) return;
-      actions.push({
-        id: `history-${item.id || index}`,
-        label: prompt.length > 74 ? `${prompt.slice(0, 74)}…` : prompt,
-        hint: en ? 'Recent conversation' : 'من النتائج السابقة',
-        keywords: `${prompt} ${item.mode || ''} ${item.tool || ''} history recent سجل نتائج`,
-        icon: Clock3,
-        rank: 42,
-        run: () => navigateWorkspace(item.mode || 'general', item.tool || null, prompt),
-      });
-    });
-
-    if (isAdmin) {
-      [
-        ['analytics', 'Analytics', 'الإحصائيات والتحليلات', 'users activity retention analytics احصائيات تحليلات استخدام'],
-        ['users', 'Users', 'المستخدمون', 'users accounts roles ban مستخدمين حسابات صلاحيات حظر'],
-        ['security', 'Security & Login Log', 'الأمان وسجل الدخول', 'security login sessions suspicious امان دخول جلسات'],
-        ['api', 'API Usage', 'استخدام API', 'api usage provider cost tokens استخدام مزود'],
-        ['errors', 'Errors', 'الأخطاء', 'errors crashes logs اخطاء مشاكل'],
-        ['feedback', 'Feedback', 'ملاحظات المستخدمين', 'feedback ratings users ملاحظات تقييمات'],
-      ].forEach(([tab, englishLabel, arabicLabel, keywords]) => actions.push({
-        id: `admin-${tab}`,
-        label: en ? englishLabel : arabicLabel,
-        hint: en ? 'Admin only' : 'للإدارة فقط',
-        keywords: `${englishLabel} ${arabicLabel} ${keywords} admin إدارة`,
-        icon: ShieldCheck,
-        rank: 88,
-        run: () => navigateAdmin(tab),
-      }));
-      if (user?.isOwner) actions.push({
-        id: 'admin-owner-log',
-        label: en ? 'Owner Account Log' : 'سجل حساب المالك',
-        hint: en ? 'Owner only' : 'للمالك فقط',
-        keywords: 'owner log account مالك سجل حساب',
-        icon: ShieldCheck,
-        rank: 89,
-        run: () => navigateAdmin('owner-log'),
-      });
+  const openAccount = () => {
+    close();
+    if (!user) {
+      onAccount?.();
+      return;
     }
+    const trigger = document.querySelector('.account-center-trigger');
+    if (trigger instanceof HTMLElement) {
+      trigger.click();
+      globalThis.setTimeout(() => {
+        const settingsButton = [...document.querySelectorAll('.account-menu button')]
+          .find((button) => /الإعدادات|settings/i.test(button.textContent || ''));
+        if (settingsButton instanceof HTMLElement) settingsButton.click();
+      }, 50);
+    }
+  };
 
-    return actions;
-  }, [base, en, history, isAdmin, onAccount, onInstall, user]);
+  const openFeedback = () => {
+    close();
+    const trigger = document.querySelector('.feedback-header-button');
+    if (trigger instanceof HTMLElement) trigger.click();
+  };
 
-  const allActions = useMemo(() => [...coreActions, ...pageEntries], [coreActions, pageEntries]);
-  const filtered = useMemo(() => allActions
+  const actions = [
+    { id: 'home', label: en ? 'Home' : 'الرئيسية', hint: en ? 'PathPilot home page' : 'العودة للصفحة الرئيسية', keywords: 'home الرئيسية البداية', icon: Home, rank: 100, run: () => { close(); goToHash(''); } },
+    { id: 'general', label: en ? 'Ask PathPilot anything' : 'اسأل PathPilot أي حاجة', hint: en ? 'General Assistant' : 'المساعد العام', keywords: 'assistant ask question chat مساعد سؤال محادثة', icon: Sparkles, rank: 110, run: () => navigateWorkspace('general') },
+    { id: 'study', label: en ? 'Open Study workspace' : 'افتح مساحة الدراسة', hint: en ? 'Study tools' : 'أدوات الدراسة', keywords: 'study school learn دراسة مذاكرة تعليم', icon: GraduationCap, rank: 95, run: () => navigateWorkspace('study') },
+    { id: 'work', label: en ? 'Open Work workspace' : 'افتح مساحة العمل', hint: en ? 'Professional tools' : 'أدوات العمل', keywords: 'work job professional عمل وظيفة شغل', icon: BriefcaseBusiness, rank: 95, run: () => navigateWorkspace('work') },
+    { id: 'focus', label: en ? 'Focus the current prompt' : 'روح لمربع السؤال الحالي', hint: en ? 'Continue typing' : 'كمّل كتابة طلبك', keywords: 'prompt input سؤال كتابة', icon: TextCursorInput, rank: 65, run: () => { close(); globalThis.setTimeout(() => document.querySelector('#assistant-prompt')?.focus(), 0); } },
+    { id: 'account', label: user ? (en ? 'Account & settings' : 'الحساب والإعدادات') : (en ? 'Sign in or create account' : 'تسجيل الدخول أو إنشاء حساب'), hint: user?.email || (en ? 'Account access' : 'إدارة الحساب'), keywords: 'account settings login register signup password حساب اعدادات دخول تسجيل باسورد', icon: user ? Settings : UserRound, rank: 90, run: openAccount },
+    { id: 'feedback', label: en ? 'Send feedback' : 'إرسال ملاحظة', hint: en ? 'Suggestion or issue' : 'اقتراح أو مشكلة', keywords: 'feedback report issue suggestion ملاحظة اقتراح مشكلة', icon: MessageSquare, rank: 55, run: openFeedback },
+    { id: 'install', label: en ? 'Install PathPilot' : 'تثبيت PathPilot', hint: en ? 'Install the PWA on this device' : 'ثبّت التطبيق على الجهاز', keywords: 'install pwa app download تثبيت تطبيق تنزيل', icon: Download, rank: 60, run: () => { close(); onInstall?.(); } },
+    { id: 'guide', label: en ? 'User guide' : 'دليل الاستخدام', hint: en ? 'How to use PathPilot' : 'شرح استخدام التطبيق', keywords: 'guide help tutorial docs دليل مساعدة شرح استخدام', icon: BookOpen, rank: 70, run: () => goToPage(`${base}guide.html`) },
+    { id: 'updates', label: en ? 'What’s new' : 'آخر التحديثات', hint: en ? 'Product updates' : 'الجديد وفايدته للمستخدم', keywords: 'updates changelog new release تحديثات جديد', icon: History, rank: 62, run: () => goToPage(`${base}updates.html`) },
+    { id: 'privacy', label: en ? 'Privacy policy' : 'سياسة الخصوصية', hint: en ? 'Privacy and data handling' : 'الخصوصية والتعامل مع البيانات', keywords: 'privacy data security خصوصية بيانات امان', icon: ShieldCheck, rank: 48, run: () => goToPage(`${base}privacy.html`) },
+  ];
+
+  Object.entries(TOOL_LIBRARY).forEach(([mode, tools]) => {
+    tools.forEach((tool) => {
+      const [modeEn, modeAr] = MODE_LABELS[mode] || [mode, mode];
+      actions.push({
+        id: `tool-${mode}-${tool.id}`,
+        label: tool.label,
+        hint: en ? `${modeEn} tool · ${tool.description}` : `${modeAr} · ${tool.description}`,
+        keywords: `${TOOL_ALIASES[tool.id] || ''} ${tool.id} ${modeEn} ${modeAr}`,
+        icon: mode === 'study' ? GraduationCap : mode === 'work' ? BriefcaseBusiness : Sparkles,
+        rank: 75,
+        run: () => navigateWorkspace(mode, tool.id),
+      });
+    });
+  });
+
+  history.slice(0, 30).forEach((item, index) => {
+    const prompt = String(item?.prompt || '').trim();
+    if (!prompt) return;
+    actions.push({
+      id: `history-${item.id || index}`,
+      label: prompt.length > 74 ? `${prompt.slice(0, 74)}…` : prompt,
+      hint: en ? 'Recent conversation' : 'من النتائج السابقة',
+      keywords: `${prompt} ${item.mode || ''} ${item.tool || ''} history recent سجل نتائج`,
+      icon: Clock3,
+      rank: 42,
+      run: () => navigateWorkspace(item.mode || 'general', item.tool || null, prompt),
+    });
+  });
+
+  if (isAdmin) {
+    [
+      ['analytics', 'Analytics', 'الإحصائيات والتحليلات', 'users activity retention analytics احصائيات تحليلات استخدام'],
+      ['users', 'Users', 'المستخدمون', 'users accounts roles ban مستخدمين حسابات صلاحيات حظر'],
+      ['security', 'Security & Login Log', 'الأمان وسجل الدخول', 'security login sessions suspicious امان دخول جلسات'],
+      ['api', 'API Usage', 'استخدام API', 'api usage provider cost tokens استخدام مزود'],
+      ['errors', 'Errors', 'الأخطاء', 'errors crashes logs اخطاء مشاكل'],
+      ['feedback', 'Feedback', 'ملاحظات المستخدمين', 'feedback ratings users ملاحظات تقييمات'],
+    ].forEach(([tab, englishLabel, arabicLabel, keywords]) => actions.push({
+      id: `admin-${tab}`,
+      label: en ? englishLabel : arabicLabel,
+      hint: en ? 'Admin only' : 'للإدارة فقط',
+      keywords: `${englishLabel} ${arabicLabel} ${keywords} admin إدارة`,
+      icon: ShieldCheck,
+      rank: 88,
+      run: () => navigateAdmin(tab),
+    }));
+    if (user?.isOwner) actions.push({
+      id: 'admin-owner-log',
+      label: en ? 'Owner Account Log' : 'سجل حساب المالك',
+      hint: en ? 'Owner only' : 'للمالك فقط',
+      keywords: 'owner log account مالك سجل حساب',
+      icon: ShieldCheck,
+      rank: 89,
+      run: () => navigateAdmin('owner-log'),
+    });
+  }
+
+  const allActions = [...actions, ...pageEntries];
+  const filtered = allActions
     .map((action) => ({ action, score: searchScore(action, query) }))
     .filter(({ score }) => score >= 0)
     .sort((a, b) => b.score - a.score)
     .slice(0, query.trim() ? 18 : 10)
-    .map(({ action }) => action), [allActions, query]);
+    .map(({ action }) => action);
 
   useEffect(() => {
     const handler = (event) => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
         event.preventDefault();
         event.stopImmediatePropagation();
-        setOpen((current) => !current);
+        if (open) {
+          setOpen(false);
+          setQuery('');
+        } else {
+          setPageEntries(collectVisiblePageEntries(() => { setOpen(false); setQuery(''); }));
+          setOpen(true);
+        }
         return;
       }
       if (open && event.key === 'Escape') {
         event.preventDefault();
         event.stopImmediatePropagation();
-        close();
+        setOpen(false);
+        setQuery('');
       }
     };
-    window.addEventListener('keydown', handler, true);
-    return () => window.removeEventListener('keydown', handler, true);
+    globalThis.addEventListener('keydown', handler, true);
+    return () => globalThis.removeEventListener('keydown', handler, true);
   }, [open]);
 
   useEffect(() => {
-    if (!open) return;
-    setPageEntries(collectVisiblePageEntries(close));
-    const timer = window.setTimeout(() => inputRef.current?.focus(), 0);
-    return () => window.clearTimeout(timer);
+    if (!open) return undefined;
+    const timer = globalThis.setTimeout(() => inputRef.current?.focus(), 0);
+    return () => globalThis.clearTimeout(timer);
   }, [open]);
 
   return (
     <>
       <div className="command-dock-spacer" aria-hidden="true" />
-      <button className="global-command-trigger" type="button" onClick={() => setOpen(true)} aria-label={en ? 'Search all PathPilot' : 'البحث في PathPilot بالكامل'}>
+      <button className="global-command-trigger" type="button" onClick={openSearch} aria-label={en ? 'Search all PathPilot' : 'البحث في PathPilot بالكامل'}>
         <Search size={15} />
         <span>{en ? 'Search PathPilot, tools, pages…' : 'ابحث في PathPilot، الأدوات، الصفحات…'}</span>
         <kbd>Ctrl K</kbd>
