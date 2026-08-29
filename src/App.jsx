@@ -51,6 +51,7 @@ import {
   hasLiveAI,
   TOOL_LIBRARY,
 } from './lib/assistant.js';
+import { supportsBrowserLLM } from './lib/local-llm.js';
 import {
   clearHistory,
   createHistoryItem,
@@ -115,12 +116,21 @@ function routeFromHash() {
   return ['study', 'work', 'general', 'admin'].includes(route) ? route : null;
 }
 
+function sourceLabel(source) {
+  if (source === 'research-ai') return 'Web Research + AI · Beta';
+  if (source === 'research-search') return 'Web Research · Beta';
+  if (source === 'ai-fallback' || source === 'live') return 'Live AI · Beta';
+  if (source === 'local-llm') return 'On-device Local LLM · Beta';
+  if (source === 'local-fallback') return 'Local Super Reasoner · Beta';
+  return 'PathPilot Intelligence · Beta';
+}
+
 function Brand({ compact = false }) {
   return (
     <button className="brand" type="button" onClick={() => { window.location.hash = ''; }} aria-label="العودة للرئيسية">
       <span className="brand-mark" aria-hidden="true">P</span>
       <span>
-        <strong>PathPilot</strong>
+        <strong>PathPilot <small>BETA</small></strong>
         {!compact && <small>AI STUDY & WORK</small>}
       </span>
     </button>
@@ -224,11 +234,11 @@ function Landing({ onSelect, onInstall }) {
             <button className="button button-secondary" type="button" onClick={() => onSelect('work')}>العمل</button>
           </div>
           <div className="trust-row">
-            <span><ShieldCheck size={17} /> بدون حساب</span>
+            <span><ShieldCheck size={17} /> طبقات ذكاء متعددة</span>
             <span><Smartphone size={17} /> موقع + تطبيق</span>
-            <span><WifiOff size={17} /> يعمل Offline</span>
+            <span><WifiOff size={17} /> Local fallback</span>
           </div>
-          <p className="local-ai-note"><CircleHelp size={16} /> الردود الحالية محلية وليست مدعومة بنموذج AI حقيقي حتى الآن.</p>
+          <p className="local-ai-note"><CircleHelp size={16} /> يستخدم AI حي عند توفره، ومعه موسوعة واستدلال محلي، ويمكن تفعيل Local LLM على الأجهزة الداعمة.</p>
         </div>
 
         <div className="hero-visual" aria-label="معاينة PathPilot AI">
@@ -262,7 +272,7 @@ function Landing({ onSelect, onInstall }) {
           <div><strong>03</strong><span>مساحات متخصصة</span></div>
           <div><strong>18</strong><span>أداة عملية</span></div>
           <div><strong>PWA</strong><span>قابل للتثبيت</span></div>
-          <div><strong>RTL</strong><span>تجربة عربية أصلية</span></div>
+          <div><strong>AI</strong><span>Live + Local tiers</span></div>
         </div>
       </section>
 
@@ -324,7 +334,7 @@ function Landing({ onSelect, onInstall }) {
           <span className="eyebrow"><Smartphone size={15} /> INSTALLABLE PWA</span>
           <h2>نفس التجربة. موقع وتطبيق.</h2>
           <p>ثبّت PathPilot على Windows أو Android أو iPhone/iPad وافتحه بسرعة حتى مع اتصال ضعيف.</p>
-          <div className="install-platforms"><span>Windows</span><span>Android</span><span>iOS</span><span>بدون حساب</span></div>
+          <div className="install-platforms"><span>Windows</span><span>Android</span><span>iOS</span><span>Local Intelligence</span></div>
         </div>
         <button className="button button-light" type="button" onClick={onInstall}>
           <Download size={18} /> تثبيت PathPilot
@@ -366,7 +376,7 @@ function ResultCard({ answer, source, onCopy, onDownload, onShare, onRate, feedb
   return (
     <section className="result-card" aria-live="polite">
       <div className="result-head">
-        <div><span className="assistant-avatar"><Sparkles size={18} /></span><div><strong>PathPilot Assistant</strong><small>{source === 'live' ? 'Live AI response' : 'Smart local demo'}</small></div></div>
+        <div><span className="assistant-avatar"><Sparkles size={18} /></span><div><strong>PathPilot Assistant</strong><small>{sourceLabel(source)}</small></div></div>
         <div className="result-actions">
           <button type="button" onClick={onCopy} title="نسخ النتيجة"><Copy size={17} /></button>
           <button type="button" onClick={onShare} title="مشاركة النتيجة"><Share2 size={17} /></button>
@@ -412,6 +422,7 @@ function HistoryPanel({ items, onOpen, onClear }) {
 
 function PreferencesPanel({ preferences, onChange }) {
   const update = (key, value) => onChange({ ...preferences, [key]: value });
+  const localLlmSupported = supportsBrowserLLM();
   return (
     <section className="preferences-panel" aria-label="تخصيص النتيجة">
       <div className="preference-heading"><SlidersHorizontal size={17} /><span><strong>خصّص النتيجة</strong><small>تُحفظ الإعدادات على جهازك فقط</small></span></div>
@@ -436,6 +447,18 @@ function PreferencesPanel({ preferences, onChange }) {
           <option value="detailed">مفصل</option>
         </select>
       </label>
+      <label>
+        <span><BrainCircuit size={14} /> Local LLM <small>تجريبي</small></span>
+        <select
+          value={preferences.localLlmEnabled ? 'on' : 'off'}
+          onChange={(event) => update('localLlmEnabled', event.target.value === 'on')}
+          disabled={!localLlmSupported}
+        >
+          <option value="off">متوقف</option>
+          <option value="on">مفعّل على هذا الجهاز</option>
+        </select>
+        <small>{localLlmSupported ? 'يشغّل نموذجًا لغويًا محليًا عبر WebGPU عند الحاجة. أول تشغيل قد يحتاج تنزيلًا كبيرًا، ثم يُستخدم Cache المتصفح.' : 'الجهاز أو المتصفح الحالي لا يوفّر WebGPU، وسيستمر استخدام Local Super Reasoner.'}</small>
+      </label>
     </section>
   );
 }
@@ -450,6 +473,7 @@ function Workspace({ mode, history, preferences, onPreferencesChange, onNewHisto
   const content = MODE_CONTENT[mode];
   const tool = tools.find((item) => item.id === selectedTool) || tools[0];
   const ModeIcon = content.icon;
+  const localLlmSupported = supportsBrowserLLM();
 
   const handleToolSelect = (toolId) => {
     setSelectedTool(toolId);
@@ -547,13 +571,13 @@ function Workspace({ mode, history, preferences, onPreferencesChange, onNewHisto
       <div className="page-shell workspace-heading">
         <div className="mode-icon"><ModeIcon /></div>
         <div><span>{content.eyebrow}</span><h1>{content.title}</h1><p>{content.description}</p></div>
-        <div className={hasLiveAI ? 'ai-status live' : 'ai-status demo'}><i /> {hasLiveAI ? 'Live AI متصل' : 'Smart Demo'}</div>
+        <div className={hasLiveAI ? 'ai-status live' : 'ai-status demo'}><i /> {hasLiveAI ? 'Live AI متصل' : preferences.localLlmEnabled && localLlmSupported ? 'Local LLM مفعّل' : 'Local Intelligence'}</div>
       </div>
 
       {!hasLiveAI && (
         <div className="page-shell local-disclaimer" role="note">
           <CircleHelp size={19} />
-          <div><strong>ملاحظة مهمة</strong><span>الردود الحالية تُنشأ محليًا وليست مدعومة بنموذج AI حقيقي حتى الآن. لا تعتمد عليها وحدها في قرارات طبية أو قانونية أو مالية.</span></div>
+          <div><strong>وضع محلي</strong><span>{preferences.localLlmEnabled && localLlmSupported ? 'سيحاول PathPilot تشغيل نموذج لغوي محلي على جهازك، ثم يعود إلى الموسوعة ومحرك الاستدلال إذا تعذر.' : 'يستخدم PathPilot الموسوعة المحلية ومحرك الاستدلال. يمكنك تفعيل Local LLM من إعدادات النتيجة على الأجهزة الداعمة.'}</span></div>
         </div>
       )}
 
@@ -596,9 +620,9 @@ function Footer() {
   return (
     <footer className="site-footer">
       <div className="page-shell footer-inner">
-        <div><Brand /><p>مساعد عربي عام للدراسة والعمل والحياة اليومية، صُمم كتجربة Web وPWA متكاملة.</p></div>
+        <div><Brand /><p>مساعد عربي عام للدراسة والعمل والحياة اليومية، بطبقات AI حي ومحلي وموسوعة معرفية.</p></div>
         <div className="footer-meta">
-          <span>Built by Abdelrhman Essam</span>
+          <span>PathPilot BETA</span>
           <a href="https://github.com/abdelrhmanmaroxo-spec" target="_blank" rel="noreferrer"><Code2 size={18} /> GitHub</a>
           <a href="https://www.linkedin.com/in/abdelrhman-essam-vib/" target="_blank" rel="noreferrer"><Link size={18} /> LinkedIn</a>
         </div>
