@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import App from './App.jsx';
 import AccountExperience from './AccountExperience.jsx';
 import ConversationExperience from './ConversationExperience.jsx';
+import { initAttribution } from './lib/attribution.js';
 import { initLanguageSwitch } from './lib/i18n.js';
 import { initI18nOverrides } from './lib/i18n-overrides.js';
 import './styles.css';
@@ -20,6 +21,7 @@ createRoot(document.getElementById('root')).render(
 
 initLanguageSwitch();
 initI18nOverrides();
+initAttribution();
 
 if ('serviceWorker' in navigator && import.meta.env.PROD) {
   window.addEventListener('load', () => {
