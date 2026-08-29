@@ -2,6 +2,7 @@ import { createServer } from 'node:http';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { Readable } from 'node:stream';
+import { createAssistantStreamHandler } from './assistant-stream.js';
 import { createPathPilotServer } from './index.js';
 import { createIntelligenceV3Handler } from './intelligence-v3-server.js';
 import { hashToken } from './lib/auth.js';
@@ -65,7 +66,7 @@ function replayRequest(original, body) {
   return replay;
 }
 
-async function secureDirectAiRequest({ request, response, database, env, requestId, appHandler }) {
+async function secureDirectAiRequest({ request, response, database, env, requestId, appHandler, securityPath = '/api/assistant' }) {
   const cors = responseCors(request, env);
   let raw;
   let payload;
@@ -90,7 +91,7 @@ async function secureDirectAiRequest({ request, response, database, env, request
       eventType: 'UNSAFE_DIRECT_AI_INPUT_BLOCKED',
       severity: inspection.risk,
       ip: request.socket?.remoteAddress || '',
-      path: '/api/assistant',
+      path: securityPath,
       details: inspection.codes.join(','),
     });
     response.writeHead(400, {
@@ -130,6 +131,7 @@ export function startPathPilotServer({ env = process.env, logger = console } = {
   const database = initializeDatabase(databasePath);
   const baseApp = createPathPilotServer({ env, database });
   const appHandler = createIntelligenceV3Handler({ env, baseApp, database });
+  const assistantStream = createAssistantStreamHandler({ env, database });
   const deepHealth = createCachedHealthProbe({ env, database });
   const roleLimiter = createRoleRateLimiter();
   const port = Number(env.PORT || 8787);
@@ -184,6 +186,33 @@ export function startPathPilotServer({ env = process.env, logger = console } = {
           response.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...cors });
           response.end(JSON.stringify({ error: 'Deep health check failed.', code: 'HEALTH_CHECK_FAILED', requestId }));
         });
+      return;
+    }
+
+    if (url.pathname === '/api/assistant/stream' && request.method === 'POST') {
+      secureDirectAiRequest({
+        request,
+        response,
+        database,
+        env,
+        requestId,
+        securityPath: '/api/assistant/stream',
+        appHandler: (safeRequest, safeResponse) => assistantStream({
+          request: safeRequest,
+          response: safeResponse,
+          user,
+          cors,
+          requestId,
+        }),
+      }).catch((error) => {
+        logger.error?.(`[PathPilot stream security ${requestId}]`, error);
+        if (response.headersSent) {
+          if (!response.writableEnded) response.end();
+          return;
+        }
+        response.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...cors });
+        response.end(JSON.stringify({ error: 'Internal server error.', code: 'INTERNAL_ERROR', requestId }));
+      });
       return;
     }
 
