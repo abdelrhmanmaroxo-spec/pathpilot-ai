@@ -10,6 +10,10 @@ This file is the execution tracker for the two approved 50-item roadmaps. Status
 - Never weaken authentication, email verification, owner protections, or persistence to make a task pass.
 - Preserve the Railway SQLite volume and production data.
 
+## Progress notes
+
+- 2026-08-29: A05 Central API client advanced with an explicit `json` request contract, stable validation for conflicting `json`/`body` inputs, and isolation of PathPilot-only request metadata from native `fetch` options. Tests added for serialization, request IDs, metadata isolation, and invalid option handling.
+
 ## Foundation roadmap (A01-A50)
 
 | ID | Status | Item |
