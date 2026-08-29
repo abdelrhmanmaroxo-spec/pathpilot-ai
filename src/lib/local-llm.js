@@ -257,6 +257,7 @@ function withTimeout(promise, timeoutMs) {
 export async function generateBrowserLLMResponse({ prompt, tool = 'ask', mode = 'general', preferences = {}, onProgress, timeoutMs = DEFAULT_TIMEOUT_MS }) {
   if (!preferences.localLlmEnabled || !supportsBrowserLLM()) return null;
 
+  const wasReady = isBrowserLLMReady();
   const run = (async () => {
     const profile = localDeviceProfile();
     const knowledge = await buildKnowledge({ prompt, tool, mode, preferences }, profile, onProgress);
@@ -308,7 +309,8 @@ export async function generateBrowserLLMResponse({ prompt, tool = 'ask', mode = 
     };
   })();
 
-  return withTimeout(run, timeoutMs);
+  const minimumTimeout = wasReady ? 90_000 : 180_000;
+  return withTimeout(run, Math.max(Number(timeoutMs || 0), minimumTimeout));
 }
 
 export function getBrowserLLMInfo() {
