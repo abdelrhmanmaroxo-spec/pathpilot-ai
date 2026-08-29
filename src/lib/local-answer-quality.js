@@ -4,7 +4,7 @@ const STOP = new Set([
 ]);
 
 const NEGATION_TOKENS = new Set([
-  'بدون', 'لا', 'ليس', 'ممنوع', 'غير',
+  'بدون', 'لا', 'ليس', 'ممنوع',
   'without', 'not', 'never', 'no', 'mustnt', 'dont',
 ]);
 
@@ -50,7 +50,7 @@ function isNegativeConstraint(value) {
 }
 
 function constraintTerms(value) {
-  return keywords(value, 6).filter((token) => !NEGATION_TOKENS.has(token));
+  return keywords(value, 6).filter((token) => !NEGATION_TOKENS.has(token) && token !== 'غير');
 }
 
 function hasNearbyNegation(tokens, index, radius = 4) {
