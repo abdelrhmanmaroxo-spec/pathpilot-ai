@@ -7,6 +7,7 @@ import { hashToken } from './lib/auth.js';
 import { assertRuntimeConfig, logRuntimeConfig } from './lib/config.js';
 import { getSessionUser, initializeDatabase } from './lib/database.js';
 import { createCachedHealthProbe } from './lib/health.js';
+import { installProviderResilience } from './lib/provider-resilience.js';
 import { attachRequestContext } from './lib/request-context.js';
 
 function bearerToken(request) {
@@ -29,6 +30,15 @@ function healthCors(request, env) {
 export function startPathPilotServer({ env = process.env, logger = console } = {}) {
   const config = assertRuntimeConfig(env);
   logRuntimeConfig(config, logger);
+  installProviderResilience({
+    logger,
+    options: {
+      maxConcurrency: Math.max(1, Number(env.PROVIDER_MAX_CONCURRENCY || 4)),
+      failureThreshold: Math.max(1, Number(env.PROVIDER_FAILURE_THRESHOLD || 3)),
+      cooldownMs: Math.max(5_000, Number(env.PROVIDER_COOLDOWN_MS || 30_000)),
+      maxRetries: Math.max(0, Math.min(3, Number(env.PROVIDER_MAX_RETRIES || 2))),
+    },
+  });
 
   const databasePath = env.DATABASE_PATH || 'server/data/pathpilot.sqlite';
   if (databasePath !== ':memory:') mkdirSync(dirname(databasePath), { recursive: true });
