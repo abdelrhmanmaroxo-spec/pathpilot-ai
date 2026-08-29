@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { LogIn, UserPlus, X } from 'lucide-react';
-import { getPlatformStatus, loginAccount, loginWithGoogleCredential, registerAccount } from './lib/platform.js';
+import { CheckCircle2, LogIn, MailCheck, UserPlus, X } from 'lucide-react';
+import { getPlatformStatus, loginAccount, loginWithGoogleCredential, registerAccount, resendVerification } from './lib/platform.js';
 
 let googleScriptPromise;
 
@@ -31,6 +31,8 @@ export default function AuthDialog({ open, onClose, onAuthenticated }) {
   const [form, setForm] = useState({ name: '', email: '', password: '' });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [verificationEmail, setVerificationEmail] = useState('');
+  const [resent, setResent] = useState(false);
   const googleButtonRef = useRef(null);
 
   useEffect(() => {
@@ -73,16 +75,47 @@ export default function AuthDialog({ open, onClose, onAuthenticated }) {
     return () => { active = false; };
   }, [open, view, onAuthenticated, onClose]);
 
+  useEffect(() => {
+    if (!open) {
+      setVerificationEmail('');
+      setResent(false);
+      setError('');
+    }
+  }, [open]);
+
   if (!open) return null;
 
   const submit = async (event) => {
     event.preventDefault();
     setLoading(true);
     setError('');
+    setResent(false);
     try {
-      const user = view === 'login' ? await loginAccount(form) : await registerAccount(form);
-      onAuthenticated(user);
-      onClose();
+      if (view === 'register') {
+        const result = await registerAccount(form);
+        if (result.requiresVerification) {
+          setVerificationEmail(result.email || form.email);
+          return;
+        }
+      } else {
+        const user = await loginAccount(form);
+        onAuthenticated(user);
+        onClose();
+      }
+    } catch (requestError) {
+      if (requestError.code === 'EMAIL_NOT_VERIFIED') setVerificationEmail(form.email);
+      else setError(requestError.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const resend = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      await resendVerification(verificationEmail);
+      setResent(true);
     } catch (requestError) {
       setError(requestError.message);
     } finally {
@@ -94,18 +127,33 @@ export default function AuthDialog({ open, onClose, onAuthenticated }) {
     <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
       <section className="auth-dialog" role="dialog" aria-modal="true" aria-labelledby="auth-title">
         <button className="dialog-close" type="button" onClick={onClose} aria-label="إغلاق"><X size={20} /></button>
-        <div className="auth-tabs"><button className={view === 'login' ? 'active' : ''} type="button" onClick={() => setView('login')}>تسجيل الدخول</button><button className={view === 'register' ? 'active' : ''} type="button" onClick={() => setView('register')}>حساب جديد</button></div>
-        <h2 id="auth-title">{view === 'login' ? 'أهلًا بعودتك.' : 'أنشئ حساب PathPilot.'}</h2>
-        <p>الحساب يحفظ نشاطك في المنصة ويفتح المزايا المتصلة بالخادم.</p>
-        <div ref={googleButtonRef} style={{ minHeight: 44, display: 'flex', justifyContent: 'center', margin: '14px 0' }} />
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, opacity: 0.7, margin: '10px 0' }}><span style={{ height: 1, background: 'currentColor', flex: 1 }} /><small>أو بالبريد الإلكتروني</small><span style={{ height: 1, background: 'currentColor', flex: 1 }} /></div>
-        <form onSubmit={submit}>
-          {view === 'register' && <label><span>الاسم</span><input required minLength={2} maxLength={60} value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} autoComplete="name" /></label>}
-          <label><span>البريد الإلكتروني</span><input required type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} autoComplete="email" /></label>
-          <label><span>كلمة المرور</span><input required type="password" minLength={8} maxLength={128} value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} autoComplete={view === 'login' ? 'current-password' : 'new-password'} /></label>
-          {error && <div className="auth-error">{error}</div>}
-          <button className="button button-primary" type="submit" disabled={loading}>{view === 'login' ? <LogIn size={18} /> : <UserPlus size={18} />} {loading ? 'جاري التنفيذ…' : view === 'login' ? 'دخول' : 'إنشاء الحساب'}</button>
-        </form>
+
+        {verificationEmail ? (
+          <div style={{ textAlign: 'center', padding: '18px 6px 8px' }}>
+            <MailCheck size={46} style={{ margin: '0 auto 12px' }} />
+            <h2 id="auth-title">أكد بريدك الإلكتروني</h2>
+            <p>أرسلنا رابط تفعيل إلى <strong>{verificationEmail}</strong>. افتح الرسالة واضغط Verify email، وبعدها ارجع وسجل دخولك.</p>
+            {resent && <div className="auth-error" style={{ borderColor: 'rgba(34,197,94,.45)' }}><CheckCircle2 size={17} /> تم إرسال رابط جديد.</div>}
+            {error && <div className="auth-error">{error}</div>}
+            <button className="button button-primary" type="button" onClick={resend} disabled={loading}><MailCheck size={18} /> {loading ? 'جاري الإرسال…' : 'إعادة إرسال رابط التفعيل'}</button>
+            <button className="button button-ghost" type="button" style={{ marginTop: 10 }} onClick={() => { setVerificationEmail(''); setView('login'); setError(''); }}>العودة لتسجيل الدخول</button>
+          </div>
+        ) : (
+          <>
+            <div className="auth-tabs"><button className={view === 'login' ? 'active' : ''} type="button" onClick={() => setView('login')}>تسجيل الدخول</button><button className={view === 'register' ? 'active' : ''} type="button" onClick={() => setView('register')}>حساب جديد</button></div>
+            <h2 id="auth-title">{view === 'login' ? 'أهلًا بعودتك.' : 'أنشئ حساب PathPilot.'}</h2>
+            <p>{view === 'register' ? 'بعد إنشاء الحساب ستحتاج لتأكيد بريدك الإلكتروني قبل أول تسجيل دخول.' : 'الحساب يحفظ نشاطك في المنصة ويفتح المزايا المتصلة بالخادم.'}</p>
+            <div ref={googleButtonRef} style={{ minHeight: 44, display: 'flex', justifyContent: 'center', margin: '14px 0' }} />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, opacity: 0.7, margin: '10px 0' }}><span style={{ height: 1, background: 'currentColor', flex: 1 }} /><small>أو بالبريد الإلكتروني</small><span style={{ height: 1, background: 'currentColor', flex: 1 }} /></div>
+            <form onSubmit={submit}>
+              {view === 'register' && <label><span>الاسم</span><input required minLength={2} maxLength={60} value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} autoComplete="name" /></label>}
+              <label><span>البريد الإلكتروني</span><input required type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} autoComplete="email" /></label>
+              <label><span>كلمة المرور</span><input required type="password" minLength={8} maxLength={128} value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} autoComplete={view === 'login' ? 'current-password' : 'new-password'} /></label>
+              {error && <div className="auth-error">{error}</div>}
+              <button className="button button-primary" type="submit" disabled={loading}>{view === 'login' ? <LogIn size={18} /> : <UserPlus size={18} />} {loading ? 'جاري التنفيذ…' : view === 'login' ? 'دخول' : 'إنشاء الحساب'}</button>
+            </form>
+          </>
+        )}
       </section>
     </div>
   );
