@@ -6,6 +6,7 @@ import ConversationExperience from './ConversationExperience.jsx';
 import { initAttribution } from './lib/attribution.js';
 import { initLanguageSwitch } from './lib/i18n.js';
 import { initI18nOverrides } from './lib/i18n-overrides.js';
+import { initI18nRuntimeHardening } from './lib/i18n-runtime-hardening.js';
 import './styles.css';
 import './i18n.css';
 import './account-experience.css';
@@ -21,6 +22,7 @@ createRoot(document.getElementById('root')).render(
 
 initLanguageSwitch();
 initI18nOverrides();
+initI18nRuntimeHardening();
 initAttribution();
 
 if ('serviceWorker' in navigator && import.meta.env.PROD) {
