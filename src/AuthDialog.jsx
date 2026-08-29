@@ -35,6 +35,15 @@ export default function AuthDialog({ open, onClose, onAuthenticated }) {
   const [resent, setResent] = useState(false);
   const googleButtonRef = useRef(null);
 
+  const closeDialog = () => {
+    setVerificationEmail('');
+    setResent(false);
+    setError('');
+    setLoading(false);
+    setView('login');
+    onClose();
+  };
+
   useEffect(() => {
     if (!open) return undefined;
     let active = true;
@@ -53,7 +62,7 @@ export default function AuthDialog({ open, onClose, onAuthenticated }) {
               const user = await loginWithGoogleCredential(credential);
               if (!active) return;
               onAuthenticated(user);
-              onClose();
+              closeDialog();
             } catch (requestError) {
               if (active) setError(requestError.message);
             } finally {
@@ -73,15 +82,7 @@ export default function AuthDialog({ open, onClose, onAuthenticated }) {
       })
       .catch(() => undefined);
     return () => { active = false; };
-  }, [open, view, onAuthenticated, onClose]);
-
-  useEffect(() => {
-    if (!open) {
-      setVerificationEmail('');
-      setResent(false);
-      setError('');
-    }
-  }, [open]);
+  }, [open, view, onAuthenticated, closeDialog]);
 
   if (!open) return null;
 
@@ -100,7 +101,7 @@ export default function AuthDialog({ open, onClose, onAuthenticated }) {
       } else {
         const user = await loginAccount(form);
         onAuthenticated(user);
-        onClose();
+        closeDialog();
       }
     } catch (requestError) {
       if (requestError.code === 'EMAIL_NOT_VERIFIED') setVerificationEmail(form.email);
@@ -124,9 +125,9 @@ export default function AuthDialog({ open, onClose, onAuthenticated }) {
   };
 
   return (
-    <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+    <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closeDialog(); }}>
       <section className="auth-dialog" role="dialog" aria-modal="true" aria-labelledby="auth-title">
-        <button className="dialog-close" type="button" onClick={onClose} aria-label="إغلاق"><X size={20} /></button>
+        <button className="dialog-close" type="button" onClick={closeDialog} aria-label="إغلاق"><X size={20} /></button>
 
         {verificationEmail ? (
           <div style={{ textAlign: 'center', padding: '18px 6px 8px' }}>
