@@ -12,6 +12,27 @@ test('quality scorer rewards constraint-aware actionable answers', () => {
 
   assert.ok(result.score >= 0.7);
   assert.equal(result.flags.includes('missed-constraints'), false);
+  assert.equal(result.flags.includes('contradicted-constraints'), false);
+});
+
+test('quality scorer penalizes answers that contradict negative constraints', () => {
+  const compliant = scoreLocalAnswer({
+    prompt: 'اصلح المشكلة بدون تغيير backend',
+    knowledge: { constraints: ['بدون تغيير backend'] },
+    style: 'balanced',
+    answer: 'ابدأ من الواجهة بدون تغيير backend. اختبر state management والطلبات الحالية، ثم قِس النتيجة قبل أي تعديل إضافي.',
+  });
+  const contradictory = scoreLocalAnswer({
+    prompt: 'اصلح المشكلة بدون تغيير backend',
+    knowledge: { constraints: ['بدون تغيير backend'] },
+    style: 'balanced',
+    answer: 'غيّر backend أولًا ثم عدّل الواجهة واختبر الطلبات بعد النشر. هذه أسرع طريقة للوصول إلى نتيجة مستقرة.',
+  });
+
+  assert.equal(compliant.flags.includes('contradicted-constraints'), false);
+  assert.equal(contradictory.flags.includes('contradicted-constraints'), true);
+  assert.ok(compliant.score > contradictory.score);
+  assert.ok(contradictory.components.contradiction > 0);
 });
 
 test('quality gate keeps a stronger draft when review becomes generic', () => {
@@ -25,6 +46,19 @@ test('quality gate keeps a stronger draft when review becomes generic', () => {
 
   assert.equal(result.selected, 'draft');
   assert.ok(result.draftQuality.score > result.reviewedQuality.score);
+});
+
+test('quality gate keeps a compliant draft when review breaks a hard negative constraint', () => {
+  const result = chooseBetterLocalAnswer({
+    prompt: 'حسن الأداء بدون تغيير backend',
+    knowledge: { constraints: ['بدون تغيير backend'] },
+    style: 'balanced',
+    draft: 'حسن الأداء بدون تغيير backend: ابدأ بقياس render time، ثم قلل rerenders واختبر caching في الواجهة، وبعد كل تعديل قارن latency والنتيجة.',
+    reviewed: 'لتحسين الأداء، غيّر backend وأضف endpoint جديدًا ثم انقل جزءًا من المعالجة إليه. بعد ذلك اختبر الواجهة وراقب latency.',
+  });
+
+  assert.equal(result.selected, 'draft');
+  assert.equal(result.reviewedQuality.flags.includes('contradicted-constraints'), true);
 });
 
 test('quality gate accepts a review that improves constraint coverage', () => {
