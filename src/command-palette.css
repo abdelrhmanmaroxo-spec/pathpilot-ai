@@ -1,31 +1,47 @@
+.command-dock-spacer {
+  height: 62px;
+  pointer-events: none;
+}
+
 .global-command-trigger {
   position: fixed;
-  z-index: 45;
-  top: 13px;
+  z-index: 55;
+  top: 78px;
   left: 50%;
   display: grid;
-  width: min(360px, 34vw);
-  min-width: 250px;
-  height: 42px;
+  width: min(520px, calc(100vw - 48px));
+  min-width: 280px;
+  height: 44px;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  gap: 9px;
-  padding: 0 10px;
-  border: 1px solid rgba(113, 139, 218, .17);
-  border-radius: 13px;
-  background: rgba(9, 16, 34, .78);
-  box-shadow: 0 15px 45px rgba(0,0,0,.22), inset 0 1px 0 rgba(255,255,255,.025);
-  color: #7e8dab;
-  backdrop-filter: blur(20px);
+  gap: 10px;
+  padding: 0 12px;
+  border: 1px solid rgba(113, 139, 218, .23);
+  border-radius: 14px;
+  background: rgba(8, 15, 32, .9);
+  box-shadow: 0 16px 48px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,255,255,.035);
+  color: #8797b8;
+  backdrop-filter: blur(24px);
   transform: translateX(-50%);
   cursor: pointer;
-  transition: 160ms ease;
+  transition: border-color 160ms ease, background 160ms ease, box-shadow 160ms ease;
+}
+
+.global-command-trigger::before {
+  position: absolute;
+  inset: -7px -12px;
+  z-index: -1;
+  border-radius: 20px;
+  background: linear-gradient(180deg, rgba(5,9,20,.88), rgba(5,9,20,.38));
+  content: '';
+  pointer-events: none;
 }
 
 .global-command-trigger:hover {
-  border-color: rgba(105, 137, 255, .34);
-  background: rgba(18, 28, 55, .88);
-  color: #b9c7e2;
+  border-color: rgba(105, 137, 255, .42);
+  background: rgba(16, 27, 54, .95);
+  box-shadow: 0 18px 54px rgba(0,0,0,.4), 0 0 0 4px rgba(98,112,255,.035);
+  color: #c1cee6;
 }
 
 .global-command-trigger span {
@@ -55,19 +71,19 @@
   align-items: start;
   justify-items: center;
   padding-top: min(16vh, 150px);
-  background: rgba(1, 5, 15, .66);
-  backdrop-filter: blur(12px);
+  background: rgba(1, 5, 15, .7);
+  backdrop-filter: blur(13px);
 }
 
 .command-palette {
-  width: min(640px, calc(100% - 28px));
+  width: min(700px, calc(100% - 28px));
   overflow: hidden;
-  border: 1px solid rgba(117, 142, 222, .22);
+  border: 1px solid rgba(117, 142, 222, .25);
   border-radius: 20px;
   background:
-    radial-gradient(circle at 50% -20%, rgba(93,79,255,.12), transparent 46%),
-    rgba(8, 15, 32, .97);
-  box-shadow: 0 38px 120px rgba(0,0,0,.58), 0 0 0 1px rgba(255,255,255,.015) inset;
+    radial-gradient(circle at 50% -20%, rgba(93,79,255,.14), transparent 46%),
+    rgba(8, 15, 32, .985);
+  box-shadow: 0 38px 120px rgba(0,0,0,.62), 0 0 0 1px rgba(255,255,255,.018) inset;
 }
 
 .command-search {
@@ -107,7 +123,7 @@
 .command-list {
   display: grid;
   gap: 4px;
-  max-height: min(58vh, 470px);
+  max-height: min(62vh, 520px);
   overflow-y: auto;
   padding: 8px;
 }
@@ -129,8 +145,8 @@
 
 .command-list > button:hover,
 .command-list > button:focus-visible {
-  border-color: rgba(104,135,228,.16);
-  background: linear-gradient(90deg, rgba(82,87,255,.1), rgba(39,119,172,.06));
+  border-color: rgba(104,135,228,.18);
+  background: linear-gradient(90deg, rgba(82,87,255,.11), rgba(39,119,172,.07));
 }
 
 .command-icon {
@@ -160,6 +176,7 @@
 
 .command-footer {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 7px;
   padding: 9px 13px;
@@ -168,8 +185,8 @@
   font-size: 9px;
 }
 
-.command-footer span:nth-child(3) { margin-inline-start: 12px; }
 .command-footer span:nth-child(odd) {
+  margin-inline-start: 8px;
   padding: 2px 5px;
   border: 1px solid rgba(119,142,208,.1);
   border-radius: 5px;
@@ -177,11 +194,36 @@
   font-family: Consolas, monospace;
 }
 
+.command-footer span:first-child { margin-inline-start: 0; }
+
+.pathpilot-search-hit {
+  position: relative;
+  outline: 2px solid rgba(92, 214, 210, .72) !important;
+  outline-offset: 5px !important;
+  border-radius: 8px;
+  box-shadow: 0 0 0 7px rgba(92,214,210,.07), 0 0 34px rgba(92,214,210,.15) !important;
+  transition: box-shadow 180ms ease, outline-color 180ms ease;
+}
+
 @media (max-width: 980px) {
-  .global-command-trigger { display: none; }
+  .command-dock-spacer { height: 60px; }
+  .global-command-trigger {
+    top: 76px;
+    width: min(520px, calc(100vw - 24px));
+    min-width: 0;
+  }
 }
 
 @media (max-width: 640px) {
+  .command-dock-spacer { height: 56px; }
+  .global-command-trigger {
+    top: 72px;
+    width: calc(100vw - 18px);
+    height: 42px;
+    padding-inline: 10px;
+  }
+  .global-command-trigger kbd { display: none; }
   .command-backdrop { padding-top: 68px; }
   .command-palette { width: calc(100% - 18px); border-radius: 17px; }
+  .command-list { max-height: 68vh; }
 }
