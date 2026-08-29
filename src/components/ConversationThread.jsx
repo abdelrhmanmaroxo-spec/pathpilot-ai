@@ -12,7 +12,7 @@ export default function ConversationThread({ turns = [], onReuse, maxTurns = 5 }
   return (
     <section className="conversation-thread" aria-label={en ? 'Conversation context' : 'سياق المحادثة'} style={{ display: 'grid', gap: 12, marginBottom: 14 }}>
       {visibleTurns.map((turn) => (
-        <article key={turn.id} style={{ display: 'grid', gap: 10 }}>
+        <article key={turn.id} className={turn.streaming ? 'conversation-turn is-streaming' : 'conversation-turn'} style={{ display: 'grid', gap: 10 }}>
           <div style={{ border: '1px solid rgba(148,163,184,.16)', borderRadius: 14, padding: 12, background: 'rgba(15,23,42,.24)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center', marginBottom: 6 }}>
               <strong style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><UserRound size={15} /> {en ? 'You' : 'أنت'}</strong>
@@ -20,9 +20,10 @@ export default function ConversationThread({ turns = [], onReuse, maxTurns = 5 }
             </div>
             <p style={{ margin: 0, whiteSpace: 'pre-wrap' }}>{turn.prompt}</p>
           </div>
-          <div style={{ borderInlineStart: '2px solid rgba(96,165,250,.35)', paddingInlineStart: 12 }}>
+          <div className="conversation-assistant-answer" style={{ borderInlineStart: '2px solid rgba(96,165,250,.35)', paddingInlineStart: 12 }} aria-live={turn.streaming ? 'polite' : undefined}>
             <strong style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginBottom: 6 }}><Sparkles size={15} /> PathPilot</strong>
-            <ResponseContent answer={turn.answer} />
+            {turn.answer ? <ResponseContent answer={turn.answer} /> : null}
+            {turn.streaming && <span className="chat-stream-caret" aria-hidden="true" />}
           </div>
         </article>
       ))}
