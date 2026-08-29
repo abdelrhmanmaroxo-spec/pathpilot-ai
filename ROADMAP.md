@@ -12,6 +12,7 @@ This file is the execution tracker for the two approved 50-item roadmaps. Status
 
 ## Progress notes
 
+- 2026-08-30: A13 i18n coverage expanded to the privileged Chat workspace and shared ConversationThread. New Arabic-only literals introduced in those conversational surfaces must now be backed by the combined translation catalogs, while intentional inline English/Arabic ternaries remain supported. This extends CI protection into the main live-chat path without changing runtime behavior or persistence.
 - 2026-08-29: A13 i18n coverage hardened so explicit bilingual ternaries no longer cause the entire source line to be skipped. The guard now strips only the matched English/Arabic ternary pair, still catches unrelated Arabic-only UI copy on the same line, and has regression coverage for bilingual, mixed, and Arabic-only ternary cases.
 - 2026-08-29: A13 i18n coverage expanded from a single `AppChrome.jsx` guard to a combined-catalog CI check across the main, override, and runtime-hardening catalogs plus critical Arabic-only UI surfaces (`AppChrome`, `Landing`, `WorkspacePanels`, `PinnedPrompts`, and `VoiceControls`). Explicit inline bilingual ternaries are excluded because they do not rely on runtime catalog translation. This prevents new untranslated Arabic-only labels/placeholders/status text from silently shipping while the legacy i18n layers are being consolidated.
 - 2026-08-29: Privileged Chat streaming v1 implemented end-to-end for the live direct-AI route. The production server now exposes a secured POST SSE stream that forwards only visible provider output deltas, never provider reasoning fields; the central API client can consume SSE with request IDs, aborts, timeouts, normalized pre-stream errors, and stream cancellation; Chat now inserts the user turn immediately and renders the answer incrementally with a real Stop path. Internal auto-tool/debug chips were removed from the normal answer view so the experience feels like a conversational assistant rather than a developer console. Existing research and local-WebLLM paths remain compatible but still complete as non-streamed fallbacks, so A26 remains IN_PROGRESS until those routes stream natively too.
@@ -46,7 +47,7 @@ This file is the execution tracker for the two approved 50-item roadmaps. Status
 | A10 | IN_PROGRESS | Update README and deployment docs; changelog/user guide are now current |
 | A11 | IN_PROGRESS | Key-based i18n architecture |
 | A12 | IN_PROGRESS | Merge legacy i18n runtime layers |
-| A13 | IN_PROGRESS | Translation coverage CI now validates combined catalogs and critical Arabic-only UI surfaces, with precise bilingual-ternary filtering; broader component coverage remains |
+| A13 | IN_PROGRESS | Translation coverage CI validates combined catalogs plus core app, workspace, voice, privileged Chat, and conversation-thread surfaces; broader component coverage remains |
 | A14 | TODO | Automated LTR/RTL UI checks |
 | A15 | IN_PROGRESS | Full mobile UX pass; premium workspace responsive pass + non-sticky top utility controls completed |
 | A16 | IN_PROGRESS | Accessibility pass; focus states, reduced-motion support, and top utility keyboard focus protection active |
