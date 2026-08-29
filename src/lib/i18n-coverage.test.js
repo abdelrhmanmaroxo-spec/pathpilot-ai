@@ -21,11 +21,11 @@ async function loadTranslationCatalog() {
 
 function extractQuotedArabicLiterals(source) {
   const literals = new Set();
-  const pattern = /(['"])([^\n]*?[\u0600-\u06FF][^\n]*?)\1/g;
+  const pattern = /'([^'\n]*[\u0600-\u06FF][^'\n]*)'|"([^"\n]*[\u0600-\u06FF][^"\n]*)"/g;
   let match;
 
   while ((match = pattern.exec(source)) !== null) {
-    const value = match[2].trim();
+    const value = (match[1] ?? match[2] ?? '').trim();
     if (value) literals.add(value);
   }
 
