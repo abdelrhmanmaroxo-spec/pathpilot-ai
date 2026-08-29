@@ -43,6 +43,19 @@ function latestRequestFromContext(prompt) {
   return latest || value;
 }
 
+function deepAnalysisPrompt(prompt) {
+  return [
+    String(prompt || '').trim(),
+    '',
+    'DEEP ANALYSIS MODE',
+    '- Analyze the request more carefully than normal before composing the final answer.',
+    '- Check assumptions, constraints, contradictions, edge cases, failure modes, and meaningful trade-offs.',
+    '- Prefer a complete, decision-useful final answer over a fast first draft.',
+    '- If evidence is uncertain, state the useful uncertainty instead of inventing confidence.',
+    '- Do not reveal hidden chain-of-thought or private reasoning. Return only the final answer and concise supporting rationale when useful.',
+  ].join('\n');
+}
+
 function assertSafePrompt(prompt) {
   if (!hasExploitLikePayload(prompt)) return;
   throw new PathPilotApiError(
@@ -67,6 +80,10 @@ function normalizedResult(payload, route) {
 export async function generateRoutedAssistantResponse(args) {
   const contextualPrompt = String(args.prompt || '').trim();
   const latestPrompt = latestRequestFromContext(contextualPrompt);
+  const forceResearch = args.routeOptions?.forceResearch === true;
+  const deepThink = args.routeOptions?.deepThink === true;
+  const modelPrompt = deepThink ? deepAnalysisPrompt(contextualPrompt) : contextualPrompt;
+  const effectivePreferences = { ...(args.preferences || {}), deepThinkEnabled: deepThink };
   assertSafePrompt(latestPrompt);
   await assertSystemAvailable(args.signal);
 
@@ -75,14 +92,15 @@ export async function generateRoutedAssistantResponse(args) {
     tool: args.tool,
     hasResearch: researchAvailable,
     hasDirectAI: directAvailable,
+    forceResearch,
   });
 
   if (decision.route === 'direct-ai' && directClient) {
     const cached = answerCache.find({
       mode: args.mode,
       tool: args.tool,
-      prompt: contextualPrompt,
-      preferences: args.preferences,
+      prompt: modelPrompt,
+      preferences: effectivePreferences,
     });
     if (cached) return cached;
 
@@ -92,18 +110,18 @@ export async function generateRoutedAssistantResponse(args) {
         body: JSON.stringify({
           mode: args.mode,
           tool: args.tool,
-          prompt: contextualPrompt,
-          preferences: args.preferences || {},
+          prompt: modelPrompt,
+          preferences: effectivePreferences,
         }),
         signal: args.signal,
-        timeoutMs: 65_000,
+        timeoutMs: deepThink ? 85_000 : 65_000,
       });
       const result = normalizedResult(payload, 'direct-ai');
       answerCache.store({
         mode: args.mode,
         tool: args.tool,
-        prompt: contextualPrompt,
-        preferences: args.preferences,
+        prompt: modelPrompt,
+        preferences: effectivePreferences,
         result,
       });
       return result;
@@ -115,8 +133,9 @@ export async function generateRoutedAssistantResponse(args) {
 
   const result = await generateAssistantResponse({
     ...args,
-    prompt: contextualPrompt,
+    prompt: modelPrompt,
     latestPrompt,
+    preferences: effectivePreferences,
   });
   return {
     ...result,
