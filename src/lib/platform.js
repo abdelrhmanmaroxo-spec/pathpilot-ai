@@ -57,6 +57,10 @@ export async function resendVerification(email) {
   return request('/api/auth/resend-verification', { method: 'POST', body: JSON.stringify({ email }) });
 }
 
+export async function requestPasswordReset(email) {
+  return request('/api/auth/forgot-password', { method: 'POST', body: JSON.stringify({ email }) });
+}
+
 export async function loginAccount(details) {
   const payload = await request('/api/auth/login', { method: 'POST', body: JSON.stringify(details) });
   setSessionToken(payload.token);
