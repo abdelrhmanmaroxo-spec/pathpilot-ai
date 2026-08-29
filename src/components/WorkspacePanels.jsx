@@ -7,6 +7,7 @@ import {
   Download,
   GraduationCap,
   History,
+  RotateCcw,
   Share2,
   SlidersHorizontal,
   Sparkles,
@@ -17,6 +18,7 @@ import {
 import { TOOL_LIBRARY } from '../lib/assistant.js';
 import { supportsBrowserLLM } from '../lib/local-llm.js';
 import { TOOL_ICONS } from '../lib/tool-icons.js';
+import ResponseContent from './ResponseContent.jsx';
 
 function sourceLabel(source) {
   if (source === 'research-ai') return 'Web Research + AI · Beta';
@@ -25,6 +27,10 @@ function sourceLabel(source) {
   if (source === 'local-llm') return 'On-device Local LLM · Beta';
   if (source === 'local-fallback') return 'Local Super Reasoner · Beta';
   return 'PathPilot Intelligence · Beta';
+}
+
+function isEnglish() {
+  return document.body?.dataset?.language === 'en';
 }
 
 export function ToolRail({ mode, selectedTool, onSelect }) {
@@ -45,7 +51,8 @@ export function ToolRail({ mode, selectedTool, onSelect }) {
   );
 }
 
-export function ResultCard({ answer, source, onCopy, onDownload, onShare, onRate, feedbackEnabled }) {
+export function ResultCard({ answer, source, onCopy, onDownload, onShare, onRate, onRegenerate, feedbackEnabled, loading = false }) {
+  const en = isEnglish();
   if (!answer) {
     return (
       <div className="empty-result">
@@ -61,12 +68,13 @@ export function ResultCard({ answer, source, onCopy, onDownload, onShare, onRate
       <div className="result-head">
         <div><span className="assistant-avatar"><Sparkles size={18} /></span><div><strong>PathPilot Assistant</strong><small>{sourceLabel(source)}</small></div></div>
         <div className="result-actions">
+          {onRegenerate && <button type="button" onClick={onRegenerate} disabled={loading} title={en ? 'Regenerate answer' : 'إعادة إنشاء الإجابة'} aria-label={en ? 'Regenerate answer' : 'إعادة إنشاء الإجابة'}><RotateCcw size={17} /></button>}
           <button type="button" onClick={onCopy} title="نسخ النتيجة"><Copy size={17} /></button>
           <button type="button" onClick={onShare} title="مشاركة النتيجة"><Share2 size={17} /></button>
           <button type="button" onClick={onDownload} title="تنزيل النتيجة"><Download size={17} /></button>
         </div>
       </div>
-      <pre>{answer}</pre>
+      <ResponseContent answer={answer} />
       {feedbackEnabled && (
         <div className="result-feedback">
           <span>قيّم النتيجة</span>
