@@ -1,6 +1,15 @@
 import { DatabaseSync } from 'node:sqlite';
 import { randomUUID } from 'node:crypto';
 
+const now = () => new Date().toISOString();
+
+function ensureColumn(database, table, column, definition) {
+  const columns = database.prepare(`PRAGMA table_info(${table})`).all();
+  if (!columns.some((item) => item.name === column)) {
+    database.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  }
+}
+
 export function initializeDatabase(filename = ':memory:') {
   const database = new DatabaseSync(filename);
   database.exec(`
@@ -59,20 +68,44 @@ export function initializeDatabase(filename = ':memory:') {
       tool TEXT,
       created_at TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS email_verifications (
+      token_hash TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      created_at TEXT NOT NULL,
+      expires_at TEXT NOT NULL,
+      used_at TEXT
+    );
+    CREATE TABLE IF NOT EXISTS admin_invites (
+      email TEXT PRIMARY KEY,
+      invited_by TEXT,
+      created_at TEXT NOT NULL,
+      accepted_at TEXT
+    );
     CREATE INDEX IF NOT EXISTS events_created_idx ON events(created_at);
     CREATE INDEX IF NOT EXISTS ai_created_idx ON ai_requests(created_at);
+    CREATE INDEX IF NOT EXISTS verification_user_idx ON email_verifications(user_id);
   `);
+
+  // Existing accounts predate email verification. Keep them usable after the migration.
+  ensureColumn(database, 'users', 'email_verified', 'INTEGER NOT NULL DEFAULT 1');
+  ensureColumn(database, 'users', 'verified_at', 'TEXT');
+  ensureColumn(database, 'users', 'auth_provider', "TEXT NOT NULL DEFAULT 'password'");
   return database;
 }
 
-const now = () => new Date().toISOString();
-
-export function createUser(database, { name, email, passwordHash, role = 'user' }) {
+export function createUser(database, { name, email, passwordHash, role = 'user', emailVerified = false, authProvider = 'password' }) {
   const id = randomUUID();
   const createdAt = now();
-  database.prepare('INSERT INTO users (id,name,email,password_hash,role,created_at,last_seen_at) VALUES (?,?,?,?,?,?,?)')
-    .run(id, name, email, passwordHash, role, createdAt, createdAt);
-  return { id, name, email, role, createdAt, lastSeenAt: createdAt };
+  const verifiedAt = emailVerified ? createdAt : null;
+  database.prepare(`
+    INSERT INTO users (id,name,email,password_hash,role,email_verified,verified_at,auth_provider,created_at,last_seen_at)
+    VALUES (?,?,?,?,?,?,?,?,?,?)
+  `).run(id, name, email, passwordHash, role, emailVerified ? 1 : 0, verifiedAt, authProvider, createdAt, createdAt);
+  return findUserById(database, id);
+}
+
+export function deleteUser(database, userId) {
+  database.prepare('DELETE FROM users WHERE id = ?').run(userId);
 }
 
 export function findUserByEmail(database, email) {
@@ -86,8 +119,34 @@ export function findUserById(database, id) {
 export function setUserRole(database, userId, role) {
   if (!['user', 'admin'].includes(role)) throw new Error('INVALID_ROLE');
   database.prepare('UPDATE users SET role = ? WHERE id = ?').run(role, userId);
-  const user = findUserById(database, userId);
-  return user ? { id: user.id, name: user.name, email: user.email, role: user.role, disabled: user.disabled, created_at: user.created_at, last_seen_at: user.last_seen_at } : null;
+  return findUserById(database, userId);
+}
+
+export function setUserEmailVerified(database, userId, verified = true) {
+  database.prepare('UPDATE users SET email_verified = ?, verified_at = ? WHERE id = ?')
+    .run(verified ? 1 : 0, verified ? now() : null, userId);
+  return findUserById(database, userId);
+}
+
+export function createEmailVerification(database, { tokenHash, userId, hours = 24 }) {
+  const createdAt = now();
+  const expiresAt = new Date(Date.now() + hours * 3_600_000).toISOString();
+  database.prepare('DELETE FROM email_verifications WHERE user_id = ? AND used_at IS NULL').run(userId);
+  database.prepare('INSERT INTO email_verifications (token_hash,user_id,created_at,expires_at,used_at) VALUES (?,?,?,?,NULL)')
+    .run(tokenHash, userId, createdAt, expiresAt);
+  return { createdAt, expiresAt };
+}
+
+export function consumeEmailVerification(database, tokenHash) {
+  const record = database.prepare(`
+    SELECT token_hash,user_id FROM email_verifications
+    WHERE token_hash = ? AND used_at IS NULL AND expires_at > ?
+  `).get(tokenHash, now());
+  if (!record) return null;
+  const verifiedAt = now();
+  database.prepare('UPDATE email_verifications SET used_at = ? WHERE token_hash = ?').run(verifiedAt, tokenHash);
+  database.prepare('UPDATE users SET email_verified = 1, verified_at = ? WHERE id = ?').run(verifiedAt, record.user_id);
+  return findUserById(database, record.user_id);
 }
 
 export function createSession(database, { tokenHash, userId, days = 30 }) {
@@ -100,7 +159,7 @@ export function createSession(database, { tokenHash, userId, days = 30 }) {
 
 export function getSessionUser(database, tokenHash) {
   const user = database.prepare(`
-    SELECT users.id,users.name,users.email,users.role,users.disabled,users.created_at,users.last_seen_at
+    SELECT users.id,users.name,users.email,users.role,users.disabled,users.email_verified,users.verified_at,users.auth_provider,users.created_at,users.last_seen_at
     FROM sessions JOIN users ON users.id = sessions.user_id
     WHERE sessions.token_hash = ? AND sessions.expires_at > ?
   `).get(tokenHash, now());
@@ -110,6 +169,32 @@ export function getSessionUser(database, tokenHash) {
 
 export function deleteSession(database, tokenHash) {
   database.prepare('DELETE FROM sessions WHERE token_hash = ?').run(tokenHash);
+}
+
+export function upsertAdminInvite(database, { email, invitedBy = null }) {
+  const createdAt = now();
+  database.prepare(`
+    INSERT INTO admin_invites (email,invited_by,created_at,accepted_at)
+    VALUES (?,?,?,NULL)
+    ON CONFLICT(email) DO UPDATE SET invited_by=excluded.invited_by,created_at=excluded.created_at,accepted_at=NULL
+  `).run(email, invitedBy, createdAt);
+  return database.prepare('SELECT email,invited_by,created_at,accepted_at FROM admin_invites WHERE email = ?').get(email);
+}
+
+export function findPendingAdminInvite(database, email) {
+  return database.prepare('SELECT email,invited_by,created_at,accepted_at FROM admin_invites WHERE email = ? AND accepted_at IS NULL').get(email);
+}
+
+export function markAdminInviteAccepted(database, email) {
+  database.prepare('UPDATE admin_invites SET accepted_at = ? WHERE email = ?').run(now(), email);
+}
+
+export function revokeAdminInvite(database, email) {
+  database.prepare('DELETE FROM admin_invites WHERE email = ? AND accepted_at IS NULL').run(email);
+}
+
+export function listAdminInvites(database) {
+  return database.prepare('SELECT email,invited_by,created_at,accepted_at FROM admin_invites ORDER BY created_at DESC').all();
 }
 
 export function trackEvent(database, { userId = null, anonymousId = null, eventType, workspace = null, tool = null, metadata = null }) {
@@ -135,6 +220,7 @@ export function createFeedback(database, { userId = null, rating, message = '', 
 export function getAdminSummary(database, aiConfigured) {
   const since = new Date(Date.now() - 86_400_000).toISOString();
   const totalUsers = database.prepare('SELECT COUNT(*) AS count FROM users').get().count;
+  const verifiedUsers = database.prepare('SELECT COUNT(*) AS count FROM users WHERE email_verified = 1').get().count;
   const activeToday = database.prepare('SELECT COUNT(*) AS count FROM users WHERE last_seen_at >= ?').get(since).count;
   const aiRequests = database.prepare('SELECT COUNT(*) AS count FROM ai_requests').get().count;
   const successfulAiRequests = database.prepare("SELECT COUNT(*) AS count FROM ai_requests WHERE status = 'success'").get().count;
@@ -143,6 +229,7 @@ export function getAdminSummary(database, aiConfigured) {
   const totalUsage = Object.values(usage).reduce((sum, value) => sum + value, 0);
   return {
     totalUsers,
+    verifiedUsers,
     activeToday,
     aiRequests,
     aiSuccessRate: aiRequests ? Math.round((successfulAiRequests / aiRequests) * 100) : 0,
@@ -155,7 +242,10 @@ export function getAdminSummary(database, aiConfigured) {
 }
 
 export function listUsers(database, limit = 50) {
-  return database.prepare('SELECT id,name,email,role,disabled,created_at,last_seen_at FROM users ORDER BY created_at DESC LIMIT ?').all(limit);
+  return database.prepare(`
+    SELECT id,name,email,role,disabled,email_verified,verified_at,auth_provider,created_at,last_seen_at
+    FROM users ORDER BY created_at DESC LIMIT ?
+  `).all(limit);
 }
 
 export function listErrors(database, limit = 30) {
