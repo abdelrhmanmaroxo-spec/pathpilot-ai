@@ -137,6 +137,13 @@ function throwIfAborted(signal) {
   throw new DOMException('The operation was aborted.', 'AbortError');
 }
 
+function responseError(payload, status) {
+  const error = new Error(payload?.error || payload?.message || payload?.code || `AI service returned ${status}`);
+  error.code = payload?.code || 'AI_SERVICE_FAILED';
+  error.status = status;
+  return error;
+}
+
 async function llmAwareFallback(args, reason, allowColdStart, signal) {
   throwIfAborted(signal);
   if (args.preferences?.localLlmEnabled && (allowColdStart || isBrowserLLMReady())) {
@@ -185,7 +192,7 @@ export async function generateAssistantResponse({ mode, tool, prompt, preference
       signal: controller.signal,
     });
     const payload = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(payload.code || payload.error || `AI service returned ${response.status}`);
+    if (!response.ok) throw responseError(payload, response.status);
     if (typeof payload.answer !== 'string' || !payload.answer.trim()) throw new Error('Invalid AI response');
     return {
       answer: payload.answer.trim(),
@@ -198,6 +205,7 @@ export async function generateAssistantResponse({ mode, tool, prompt, preference
     };
   } catch (error) {
     if (signal?.aborted) throw error;
+    if (error?.code === 'SYSTEM_PAUSED' || error?.code === 'UNSAFE_INPUT_BLOCKED') throw error;
     console.warn('PathPilot live response failed; trying local AI tiers.', error);
     return llmAwareFallback(args, timedOut || error?.name === 'TimeoutError' ? 'timeout' : 'offline', false, signal);
   } finally {
