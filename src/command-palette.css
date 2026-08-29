@@ -1,0 +1,187 @@
+.global-command-trigger {
+  position: fixed;
+  z-index: 45;
+  top: 13px;
+  left: 50%;
+  display: grid;
+  width: min(360px, 34vw);
+  min-width: 250px;
+  height: 42px;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+  padding: 0 10px;
+  border: 1px solid rgba(113, 139, 218, .17);
+  border-radius: 13px;
+  background: rgba(9, 16, 34, .78);
+  box-shadow: 0 15px 45px rgba(0,0,0,.22), inset 0 1px 0 rgba(255,255,255,.025);
+  color: #7e8dab;
+  backdrop-filter: blur(20px);
+  transform: translateX(-50%);
+  cursor: pointer;
+  transition: 160ms ease;
+}
+
+.global-command-trigger:hover {
+  border-color: rgba(105, 137, 255, .34);
+  background: rgba(18, 28, 55, .88);
+  color: #b9c7e2;
+}
+
+.global-command-trigger span {
+  overflow: hidden;
+  text-align: start;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+}
+
+.global-command-trigger kbd,
+.command-palette kbd {
+  padding: 3px 6px;
+  border: 1px solid rgba(124, 148, 217, .13);
+  border-radius: 7px;
+  background: rgba(255,255,255,.035);
+  color: #73809c;
+  font-family: Consolas, monospace;
+  font-size: 9px;
+}
+
+.command-backdrop {
+  position: fixed;
+  z-index: 2000;
+  inset: 0;
+  display: grid;
+  align-items: start;
+  justify-items: center;
+  padding-top: min(16vh, 150px);
+  background: rgba(1, 5, 15, .66);
+  backdrop-filter: blur(12px);
+}
+
+.command-palette {
+  width: min(640px, calc(100% - 28px));
+  overflow: hidden;
+  border: 1px solid rgba(117, 142, 222, .22);
+  border-radius: 20px;
+  background:
+    radial-gradient(circle at 50% -20%, rgba(93,79,255,.12), transparent 46%),
+    rgba(8, 15, 32, .97);
+  box-shadow: 0 38px 120px rgba(0,0,0,.58), 0 0 0 1px rgba(255,255,255,.015) inset;
+}
+
+.command-search {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 13px 15px;
+  border-bottom: 1px solid rgba(112, 136, 204, .13);
+  color: #8290ad;
+}
+
+.command-search input {
+  width: 100%;
+  min-width: 0;
+  padding: 8px 4px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: white;
+  font-size: 14px;
+}
+
+.command-search input::placeholder { color: #66738f; }
+
+.command-search button {
+  display: grid;
+  width: 31px;
+  height: 31px;
+  place-items: center;
+  border: 1px solid rgba(120,143,210,.12);
+  border-radius: 9px;
+  background: rgba(255,255,255,.025);
+  cursor: pointer;
+}
+
+.command-list {
+  display: grid;
+  gap: 4px;
+  max-height: min(58vh, 470px);
+  overflow-y: auto;
+  padding: 8px;
+}
+
+.command-list > button {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  padding: 10px 11px;
+  border: 1px solid transparent;
+  border-radius: 13px;
+  background: transparent;
+  text-align: start;
+  cursor: pointer;
+  transition: 150ms ease;
+}
+
+.command-list > button:hover,
+.command-list > button:focus-visible {
+  border-color: rgba(104,135,228,.16);
+  background: linear-gradient(90deg, rgba(82,87,255,.1), rgba(39,119,172,.06));
+}
+
+.command-icon {
+  display: grid;
+  width: 37px;
+  height: 37px;
+  place-items: center;
+  border: 1px solid rgba(102,132,226,.15);
+  border-radius: 11px;
+  background: rgba(61,82,164,.08);
+  color: #95adff;
+}
+
+.command-list strong,
+.command-list small { display: block; }
+.command-list strong { color: #e5ebf8; font-size: 12px; }
+.command-list small { margin-top: 3px; color: #75829f; font-size: 9px; }
+.command-list kbd { color: #596783; }
+
+.command-empty {
+  margin: 0;
+  padding: 28px;
+  color: #71809c;
+  text-align: center;
+  font-size: 11px;
+}
+
+.command-footer {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 13px;
+  border-top: 1px solid rgba(112,136,204,.1);
+  color: #5e6b86;
+  font-size: 9px;
+}
+
+.command-footer span:nth-child(3) { margin-inline-start: 12px; }
+.command-footer span:nth-child(odd) {
+  padding: 2px 5px;
+  border: 1px solid rgba(119,142,208,.1);
+  border-radius: 5px;
+  background: rgba(255,255,255,.025);
+  font-family: Consolas, monospace;
+}
+
+@media (max-width: 980px) {
+  .global-command-trigger { display: none; }
+}
+
+@media (max-width: 640px) {
+  .command-backdrop { padding-top: 68px; }
+  .command-palette { width: calc(100% - 18px); border-radius: 17px; }
+}
