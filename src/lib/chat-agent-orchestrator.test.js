@@ -16,6 +16,16 @@ test('chat agent exposes a broad helper capability registry', () => {
   assert.ok(CHAT_AGENT_OPTION_GROUPS.length >= 8);
 });
 
+test('casual conversation stays lightweight and does not force RAG or search', () => {
+  const plan = planChatAgent({ prompt: 'انت بتعمل اي؟' });
+  assert.equal(plan.intent, 'conversation');
+  assert.equal(plan.freshnessNeeded, false);
+  assert.equal(plan.deepReview, false);
+  assert.ok(!plan.toolIds.includes('rag_retriever'));
+  assert.ok(!plan.toolIds.includes('web_search'));
+  assert.match(agentPlanGuidance(plan), /casual conversation/i);
+});
+
 test('auto mode selects research helpers for fresh questions', () => {
   const plan = planChatAgent({ prompt: 'ايه أحدث إصدار من Node دلوقتي؟' });
   assert.equal(plan.mode, 'auto');
