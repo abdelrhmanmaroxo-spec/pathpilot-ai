@@ -13,15 +13,18 @@ test('keyword extraction returns useful repeated terms', () => {
   assert.equal(result[0], 'react');
 });
 
-test('study generator returns a structured answer', () => {
+test('study generator returns a structured actionable plan', () => {
   const answer = generateDemoResponse({ mode: 'study', tool: 'plan', prompt: 'امتحان Python بعد أسبوع' });
-  assert.match(answer, /خطة دراسة احتياطية/);
-  assert.match(answer, /اليوم 7/);
+  assert.match(answer, /خطة مذاكرة قابلة للتنفيذ/);
+  assert.match(answer, /مراجعة تراكمية/);
+  assert.match(answer, /قاعدة التنفيذ/);
 });
 
-test('CV generator avoids fabricated metrics', () => {
+test('CV generator avoids fabricated claims or metrics', () => {
   const answer = generateDemoResponse({ mode: 'work', tool: 'cv', prompt: 'اختبرت ردود نموذج ذكاء اصطناعي' });
-  assert.match(answer, /دون إضافة أرقام أو نتائج غير موثقة/);
+  assert.match(answer, /CV bullet/);
+  assert.match(answer, /لا تضف ادعاء لم يحدث/);
+  assert.doesNotMatch(answer, /\b\d{2,}%\b/);
 });
 
 test('email output is personalized without exposing the developer identity', () => {
@@ -45,7 +48,7 @@ test('concise mode returns a shorter useful response', () => {
     preferences: { responseStyle: 'concise' },
   });
   assert.ok(concise.length <= balanced.length);
-  assert.match(concise, /شرح احتياطي/);
+  assert.match(concise, /شرح مبسّط/);
   assert.match(concise, /مثال عملي/);
 });
 
@@ -56,10 +59,11 @@ test('new public tools generate usable structured output', () => {
   const research = generateDemoResponse({ mode: 'study', tool: 'research', prompt: 'تأثير الذكاء الاصطناعي على التعليم' });
   const quality = generateDemoResponse({ mode: 'work', tool: 'qa', prompt: 'زر تسجيل الدخول لا يستجيب على الهاتف' });
   assert.match(cards, /بطاقات مراجعة/);
-  assert.match(cover, /خطاب تقديم/);
+  assert.match(cover, /Dear Hiring Team/);
+  assert.match(cover, /دعم فني وحل المشكلات/);
   assert.match(general, /أفكار موسعة حول/);
   assert.match(research, /خريطة بحث/);
-  assert.match(quality, /تقرير QA/);
+  assert.match(quality, /QA \/ Bug Report/);
 });
 
 test('comparison fallback does not pretend web research succeeded', () => {
