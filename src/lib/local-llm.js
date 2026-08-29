@@ -3,6 +3,7 @@ import { computeLocalConfidence, shouldRunLocalReview } from './local-confidence
 
 const WEBLLM_MODULE_URL = 'https://esm.run/@mlc-ai/web-llm@0.2.84';
 const DEFAULT_TIMEOUT_MS = 120_000;
+const MAX_MODEL_LOAD_ATTEMPTS = 3;
 
 let modulePromise = null;
 let enginePromise = null;
@@ -12,6 +13,7 @@ let activeProfile = '';
 let lastKnowledgeInfo = null;
 let lastConfidenceInfo = null;
 let lastQualityInfo = null;
+let lastModelAttempts = [];
 
 export function supportsBrowserLLM() {
   return typeof navigator !== 'undefined' && Boolean(navigator.gpu);
@@ -44,46 +46,97 @@ export function localDeviceProfile(memory = memoryGb()) {
   return 'lite';
 }
 
-export function selectLocalModelId(ids, memory = memoryGb()) {
+function preferredModels(profile) {
+  if (profile === 'expert') {
+    return [
+      'Qwen3-4B-q4f16_1-MLC',
+      'Qwen2.5-3B-Instruct-q4f16_1-MLC',
+      'Qwen3-1.7B-q4f16_1-MLC',
+      'Qwen3.5-0.8B-q4f16_1-MLC',
+      'Llama-3.2-1B-Instruct-q4f16_1-MLC',
+    ];
+  }
+  if (profile === 'strong') {
+    return [
+      'Qwen3-1.7B-q4f16_1-MLC',
+      'Qwen2.5-1.5B-Instruct-q4f16_1-MLC',
+      'Qwen3.5-0.8B-q4f16_1-MLC',
+      'Qwen3-0.6B-q4f16_1-MLC',
+      'Llama-3.2-1B-Instruct-q4f16_1-MLC',
+    ];
+  }
+  return [
+    'Qwen3.5-0.8B-q4f16_1-MLC',
+    'Qwen3-0.6B-q4f16_1-MLC',
+    'Llama-3.2-1B-Instruct-q4f16_1-MLC',
+    'Qwen3-1.7B-q4f16_1-MLC',
+  ];
+}
+
+function pushUnique(list, value) {
+  if (value && !list.includes(value)) list.push(value);
+}
+
+export function localModelCandidates(ids, memory = memoryGb()) {
   if (!Array.isArray(ids) || !ids.length) throw new Error('LOCAL_LLM_MODEL_LIST_EMPTY');
   const profile = localDeviceProfile(memory);
-  const preferred = profile === 'expert'
-    ? [
-        'Qwen3-4B-q4f16_1-MLC',
-        'Qwen2.5-3B-Instruct-q4f16_1-MLC',
-        'Qwen3-1.7B-q4f16_1-MLC',
-        'Qwen3.5-0.8B-q4f16_1-MLC',
-        'Llama-3.2-1B-Instruct-q4f16_1-MLC',
-      ]
-    : profile === 'strong'
-      ? [
-          'Qwen3-1.7B-q4f16_1-MLC',
-          'Qwen2.5-1.5B-Instruct-q4f16_1-MLC',
-          'Qwen3.5-0.8B-q4f16_1-MLC',
-          'Qwen3-0.6B-q4f16_1-MLC',
-          'Llama-3.2-1B-Instruct-q4f16_1-MLC',
-        ]
-      : [
-          'Qwen3.5-0.8B-q4f16_1-MLC',
-          'Qwen3-0.6B-q4f16_1-MLC',
-          'Llama-3.2-1B-Instruct-q4f16_1-MLC',
-          'Qwen3-1.7B-q4f16_1-MLC',
-        ];
+  const candidates = [];
 
-  for (const candidate of preferred) {
-    const exact = findModelId(ids, candidate);
-    if (exact) return exact;
-  }
+  for (const preferred of preferredModels(profile)) pushUnique(candidates, findModelId(ids, preferred));
 
   if (profile === 'expert') {
-    const medium = ids.find((id) => /(?:qwen|llama|phi).*(?:3b|4b).*?(?:instruct|q4f16)/i.test(id));
-    if (medium) return medium;
+    pushUnique(candidates, ids.find((id) => /(?:qwen|llama|phi).*(?:3b|4b).*?(?:instruct|q4f16)/i.test(id)));
   }
-  const qwen = ids.find((id) => /qwen.*(?:0\.6|0\.8|1\.5|1\.7)b.*q4f16/i.test(id));
-  if (qwen) return qwen;
-  const smallInstruct = ids.find((id) => /(?:0\.5b|0\.6b|0\.8b|1b|1\.5b|1\.7b).*instruct/i.test(id));
-  if (smallInstruct) return smallInstruct;
-  throw new Error('LOCAL_LLM_COMPATIBLE_MODEL_NOT_FOUND');
+  pushUnique(candidates, ids.find((id) => /qwen.*(?:0\.6|0\.8|1\.5|1\.7)b.*q4f16/i.test(id)));
+  pushUnique(candidates, ids.find((id) => /(?:0\.5b|0\.6b|0\.8b|1b|1\.5b|1\.7b).*instruct/i.test(id)));
+
+  for (const id of ids) {
+    if (/(?:qwen|llama|phi).*(?:instruct|q4f16)/i.test(id)) pushUnique(candidates, id);
+  }
+
+  if (!candidates.length) throw new Error('LOCAL_LLM_COMPATIBLE_MODEL_NOT_FOUND');
+  return candidates;
+}
+
+export function selectLocalModelId(ids, memory = memoryGb()) {
+  return localModelCandidates(ids, memory)[0];
+}
+
+async function createEngineWithFallback(webllm, ids, onProgress) {
+  const profile = localDeviceProfile();
+  const candidates = localModelCandidates(ids).slice(0, MAX_MODEL_LOAD_ATTEMPTS);
+  activeProfile = profile;
+  lastModelAttempts = [];
+  let lastError = null;
+
+  for (const [index, selectedModel] of candidates.entries()) {
+    const attempt = index + 1;
+    onProgress?.({
+      phase: index === 0 ? 'model' : 'model-fallback',
+      progress: Math.min(0.72, 0.05 + index * 0.08),
+      text: index === 0 ? 'Loading the best local model for this device…' : 'Trying a lighter local model for compatibility…',
+    });
+    try {
+      const engine = await webllm.CreateMLCEngine(selectedModel, {
+        initProgressCallback: (report) => onProgress?.({
+          phase: 'model',
+          progress: Math.max(0.03, Number(report?.progress || 0)),
+          text: String(report?.text || 'Loading local model…'),
+        }),
+        logLevel: 'WARN',
+      });
+      lastModelAttempts.push({ model: selectedModel, attempt, status: 'ready' });
+      activeEngine = engine;
+      activeModelId = selectedModel;
+      return engine;
+    } catch (error) {
+      lastError = error;
+      lastModelAttempts.push({ model: selectedModel, attempt, status: 'failed' });
+      console.warn(`PathPilot local model attempt ${attempt} failed; trying a compatible fallback.`, error);
+    }
+  }
+
+  throw lastError || new Error('LOCAL_LLM_MODEL_LOAD_FAILED');
 }
 
 async function getEngine(onProgress) {
@@ -93,22 +146,12 @@ async function getEngine(onProgress) {
       if (!supportsBrowserLLM()) throw new Error('LOCAL_LLM_WEBGPU_UNAVAILABLE');
       onProgress?.({ phase: 'runtime', progress: 0.02, text: 'Preparing on-device AI runtime…' });
       const webllm = await loadWebLLM();
-      const selectedModel = selectLocalModelId(modelIds(webllm));
-      activeProfile = localDeviceProfile();
-      const engine = await webllm.CreateMLCEngine(selectedModel, {
-        initProgressCallback: (report) => onProgress?.({
-          phase: 'model',
-          progress: Math.max(0.03, Number(report?.progress || 0)),
-          text: String(report?.text || 'Loading local model…'),
-        }),
-        logLevel: 'WARN',
-      });
-      activeEngine = engine;
-      activeModelId = selectedModel;
-      return engine;
+      return createEngineWithFallback(webllm, modelIds(webllm), onProgress);
     })().catch((error) => {
       enginePromise = null;
       activeProfile = '';
+      activeEngine = null;
+      activeModelId = '';
       throw error;
     });
   }
@@ -374,6 +417,8 @@ export function getBrowserLLMInfo() {
     modelScaleB: activeModelId ? modelScale(activeModelId) : null,
     profile: activeProfile || localDeviceProfile(),
     runtime: 'WebLLM/WebGPU',
+    adaptiveModelFallback: true,
+    modelAttempts: lastModelAttempts,
     expertRag: true,
     selfReview: true,
     confidenceAwareReview: true,
