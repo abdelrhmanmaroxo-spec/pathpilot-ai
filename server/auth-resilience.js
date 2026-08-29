@@ -34,6 +34,9 @@ function safeDeliveryMessage(mode) {
   if (mode === 'sandbox') {
     return 'Account created and saved, but email delivery is currently in test mode. The account is waiting for verification.';
   }
+  if (mode === 'gmail-api') {
+    return 'Account created and saved, but Gmail API could not deliver the verification message yet. Check Google authorization and retry verification.';
+  }
   if (mode === 'gmail-smtp') {
     return 'Account created and saved, but Gmail could not deliver the verification message yet. Check the mail settings and retry verification.';
   }
@@ -42,11 +45,15 @@ function safeDeliveryMessage(mode) {
 
 function safeEmailFailureStage(error) {
   const message = String(error?.message || '').toUpperCase();
+  const gmailStage = message.match(/^(GMAIL_(?:TOKEN|API)_\d{3})/)?.[1];
+  if (gmailStage) return gmailStage;
+  if (message.startsWith('GMAIL_API_NOT_CONFIGURED')) return 'GMAIL_API_NOT_CONFIGURED';
+  if (message.startsWith('GMAIL_API_INVALID_ADDRESS')) return 'GMAIL_API_INVALID_ADDRESS';
   const smtpStage = message.match(/^(SMTP_(?:GREETING|EHLO|AUTH|AUTH_USER|AUTH_PASS|MAIL_FROM|RCPT_TO|DATA|MESSAGE|QUIT|NOT_CONFIGURED|SECURE_REQUIRED|INVALID_ADDRESS|TIMEOUT|CONNECTION_CLOSED))/)?.[1];
   if (smtpStage) return smtpStage;
   const code = String(error?.code || '').toUpperCase();
   if (['ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT', 'ENETUNREACH', 'EHOSTUNREACH', 'ENOTFOUND'].includes(code)) return `NETWORK_${code}`;
-  if (message.includes('TIMEOUT')) return 'SMTP_TIMEOUT';
+  if (message.includes('TIMEOUT')) return 'EMAIL_TIMEOUT';
   return 'UNKNOWN';
 }
 
@@ -68,9 +75,17 @@ export function createAuthResilience({
     user: String(env.SMTP_USER || '').trim(),
     pass: String(env.SMTP_PASS || '').replace(/\s+/g, ''),
   };
-  const smtpConfigured = ['gmail', 'smtp'].includes(emailProvider) && Boolean(smtp.host && smtp.user && smtp.pass && emailFrom);
+  const gmailApi = {
+    clientId: String(env.GMAIL_CLIENT_ID || '').trim(),
+    clientSecret: String(env.GMAIL_CLIENT_SECRET || '').trim(),
+    refreshToken: String(env.GMAIL_REFRESH_TOKEN || '').trim(),
+  };
+  const gmailApiConfigured = ['gmail-api', 'gmailapi'].includes(emailProvider)
+    && Boolean(gmailApi.clientId && gmailApi.clientSecret && gmailApi.refreshToken && emailFrom);
+  const smtpConfigured = ['gmail', 'smtp'].includes(emailProvider)
+    && Boolean(smtp.host && smtp.user && smtp.pass && emailFrom);
   const resendConfigured = Boolean(apiKey && emailFrom);
-  const configured = smtpConfigured || resendConfigured;
+  const configured = gmailApiConfigured || smtpConfigured || resendConfigured;
   const deliveryMode = getEmailDeliveryMode(emailFrom, emailProvider);
 
   function roleFor(email) {
@@ -95,6 +110,7 @@ export function createAuthResilience({
       verificationUrl: `${apiOrigin}/api/auth/verify-email?token=${encodeURIComponent(token)}`,
       provider: emailProvider,
       smtp,
+      gmailApi,
     });
   }
 
