@@ -1,3 +1,5 @@
+import { computeLocalConfidence, shouldRunLocalReview } from './local-confidence.js';
+
 const WEBLLM_MODULE_URL = 'https://esm.run/@mlc-ai/web-llm@0.2.84';
 const DEFAULT_TIMEOUT_MS = 120_000;
 
@@ -7,6 +9,7 @@ let activeEngine = null;
 let activeModelId = '';
 let activeProfile = '';
 let lastKnowledgeInfo = null;
+let lastConfidenceInfo = null;
 
 export function supportsBrowserLLM() {
   return typeof navigator !== 'undefined' && Boolean(navigator.gpu);
@@ -167,7 +170,7 @@ function userPrompt({ prompt, tool, mode, preferences, knowledge }) {
   ].join('\n');
 }
 
-function reviewPrompt({ originalPrompt, draft, knowledge, style }) {
+function reviewPrompt({ originalPrompt, draft, knowledge, style, preliminaryConfidence }) {
   return [
     'Revise the draft below into the strongest final answer you can produce.',
     'Return the revised answer only. Do not describe the review process.',
@@ -180,6 +183,9 @@ function reviewPrompt({ originalPrompt, draft, knowledge, style }) {
     '5. If the task is a decision, make the recommendation conditional on the factors that genuinely change it.',
     '6. Preserve useful specificity. Do not make the answer vague just to be safe.',
     `7. Keep the requested response style: ${style}.`,
+    preliminaryConfidence?.level === 'low'
+      ? '8. Retrieval confidence is limited. Be explicit about uncertainty and verification boundaries instead of filling gaps.'
+      : '8. Keep uncertainty proportional to the evidence; do not add unnecessary caveats.',
     '',
     `Original user request:\n${originalPrompt}`,
     '',
@@ -219,6 +225,7 @@ async function buildKnowledge(args, profile, onProgress) {
     domains: knowledge.domains,
     stats: knowledge.stats,
     intent: knowledge.intent,
+    constraints: knowledge.constraints,
   };
   onProgress?.({ phase: 'knowledge', progress: 0.1, text: `Selected ${knowledge.domains.length} expert domains.` });
   return knowledge;
@@ -264,6 +271,16 @@ export async function generateBrowserLLMResponse({ prompt, tool = 'ask', mode = 
     const engine = await getEngine(onProgress);
     const style = preferences.responseStyle || 'balanced';
     const system = systemPrompt({ mode, tool });
+    const scaleB = modelScale(activeModelId);
+
+    const preliminaryConfidence = computeLocalConfidence({
+      knowledge,
+      profile,
+      modelScaleB: scaleB,
+      reviewed: false,
+      prompt,
+      tool,
+    });
 
     onProgress?.({ phase: 'draft', progress: 0.88, text: 'Building the local expert answer…' });
     const draft = await complete(engine, {
@@ -271,22 +288,26 @@ export async function generateBrowserLLMResponse({ prompt, tool = 'ask', mode = 
         { role: 'system', content: system },
         { role: 'user', content: userPrompt({ prompt, tool, mode, preferences, knowledge }) },
       ],
-      temperature: 0.22,
+      temperature: preliminaryConfidence.level === 'low' ? 0.14 : 0.22,
       maxTokens: maxTokensFor(style, profile),
     });
 
     let answer = draft;
     let reviewed = false;
-    if (complexRequest({ prompt, tool, preferences, profile, modelId: activeModelId })) {
+    const isComplex = complexRequest({ prompt, tool, preferences, profile, modelId: activeModelId });
+    const canReview = profile !== 'lite' && scaleB >= 1.4;
+    const needsReview = canReview && shouldRunLocalReview({ confidence: preliminaryConfidence, isComplex });
+
+    if (needsReview) {
       onProgress?.({ phase: 'review', progress: 0.96, text: 'Reviewing constraints, contradictions, and failure modes…' });
       try {
         answer = await complete(engine, {
           messages: [
             { role: 'system', content: system },
-            { role: 'user', content: reviewPrompt({ originalPrompt: prompt, draft, knowledge, style }) },
+            { role: 'user', content: reviewPrompt({ originalPrompt: prompt, draft, knowledge, style, preliminaryConfidence }) },
           ],
-          temperature: 0.12,
-          maxTokens: Math.min(maxTokensFor(style, profile) + 250, 2400),
+          temperature: 0.1,
+          maxTokens: Math.min(maxTokensFor(style, profile) + 300, 2450),
         });
         reviewed = true;
       } catch (error) {
@@ -294,6 +315,17 @@ export async function generateBrowserLLMResponse({ prompt, tool = 'ask', mode = 
         answer = draft;
       }
     }
+
+    const confidence = computeLocalConfidence({
+      knowledge,
+      profile,
+      modelScaleB: scaleB,
+      reviewed,
+      prompt,
+      tool,
+    });
+    lastConfidenceInfo = confidence;
+    lastKnowledgeInfo = { ...lastKnowledgeInfo, confidence };
 
     onProgress?.({ phase: 'done', progress: 1, text: 'Local expert answer ready.' });
     return {
@@ -306,6 +338,7 @@ export async function generateBrowserLLMResponse({ prompt, tool = 'ask', mode = 
       knowledgeDomains: knowledge.domains,
       knowledgeStats: knowledge.stats,
       reviewed,
+      confidence,
     };
   })();
 
@@ -323,6 +356,8 @@ export function getBrowserLLMInfo() {
     runtime: 'WebLLM/WebGPU',
     expertRag: true,
     selfReview: true,
+    confidenceAwareReview: true,
+    confidence: lastConfidenceInfo,
     knowledge: lastKnowledgeInfo,
   };
 }
