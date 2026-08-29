@@ -91,6 +91,10 @@ export async function getPlatformStatus() {
   return request('/api/status');
 }
 
+export async function getSystemStatus() {
+  return request('/api/system/status');
+}
+
 export async function getResearchStatus() {
   return request('/api/research/status');
 }
@@ -181,6 +185,24 @@ export async function exportOwnerData() {
   return payload.snapshot;
 }
 
+export async function loadSystemControl() {
+  const payload = await request('/api/admin/system-control');
+  return payload.control;
+}
+
+export async function setSystemPause(paused, reason = '') {
+  const payload = await request('/api/admin/system-control', {
+    method: 'POST',
+    body: JSON.stringify({ paused: Boolean(paused), reason: String(reason || '').slice(0, 500) }),
+  });
+  return payload.control;
+}
+
+export async function loadSecurityEvents() {
+  const payload = await request('/api/admin/security-events');
+  return payload.events || [];
+}
+
 export async function loadAdminDashboard() {
   const [summary, users, apiUsage, errors, feedback, status, researchStatus, loginLog] = await Promise.all([
     request('/api/admin/summary'),
@@ -189,7 +211,7 @@ export async function loadAdminDashboard() {
     request('/api/admin/errors'),
     request('/api/admin/feedback'),
     request('/api/status'),
-    request('/api/research/status').catch(() => ({ researchAvailable: false, provider: null, targetSources: 18, appliesToAllTools: true })),
+    request('/api/research/status').catch(() => ({ researchAvailable: false, targetSources: 18, appliesToAllTools: true })),
     request('/api/admin/login-log'),
   ]);
   return {
