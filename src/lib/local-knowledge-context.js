@@ -119,12 +119,11 @@ function retrieveCandidates({ prompt, tool, mode, intent, entities, constraints 
   const base = [];
   const expanded = [];
   const expert = [];
-  let seedIds = [];
 
   for (const [index, query] of queries.entries()) {
     const baseHits = retrieveEncyclopediaKnowledge({ prompt: query, tool, mode, limit: index === 0 ? 7 : 5 });
     base.push(...baseHits);
-    seedIds = uniqueEntries(base).map((entry) => entry.id);
+    const seedIds = uniqueEntries(base).map((entry) => entry.id);
 
     const expandedHits = retrieveExpandedKnowledge({ prompt: query, tool, mode, limit: index === 0 ? 9 : 6, seedIds });
     expanded.push(...expandedHits);
