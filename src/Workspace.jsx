@@ -30,16 +30,24 @@ function isEnglish() {
   return document.body?.dataset?.language === 'en';
 }
 
+function formatSeconds(value) {
+  return `${Number(value || 0).toFixed(1)}s`;
+}
+
 export default function Workspace({ mode, history, preferences, onPreferencesChange, onNewHistory, onClearHistory, notify }) {
   const tools = TOOL_LIBRARY[mode];
   const [selectedTool, setSelectedTool] = useState(tools[0].id);
   const [prompt, setPrompt] = useState('');
   const [answer, setAnswer] = useState('');
   const [source, setSource] = useState('demo');
+  const [sources, setSources] = useState([]);
   const [loading, setLoading] = useState(false);
   const [turns, setTurns] = useState([]);
+  const [processingSeconds, setProcessingSeconds] = useState(0);
+  const [lastProcessingSeconds, setLastProcessingSeconds] = useState(null);
   const abortRef = useRef(null);
   const runTokenRef = useRef(0);
+  const processingStartedRef = useRef(0);
   const content = MODE_CONTENT[mode];
   const tool = tools.find((item) => item.id === selectedTool) || tools[0];
   const ModeIcon = content.icon;
@@ -52,8 +60,11 @@ export default function Workspace({ mode, history, preferences, onPreferencesCha
     setSelectedTool(toolId);
     setPrompt('');
     setAnswer('');
+    setSources([]);
     setTurns([]);
     setLoading(false);
+    setProcessingSeconds(0);
+    setLastProcessingSeconds(null);
     trackUsage({ eventType: 'tool_selected', workspace: mode, tool: toolId });
   };
 
@@ -72,8 +83,12 @@ export default function Workspace({ mode, history, preferences, onPreferencesCha
     const previousTurns = replaceLast ? turns.slice(0, -1) : turns;
     const contextualPrompt = buildConversationPrompt({ prompt: trimmed, turns: previousTurns });
 
+    processingStartedRef.current = performance.now();
+    setProcessingSeconds(0);
+    setLastProcessingSeconds(null);
     setLoading(true);
     setAnswer('');
+    setSources([]);
     try {
       const result = await generateRoutedAssistantResponse({
         mode,
@@ -84,6 +99,7 @@ export default function Workspace({ mode, history, preferences, onPreferencesCha
       });
       if (controller.signal.aborted || runToken !== runTokenRef.current) return;
 
+      const durationSeconds = Math.max(0, (performance.now() - processingStartedRef.current) / 1000);
       const nextTurn = createConversationTurn({
         prompt: trimmed,
         answer: result.answer,
@@ -92,6 +108,9 @@ export default function Workspace({ mode, history, preferences, onPreferencesCha
       });
       setAnswer(result.answer);
       setSource(result.source);
+      setSources(Array.isArray(result.sources) ? result.sources : []);
+      setLastProcessingSeconds(durationSeconds);
+      setProcessingSeconds(durationSeconds);
       setTurns((current) => (
         replaceLast
           ? [...current.slice(0, -1), nextTurn]
@@ -103,10 +122,12 @@ export default function Workspace({ mode, history, preferences, onPreferencesCha
         eventType: replaceLast ? 'answer_regenerated' : 'tool_request',
         workspace: mode,
         tool: selectedTool,
-        metadata: { source: result.source, route: result.route, contextTurns: previousTurns.length },
+        metadata: { source: result.source, route: result.route, contextTurns: previousTurns.length, processingMs: Math.round(durationSeconds * 1000) },
       });
     } catch (error) {
       if (controller.signal.aborted || runToken !== runTokenRef.current) return;
+      const durationSeconds = Math.max(0, (performance.now() - processingStartedRef.current) / 1000);
+      setLastProcessingSeconds(durationSeconds);
       notify(error.message || 'حدث خطأ غير متوقع.');
       reportClientError(error, `${mode}:${selectedTool}`);
     } finally {
@@ -120,11 +141,16 @@ export default function Workspace({ mode, history, preferences, onPreferencesCha
   };
 
   const stopGeneration = () => {
+    const durationSeconds = processingStartedRef.current
+      ? Math.max(0, (performance.now() - processingStartedRef.current) / 1000)
+      : processingSeconds;
     abortRef.current?.abort();
     runTokenRef.current += 1;
+    setProcessingSeconds(durationSeconds);
+    setLastProcessingSeconds(durationSeconds);
     setLoading(false);
     notify(en ? 'Generation stopped.' : 'تم إيقاف إنشاء الإجابة.');
-    trackUsage({ eventType: 'generation_stopped', workspace: mode, tool: selectedTool });
+    trackUsage({ eventType: 'generation_stopped', workspace: mode, tool: selectedTool, metadata: { processingMs: Math.round(durationSeconds * 1000) } });
   };
 
   const regenerateAnswer = async () => {
@@ -143,8 +169,11 @@ export default function Workspace({ mode, history, preferences, onPreferencesCha
     runTokenRef.current += 1;
     setPrompt('');
     setAnswer('');
+    setSources([]);
     setTurns([]);
     setLoading(false);
+    setProcessingSeconds(0);
+    setLastProcessingSeconds(null);
     notify(en ? 'New conversation started.' : 'بدأت محادثة جديدة.');
   };
 
@@ -154,7 +183,10 @@ export default function Workspace({ mode, history, preferences, onPreferencesCha
   };
 
   const downloadAnswer = () => {
-    const blob = new Blob([`# ${tool.label}\n\n${answer}`], { type: 'text/markdown;charset=utf-8' });
+    const sourceAppendix = sources.length
+      ? `\n\n## ${en ? 'Sources' : 'المصادر'}\n${sources.map((item, index) => `${index + 1}. ${item.title || item.domain || item.url}\n${item.url}`).join('\n\n')}`
+      : '';
+    const blob = new Blob([`# ${tool.label}\n\n${answer}${sourceAppendix}`], { type: 'text/markdown;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
@@ -203,6 +235,8 @@ export default function Workspace({ mode, history, preferences, onPreferencesCha
     setPrompt('');
     setAnswer(item.answer);
     setSource(item.source);
+    setSources([]);
+    setLastProcessingSeconds(null);
     setTurns([restored]);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -222,11 +256,24 @@ export default function Workspace({ mode, history, preferences, onPreferencesCha
       setPrompt('');
       setAnswer(item.answer);
       setSource(item.source);
+      setSources([]);
+      setLastProcessingSeconds(null);
       setTurns([restored]);
     };
     window.addEventListener('pathpilot:history', handler);
     return () => window.removeEventListener('pathpilot:history', handler);
   }, [mode]);
+
+  useEffect(() => {
+    if (!loading) return undefined;
+    const update = () => {
+      if (!processingStartedRef.current) return;
+      setProcessingSeconds(Math.max(0, (performance.now() - processingStartedRef.current) / 1000));
+    };
+    update();
+    const timer = window.setInterval(update, 100);
+    return () => window.clearInterval(timer);
+  }, [loading]);
 
   useEffect(() => {
     const handler = (event) => {
@@ -303,12 +350,12 @@ export default function Workspace({ mode, history, preferences, onPreferencesCha
                       <Send size={18} /> {turns.length ? (en ? 'Send' : 'إرسال') : 'أنشئ النتيجة'}
                     </button>
                   )}
-                  {loading && <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><LoaderCircle className="spin" size={16} /> {en ? 'Working…' : 'جاري التجهيز…'}</span>}
+                  {loading && <span className="processing-timer"><LoaderCircle className="spin" size={16} /><strong>{en ? 'Processing' : 'جاري المعالجة'}</strong><b>{formatSeconds(processingSeconds)}</b></span>}
                 </div>
               </div>
             </form>
           </section>
-          <ResultCard answer={answer} source={source} onCopy={copyAnswer} onDownload={downloadAnswer} onShare={shareAnswer} onRate={rateAnswer} onRegenerate={regenerateAnswer} loading={loading} feedbackEnabled={hasPlatformBackend} />
+          <ResultCard answer={answer} source={source} sources={sources} processingSeconds={lastProcessingSeconds} onCopy={copyAnswer} onDownload={downloadAnswer} onShare={shareAnswer} onRate={rateAnswer} onRegenerate={regenerateAnswer} loading={loading} feedbackEnabled={hasPlatformBackend} />
         </div>
         <HistoryPanel items={history} onOpen={openHistory} onClear={onClearHistory} />
       </div>
