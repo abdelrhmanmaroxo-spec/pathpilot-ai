@@ -214,6 +214,36 @@
   font-size: 9px;
 }
 
+.chat-live-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 10px;
+  padding: 7px 10px;
+  border: 1px solid rgba(96, 165, 250, .12);
+  border-radius: 999px;
+  background: rgba(59, 130, 246, .055);
+  color: #9db8df;
+  font-size: 10px;
+}
+
+.chat-stream-caret {
+  display: inline-block;
+  width: 7px;
+  height: 1.05em;
+  margin-inline-start: 4px;
+  border-radius: 2px;
+  background: currentColor;
+  vertical-align: -.15em;
+  opacity: .8;
+  animation: chat-stream-pulse .85s steps(2, end) infinite;
+}
+
+@keyframes chat-stream-pulse {
+  0%, 45% { opacity: .85; }
+  46%, 100% { opacity: .18; }
+}
+
 .chat-source-strip {
   display: flex;
   flex-wrap: wrap;
@@ -449,5 +479,10 @@
   .chat-page *::before,
   .chat-page *::after {
     scroll-behavior: auto !important;
+  }
+
+  .chat-stream-caret {
+    animation: none;
+    opacity: .65;
   }
 }
