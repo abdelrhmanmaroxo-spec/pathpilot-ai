@@ -3,12 +3,14 @@ import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { buildProviderRequest, extractProviderText } from './lib/ai-provider.js';
 import { createSessionToken, hashPassword, hashToken, normalizeEmail, verifyPassword } from './lib/auth.js';
+import { verifyGoogleCredential } from './lib/google-auth.js';
 import {
   createFeedback,
   createSession,
   createUser,
   deleteSession,
   findUserByEmail,
+  findUserById,
   getAdminSummary,
   getSessionUser,
   initializeDatabase,
@@ -16,6 +18,7 @@ import {
   listErrors,
   listFeedback,
   listUsers,
+  setUserRole,
   trackAiRequest,
   trackClientError,
   trackEvent,
@@ -46,7 +49,8 @@ export function createPathPilotServer({ env = process.env, database = initialize
   const endpoint = env.AI_ENDPOINT || `${baseUrl}/${apiMode === 'responses' ? 'responses' : 'chat/completions'}`;
   const reasoningEffort = env.AI_REASONING_EFFORT || '';
   const allowedOrigins = new Set((env.ALLOWED_ORIGINS || 'http://localhost:5173').split(',').map((item) => item.trim()).filter(Boolean));
-  const adminEmail = normalizeEmail(env.ADMIN_EMAIL);
+  const ownerEmail = normalizeEmail(env.OWNER_EMAIL || env.ADMIN_EMAIL);
+  const googleClientId = String(env.GOOGLE_CLIENT_ID || '').trim();
   const aiConfigured = Boolean(apiKey && model);
   const rateLimits = new Map();
 
@@ -83,9 +87,20 @@ export function createPathPilotServer({ env = process.env, database = initialize
     return record.count <= limit;
   }
 
+  function decorateUser(user) {
+    if (!user) return null;
+    const isOwner = Boolean(ownerEmail && normalizeEmail(user.email) === ownerEmail);
+    let role = user.role;
+    if (isOwner && role !== 'admin') {
+      setUserRole(database, user.id, 'admin');
+      role = 'admin';
+    }
+    return { ...user, role, isOwner };
+  }
+
   function currentUser(request) {
     const token = getBearerToken(request);
-    return token ? getSessionUser(database, hashToken(token)) : null;
+    return token ? decorateUser(getSessionUser(database, hashToken(token))) : null;
   }
 
   function requireAdmin(request, response, origin) {
@@ -95,6 +110,23 @@ export function createPathPilotServer({ env = process.env, database = initialize
       return null;
     }
     return user;
+  }
+
+  function requireOwner(request, response, origin) {
+    const user = currentUser(request);
+    if (!user?.isOwner) {
+      sendJson(response, 403, { error: 'Owner access required.' }, origin);
+      return null;
+    }
+    return user;
+  }
+
+  function startSessionFor(userRecord, eventType) {
+    const user = decorateUser(userRecord);
+    const token = createSessionToken();
+    createSession(database, { tokenHash: hashToken(token), userId: user.id });
+    trackEvent(database, { userId: user.id, eventType });
+    return { token, user };
   }
 
   async function handle(request, response) {
@@ -110,7 +142,16 @@ export function createPathPilotServer({ env = process.env, database = initialize
     }
 
     if (request.method === 'GET' && ['/health', '/api/status'].includes(request.url)) {
-      return sendJson(response, 200, { ok: true, apiOnline: aiConfigured, apiMode, provider, model: aiConfigured ? model : null, databaseOnline: true }, origin);
+      return sendJson(response, 200, {
+        ok: true,
+        apiOnline: aiConfigured,
+        apiMode,
+        provider,
+        model: aiConfigured ? model : null,
+        databaseOnline: true,
+        googleAuthAvailable: Boolean(googleClientId),
+        googleClientId: googleClientId || null,
+      }, origin);
     }
 
     if (request.method === 'POST' && request.url === '/api/auth/register') {
@@ -121,12 +162,9 @@ export function createPathPilotServer({ env = process.env, database = initialize
         if (name.length < 2 || !/^\S+@\S+\.\S+$/.test(email)) return sendJson(response, 400, { error: 'Name or email is invalid.' }, origin);
         if (findUserByEmail(database, email)) return sendJson(response, 409, { error: 'An account already exists for this email.' }, origin);
         const passwordHash = await hashPassword(body.password);
-        const role = adminEmail && email === adminEmail ? 'admin' : 'user';
+        const role = ownerEmail && email === ownerEmail ? 'admin' : 'user';
         const user = createUser(database, { name, email, passwordHash, role });
-        const token = createSessionToken();
-        createSession(database, { tokenHash: hashToken(token), userId: user.id });
-        trackEvent(database, { userId: user.id, eventType: 'account_created' });
-        return sendJson(response, 201, { token, user }, origin);
+        return sendJson(response, 201, startSessionFor(user, 'account_created'), origin);
       } catch (error) {
         return sendJson(response, 400, { error: error.message === 'PASSWORD_LENGTH' ? 'Password must be 8–128 characters.' : 'Could not create the account.' }, origin);
       }
@@ -138,10 +176,27 @@ export function createPathPilotServer({ env = process.env, database = initialize
       if (!userRecord || userRecord.disabled || !(await verifyPassword(body.password, userRecord.password_hash))) {
         return sendJson(response, 401, { error: 'Email or password is incorrect.' }, origin);
       }
-      const token = createSessionToken();
-      createSession(database, { tokenHash: hashToken(token), userId: userRecord.id });
-      trackEvent(database, { userId: userRecord.id, eventType: 'login' });
-      return sendJson(response, 200, { token, user: { id: userRecord.id, name: userRecord.name, email: userRecord.email, role: userRecord.role } }, origin);
+      return sendJson(response, 200, startSessionFor(userRecord, 'login'), origin);
+    }
+
+    if (request.method === 'POST' && request.url === '/api/auth/google') {
+      if (!googleClientId) return sendJson(response, 503, { error: 'Google sign-in is not configured.' }, origin);
+      try {
+        const body = await readJson(request);
+        const profile = await verifyGoogleCredential(body.credential, googleClientId);
+        const email = normalizeEmail(profile.email);
+        let userRecord = findUserByEmail(database, email);
+        if (userRecord?.disabled) return sendJson(response, 403, { error: 'This account is disabled.' }, origin);
+        if (!userRecord) {
+          const role = ownerEmail && email === ownerEmail ? 'admin' : 'user';
+          userRecord = createUser(database, { name: profile.name, email, passwordHash: 'google-only', role });
+          const session = startSessionFor(userRecord, 'google_account_created');
+          return sendJson(response, 201, session, origin);
+        }
+        return sendJson(response, 200, startSessionFor(userRecord, 'google_login'), origin);
+      } catch {
+        return sendJson(response, 401, { error: 'Google sign-in could not be verified.' }, origin);
+      }
     }
 
     if (request.method === 'GET' && request.url === '/api/auth/me') {
@@ -191,7 +246,22 @@ export function createPathPilotServer({ env = process.env, database = initialize
     }
     if (request.method === 'GET' && request.url === '/api/admin/users') {
       if (!requireAdmin(request, response, origin)) return;
-      return sendJson(response, 200, { users: listUsers(database) }, origin);
+      const users = listUsers(database).map((item) => ({ ...item, isOwner: Boolean(ownerEmail && normalizeEmail(item.email) === ownerEmail) }));
+      return sendJson(response, 200, { users }, origin);
+    }
+    if (request.method === 'POST' && request.url === '/api/admin/users/role') {
+      if (!requireOwner(request, response, origin)) return;
+      const body = await readJson(request);
+      const role = String(body.role || '');
+      if (!['user', 'admin'].includes(role)) return sendJson(response, 400, { error: 'Invalid role.' }, origin);
+      const target = findUserById(database, String(body.userId || ''));
+      if (!target) return sendJson(response, 404, { error: 'User not found.' }, origin);
+      if (ownerEmail && normalizeEmail(target.email) === ownerEmail && role !== 'admin') {
+        return sendJson(response, 400, { error: 'The owner account cannot be demoted.' }, origin);
+      }
+      const user = setUserRole(database, target.id, role);
+      trackEvent(database, { userId: user.id, eventType: role === 'admin' ? 'admin_granted' : 'admin_removed' });
+      return sendJson(response, 200, { user: { ...user, isOwner: Boolean(ownerEmail && normalizeEmail(user.email) === ownerEmail) } }, origin);
     }
     if (request.method === 'GET' && request.url === '/api/admin/api-usage') {
       if (!requireAdmin(request, response, origin)) return;
