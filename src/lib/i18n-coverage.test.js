@@ -65,12 +65,51 @@ async function loadTranslationCatalog() {
 
 function extractQuotedArabicLiterals(source) {
   const literals = new Set();
-  const pattern = /'([^'\n]*[\u0600-\u06FF][^'\n]*)'|"([^"\n]*[\u0600-\u06FF][^"\n]*)"/g;
+  let quote = '';
+  let current = '';
+  let escaped = false;
+
+  for (const character of source) {
+    if (!quote) {
+      if (character === "'" || character === '"') {
+        quote = character;
+        current = '';
+      }
+      continue;
+    }
+
+    if (escaped) {
+      current += character;
+      escaped = false;
+      continue;
+    }
+    if (character === '\\') {
+      current += character;
+      escaped = true;
+      continue;
+    }
+    if (character === quote) {
+      const value = current.trim();
+      if (/[\u0600-\u06FF]/.test(value)) literals.add(value);
+      quote = '';
+      current = '';
+      continue;
+    }
+    current += character;
+  }
+
+  return [...literals].sort();
+}
+
+function extractJsxArabicText(source) {
+  const literals = new Set();
+  const pattern = />([^<>]*[\u0600-\u06FF][^<>]*)</g;
   let match;
 
   while ((match = pattern.exec(source)) !== null) {
-    const value = (match[1] ?? match[2] ?? '').trim();
-    if (value) literals.add(value);
+    const value = match[1].trim();
+    if (!value || value.includes('{') || value.includes('}')) continue;
+    literals.add(value);
   }
 
   return [...literals].sort();
@@ -88,6 +127,7 @@ function extractCatalogBackedArabicLiterals(source) {
     if (line.includes('?') && line.includes(':')) continue;
 
     for (const literal of extractQuotedArabicLiterals(line)) literals.add(literal);
+    for (const literal of extractJsxArabicText(line)) literals.add(literal);
   }
 
   return [...literals].sort();
@@ -141,6 +181,6 @@ test('critical Arabic-only UI literals are backed by the combined translation ca
   assert.deepEqual(
     missing,
     [],
-    `Critical UI contains Arabic-only quoted text without an English catalog entry:\n${missing.join('\n')}`,
+    `Critical UI contains Arabic-only text without an English catalog entry:\n${missing.join('\n')}`,
   );
 });
