@@ -1,6 +1,7 @@
 import { createApiClient, PathPilotApiError } from './api-client.js';
 import { answerCache } from './answer-cache.js';
 import { generateAssistantResponse } from './assistant.js';
+import { hasExploitLikePayload } from './input-security.js';
 import { routeAssistantRequest } from './smart-router.js';
 
 const platformBase = String(import.meta.env?.VITE_PLATFORM_API_URL || '').trim();
@@ -32,6 +33,14 @@ async function assertSystemAvailable(signal) {
   }
 }
 
+function assertSafePrompt(prompt) {
+  if (!hasExploitLikePayload(prompt)) return;
+  throw new PathPilotApiError(
+    'PathPilot Security blocked executable or exploit-like input. Remove active payload markup and describe the code conceptually instead.',
+    { code: 'UNSAFE_INPUT_BLOCKED', status: 400 },
+  );
+}
+
 function normalizedResult(payload, route) {
   if (typeof payload?.answer !== 'string' || !payload.answer.trim()) throw new Error('Invalid AI response');
   return {
@@ -46,6 +55,7 @@ function normalizedResult(payload, route) {
 }
 
 export async function generateRoutedAssistantResponse(args) {
+  assertSafePrompt(args.prompt);
   await assertSystemAvailable(args.signal);
 
   const decision = routeAssistantRequest({
@@ -91,14 +101,9 @@ export async function generateRoutedAssistantResponse(args) {
     }
   }
 
-  try {
-    const result = await generateAssistantResponse(args);
-    return {
-      ...result,
-      route: decision.route === 'research' ? 'research' : result.route || 'fallback',
-    };
-  } catch (error) {
-    if (error?.code === 'SYSTEM_PAUSED' || error?.code === 'UNSAFE_INPUT_BLOCKED') throw error;
-    throw error;
-  }
+  const result = await generateAssistantResponse(args);
+  return {
+    ...result,
+    route: decision.route === 'research' ? 'research' : result.route || 'fallback',
+  };
 }
