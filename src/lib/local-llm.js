@@ -1,3 +1,4 @@
+import { chooseBetterLocalAnswer } from './local-answer-quality.js';
 import { computeLocalConfidence, shouldRunLocalReview } from './local-confidence.js';
 
 const WEBLLM_MODULE_URL = 'https://esm.run/@mlc-ai/web-llm@0.2.84';
@@ -10,6 +11,7 @@ let activeModelId = '';
 let activeProfile = '';
 let lastKnowledgeInfo = null;
 let lastConfidenceInfo = null;
+let lastQualityInfo = null;
 
 export function supportsBrowserLLM() {
   return typeof navigator !== 'undefined' && Boolean(navigator.gpu);
@@ -292,8 +294,8 @@ export async function generateBrowserLLMResponse({ prompt, tool = 'ask', mode = 
       maxTokens: maxTokensFor(style, profile),
     });
 
-    let answer = draft;
-    let reviewed = false;
+    let reviewCandidate = '';
+    let reviewAttempted = false;
     const isComplex = complexRequest({ prompt, tool, preferences, profile, modelId: activeModelId });
     const canReview = profile !== 'lite' && scaleB >= 1.4;
     const needsReview = canReview && shouldRunLocalReview({ confidence: preliminaryConfidence, isComplex });
@@ -301,7 +303,8 @@ export async function generateBrowserLLMResponse({ prompt, tool = 'ask', mode = 
     if (needsReview) {
       onProgress?.({ phase: 'review', progress: 0.96, text: 'Reviewing constraints, contradictions, and failure modes…' });
       try {
-        answer = await complete(engine, {
+        reviewAttempted = true;
+        reviewCandidate = await complete(engine, {
           messages: [
             { role: 'system', content: system },
             { role: 'user', content: reviewPrompt({ originalPrompt: prompt, draft, knowledge, style, preliminaryConfidence }) },
@@ -309,12 +312,27 @@ export async function generateBrowserLLMResponse({ prompt, tool = 'ask', mode = 
           temperature: 0.1,
           maxTokens: Math.min(maxTokensFor(style, profile) + 300, 2450),
         });
-        reviewed = true;
       } catch (error) {
         console.warn('PathPilot local critic pass skipped; using validated draft.', error);
-        answer = draft;
+        reviewCandidate = '';
       }
     }
+
+    const quality = chooseBetterLocalAnswer({
+      draft,
+      reviewed: reviewCandidate,
+      prompt,
+      knowledge,
+      style,
+    });
+    const answer = quality.answer;
+    const reviewed = quality.selected === 'reviewed';
+    lastQualityInfo = {
+      selected: quality.selected,
+      draftScore: quality.draftQuality.score,
+      reviewedScore: quality.reviewedQuality.score,
+      flags: reviewed ? quality.reviewedQuality.flags : quality.draftQuality.flags,
+    };
 
     const confidence = computeLocalConfidence({
       knowledge,
@@ -325,7 +343,7 @@ export async function generateBrowserLLMResponse({ prompt, tool = 'ask', mode = 
       tool,
     });
     lastConfidenceInfo = confidence;
-    lastKnowledgeInfo = { ...lastKnowledgeInfo, confidence };
+    lastKnowledgeInfo = { ...lastKnowledgeInfo, confidence, quality: lastQualityInfo };
 
     onProgress?.({ phase: 'done', progress: 1, text: 'Local expert answer ready.' });
     return {
@@ -337,8 +355,10 @@ export async function generateBrowserLLMResponse({ prompt, tool = 'ask', mode = 
       knowledgeVersion: knowledge.version,
       knowledgeDomains: knowledge.domains,
       knowledgeStats: knowledge.stats,
+      reviewAttempted,
       reviewed,
       confidence,
+      quality: lastQualityInfo,
     };
   })();
 
@@ -357,7 +377,9 @@ export function getBrowserLLMInfo() {
     expertRag: true,
     selfReview: true,
     confidenceAwareReview: true,
+    answerQualityGate: true,
     confidence: lastConfidenceInfo,
+    quality: lastQualityInfo,
     knowledge: lastKnowledgeInfo,
   };
 }
