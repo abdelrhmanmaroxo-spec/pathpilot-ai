@@ -45,7 +45,7 @@ export function detectLocalIntent(prompt, tool = 'ask') {
 export function extractLocalEntities(prompt, limit = 8) {
   const stop = new Set(['هذا','هذه','ذلك','على','إلى','الى','من','في','عن','مع','او','أو','هل','عايز','اريد','أريد','اعمل','ساعدني','best','with','from','that','this','what','how','the','and','for']);
   const counts = new Map();
-  const words = normalize(prompt).match(/[\p{L}\p{N}+#.\-]{2,}/gu) || [];
+  const words = normalize(prompt).match(/[-\p{L}\p{N}+#.]{2,}/gu) || [];
   for (const word of words) {
     if (stop.has(word)) continue;
     counts.set(word, (counts.get(word) || 0) + 1);
