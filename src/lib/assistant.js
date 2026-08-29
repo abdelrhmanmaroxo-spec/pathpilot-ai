@@ -1,3 +1,5 @@
+import { localReasonedResponse } from './local-intelligence.js';
+
 export const TOOL_LIBRARY = {
   study: [
     { id: 'explain', label: 'اشرح مفهومًا', description: 'شرح مبسّط ومتدرج مع مثال وسؤال مراجعة.', placeholder: 'مثال: اشرح لي مفهوم قواعد البيانات العلائقية كأنني أدرسه لأول مرة…', starters: ['اشرح التعلّم العميق ببساطة', 'وضّح الفرق بين HTTP وHTTPS', 'اشرح قانون نيوتن الثاني بمثال'] },
@@ -92,7 +94,6 @@ function localGeneral(tool, prompt) {
   if (tool === 'rewrite') return `نسخة أوضح\n\n${sentences(prompt).join('\n\n') || cleanInput(prompt)}\n\nراجع الأسماء والأرقام والمواعيد قبل الاستخدام.`;
   if (tool === 'organize') return `تنظيم عملي\nالمدخلات: ${prompt}\n\n1. أهم نتيجة اليوم.\n2. جلستان تركيز للمهمات الثقيلة.\n3. دفعة واحدة للأعمال القصيرة.\n4. 20٪ وقت احتياطي.\n5. مراجعة سريعة ونقل مهمة واحدة فقط لليوم التالي.`;
   if (tool === 'content') return `هيكل محتوى\nالموضوع: ${prompt}\n\n• Hook واضح\n• المشكلة\n• الفكرة الرئيسية\n• 3 نقاط قيمة\n• مثال عملي\n• خطأ شائع\n• CTA واحد واضح`;
-
   const intent = detectIntent(prompt);
   if (intent === 'problem') return `تشخيص احتياطي\nالمشكلة: ${prompt}\n\n1. ما المتوقع وما الفعلي؟\n2. ما آخر تغيير سبق المشكلة؟\n3. هل يمكن إعادة المشكلة بأصغر حالة؟\n4. ما رسالة الخطأ والبيئة؟\n5. اختبر تغييرًا واحدًا في كل مرة.`;
   if (intent === 'howto') return `خطة بداية\nالهدف: ${prompt}\n\n1. عرّف النتيجة النهائية.\n2. حدّد ما لديك وما ينقصك.\n3. نفّذ أصغر خطوة تقلل الغموض.\n4. اختبر النتيجة.\n5. حسّن بناءً على ما تعلمته.`;
@@ -107,20 +108,21 @@ function applyResponseStyle(answer, preferences = {}) {
 }
 
 export function generateDemoResponse({ mode, tool, prompt, preferences = {} }) {
-  const cleanPrompt = cleanInput(prompt);
-  if (cleanPrompt.length < 4) throw new Error('اكتب تفاصيل أكثر حتى أساعدك بشكل مفيد.');
+  const value = cleanInput(prompt);
+  if (value.length < 4) throw new Error('اكتب تفاصيل أكثر حتى أساعدك بشكل مفيد.');
   let answer;
-  if (mode === 'study') answer = localStudy(tool, cleanPrompt);
-  else if (mode === 'work') answer = localWork(tool, cleanPrompt, preferences);
-  else answer = localGeneral(tool, cleanPrompt);
+  if (mode === 'study') answer = localStudy(tool, value);
+  else if (mode === 'work') answer = localWork(tool, value, preferences);
+  else answer = localGeneral(tool, value);
   return applyResponseStyle(`${audiencePrefix(preferences)}${answer}`, preferences);
 }
 
 function fallbackResponse(args, reason) {
-  const answer = generateDemoResponse(args);
+  const knowledgeAnswer = localReasonedResponse(args);
+  const specialized = generateDemoResponse(args);
   const reasonText = reason === 'timeout' ? 'انتهت مهلة الخدمة الحية قبل وصول النتيجة.' : 'تعذر الوصول إلى البحث والذكاء الحي في هذه المحاولة.';
   return {
-    answer: `⚠️ وضع احتياطي\n${reasonText}\nلن أتوقف عن الرد، لكن أي معلومة حديثة تحتاج إعادة تحقق.\n\n${answer}`,
+    answer: `⚠️ Local Intelligence Beta\n${reasonText}\nتم تشغيل قاعدة المعرفة المحلية ومحرك الاسترجاع بدل إيقاف الرد. المعلومات الحديثة تحتاج بحثًا حيًا للتأكيد.\n\n${knowledgeAnswer}\n\nتطبيق مباشر للأداة\n${specialized}`,
     source: 'local-fallback',
     degraded: true,
   };
@@ -129,7 +131,6 @@ function fallbackResponse(args, reason) {
 export async function generateAssistantResponse({ mode, tool, prompt, preferences = {} }) {
   const args = { mode, tool, prompt, preferences };
   if (!hasLiveAI) return fallbackResponse(args, 'offline');
-
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 85000);
   try {
@@ -151,7 +152,7 @@ export async function generateAssistantResponse({ mode, tool, prompt, preference
       targetReached: Boolean(payload.targetReached),
     };
   } catch (error) {
-    console.warn('PathPilot live response failed; using explicit local fallback.', error);
+    console.warn('PathPilot live response failed; using local intelligence fallback.', error);
     return fallbackResponse(args, error?.name === 'AbortError' ? 'timeout' : 'offline');
   } finally {
     clearTimeout(timeout);
