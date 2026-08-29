@@ -14,6 +14,8 @@ const CRITICAL_UI_SOURCES = [
   new URL('../components/WorkspacePanels.jsx', import.meta.url),
   new URL('../components/PinnedPrompts.jsx', import.meta.url),
   new URL('../components/VoiceControls.jsx', import.meta.url),
+  new URL('../ChatWorkspace.jsx', import.meta.url),
+  new URL('../components/ConversationThread.jsx', import.meta.url),
 ];
 
 async function loadObjectCatalog(sourceUrl, declarationName) {
