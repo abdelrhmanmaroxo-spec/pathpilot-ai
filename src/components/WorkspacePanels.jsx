@@ -151,7 +151,7 @@ export function PreferencesPanel({ preferences, onChange }) {
   const update = (key, value) => onChange({ ...preferences, [key]: value });
   const localLlmSupported = supportsBrowserLLM();
   return (
-    <section className="preferences-panel" aria-label="تخصيص النتيجة">
+    <section className="preferences-panel" aria-label="خصّص النتيجة">
       <div className="preference-heading"><SlidersHorizontal size={17} /><span><strong>خصّص النتيجة</strong><small>تُحفظ الإعدادات على جهازك فقط</small></span></div>
       <label>
         <span><UserRound size={14} /> اسمك <small>اختياري</small></span>
