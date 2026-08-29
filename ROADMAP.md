@@ -12,6 +12,7 @@ This file is the execution tracker for the two approved 50-item roadmaps. Status
 
 ## Progress notes
 
+- 2026-08-29: Fixed the failing GitHub Pages CI gate caused by an unused local-confidence variable introduced on `main`. The change is lint-only and preserves local confidence behavior; full `npm run check` is required to pass before merge.
 - 2026-08-29: Added an automated i18n catalog integrity test that runs in the existing CI suite. It enforces a stable translation baseline, non-empty trimmed entries, Arabic source keys, and reverse-map safety while allowing intentional Arabic aliases that share the same English label. A13 remains in progress until UI-literal coverage is also enforced.
 - 2026-08-29: Premium workspace layer shipped with responsive glass/depth UI, animated 3D-style AI core, structured source rail, long-form voice dictation with browser auto-resume, live request processing timer, final response-time badge, public changelog, public user guide, and restored `Built by Abdelrhman Essam` attribution.
 - 2026-08-29: Research flow changed to prioritize AI synthesis as soon as a sufficient evidence set exists. The configured Gemini OpenAI-compatible path is preferred when appropriate, with native Gemini fallback. A regression test now requires grounded research to complete through `research-ai` when search and AI are healthy.
