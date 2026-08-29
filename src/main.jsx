@@ -11,6 +11,7 @@ import { initI18nOverrides } from './lib/i18n-overrides.js';
 import { initI18nRuntimeHardening } from './lib/i18n-runtime-hardening.js';
 import './styles.css';
 import './premium-ui.css';
+import './feature-ui.css';
 import './i18n.css';
 import './account-experience.css';
 import './conversation-experience.css';
