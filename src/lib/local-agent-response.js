@@ -1,3 +1,4 @@
+import { localConversationalReply } from './local-conversation.js';
 import { generateBrowserLLMResponse, isBrowserLLMReady } from './local-llm.js';
 import { superLocalResponse } from './local-super-reasoner.js';
 
@@ -42,6 +43,18 @@ export async function generateLocalAgentResponse({
       if (signal?.aborted) throw error;
       console.warn('PathPilot local model was unavailable; continuing with deterministic expert intelligence.', error);
     }
+  }
+
+  const conversational = localConversationalReply(prompt);
+  if (conversational) {
+    return {
+      answer: conversational,
+      source: 'local-conversation',
+      degraded: false,
+      route: 'local-agent',
+      sources: [],
+      sourceCount: 0,
+    };
   }
 
   const answer = superLocalResponse({ mode, tool, prompt, preferences });
