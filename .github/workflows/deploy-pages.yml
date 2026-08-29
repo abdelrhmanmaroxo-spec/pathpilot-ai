@@ -27,6 +27,7 @@ jobs:
       - run: npm run check
         env:
           VITE_PLATFORM_API_URL: https://pathpilot-ai-production.up.railway.app
+          VITE_AI_API_URL: https://pathpilot-ai-production.up.railway.app/api/research
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v4
         with:
