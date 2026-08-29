@@ -2,6 +2,7 @@ import { createServer } from 'node:http';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { createPathPilotServer } from './index.js';
+import { createAdminExtensions } from './admin-extensions.js';
 import { initializeDatabase } from './lib/database.js';
 
 const MAX_SOURCES = 18;
@@ -144,15 +145,23 @@ function combineAnswers(rounds) {
   return `${answers[0]}\n\nمراجعة تحقق إضافية\n${answers.slice(1).join('\n\n')}`;
 }
 
-export function createResearchHandler({ env = process.env, baseApp }) {
+export function createResearchHandler({ env = process.env, baseApp, database }) {
   const allowedOrigins = normalizeOriginList(env.ALLOWED_ORIGINS);
   const tavilyApiKey = String(env.TAVILY_API_KEY || '').trim();
   const researchAvailable = Boolean(tavilyApiKey);
+  const handleAdminExtension = database
+    ? createAdminExtensions({ database, env, sendJson, allowedOrigins })
+    : null;
 
   return async function researchHandler(request, response) {
     const origin = request.headers.origin || '';
     const url = new URL(request.url || '/', 'http://localhost');
     const path = url.pathname;
+
+    if (handleAdminExtension && path.startsWith('/api/admin/')) {
+      const handled = await handleAdminExtension(request, response, origin, path);
+      if (handled) return;
+    }
 
     if (path.startsWith('/api/research') && request.method === 'OPTIONS') {
       response.writeHead(204, corsHeaders(origin, allowedOrigins));
@@ -226,8 +235,9 @@ export function createResearchHandler({ env = process.env, baseApp }) {
 if (process.argv[1]?.endsWith('server/research-server.js')) {
   const databasePath = process.env.DATABASE_PATH || 'server/data/pathpilot.sqlite';
   if (databasePath !== ':memory:') mkdirSync(dirname(databasePath), { recursive: true });
-  const baseApp = createPathPilotServer({ database: initializeDatabase(databasePath) });
-  const handler = createResearchHandler({ baseApp });
+  const database = initializeDatabase(databasePath);
+  const baseApp = createPathPilotServer({ database });
+  const handler = createResearchHandler({ baseApp, database });
   const port = Number(process.env.PORT || 8787);
   createServer(handler).listen(port, () => console.log(`PathPilot research platform listening on port ${port}`));
 }
