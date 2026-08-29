@@ -12,6 +12,8 @@ This file is the execution tracker for the two approved 50-item roadmaps. Status
 
 ## Progress notes
 
+- 2026-08-29: Local final-answer quality gate now understands negative constraints such as `without backend changes` / `بدون تغيير backend`. Contradictory reviewed answers receive an explicit penalty and `contradicted-constraints` flag, preventing a stylistically polished review from replacing a draft that actually obeyed the user's hard constraint. Regression tests cover Arabic negative constraints and draft-vs-review selection.
+- 2026-08-29: Roadmap reconciled with shipped local intelligence work: local RAG is currently `rag-v4` with query expansion, reranking, deduplication/diversity and bounded context; device-aware model selection with fallback is active; local confidence-aware review and answer-quality verification are active foundations.
 - 2026-08-29: Expanded A13 translation coverage CI with a source-level guard for quoted Arabic literals in `AppChrome.jsx`. New Arabic labels, titles, status text, or install instructions in the shared app chrome must now have a matching English catalog entry or CI fails.
 - 2026-08-29: Added an automated i18n catalog integrity test that runs in the existing CI suite. It enforces a stable translation baseline, non-empty trimmed entries, Arabic source keys, and reverse-map safety while allowing intentional Arabic aliases that share the same English label. A13 remains in progress until UI-literal coverage is also enforced.
 - 2026-08-29: Premium workspace layer shipped with responsive glass/depth UI, animated 3D-style AI core, structured source rail, long-form voice dictation with browser auto-resume, live request processing timer, final response-time badge, public changelog, public user guide, and restored `Built by Abdelrhman Essam` attribution.
@@ -60,10 +62,10 @@ This file is the execution tracker for the two approved 50-item roadmaps. Status
 | A35 | DONE | Better constraint extraction |
 | A36 | TODO | Indexed local RAG |
 | A37 | TODO | Lazy-load large knowledge packs |
-| A38 | TODO | Knowledge deduplication |
-| A39 | TODO | Knowledge-pack versioning |
+| A38 | DONE | Knowledge deduplication and diversity control active in local RAG |
+| A39 | IN_PROGRESS | Knowledge-pack versioning; runtime version metadata active, migration/compatibility policy pending |
 | A40 | TODO | Local LLM manager UI |
-| A41 | TODO | Device-aware local model selection |
+| A41 | DONE | Device-aware local model selection with automatic lighter-model fallback |
 | A42 | DONE | Context budget manager for bounded recent conversation context |
 | A43 | TODO | Optional account conversation storage |
 | A44 | TODO | Cross-device conversation sync |
@@ -92,9 +94,9 @@ This file is the execution tracker for the two approved 50-item roadmaps. Status
 | B12 | DONE | Research query cache |
 | B13 | TODO | Dynamic model selection |
 | B14 | TODO | Provider quality scoring |
-| B15 | TODO | Answer verification pass |
+| B15 | IN_PROGRESS | Answer verification pass; local Draft → Review quality gate and contradiction-aware constraint verification active |
 | B16 | TODO | Citation-to-claim matching |
-| B17 | TODO | Confidence indicators |
+| B17 | IN_PROGRESS | Local LLM confidence scoring is active and influences review; dedicated user-facing indicator pending |
 | B18 | IN_PROGRESS | Explicit uncertainty handling in prompts/fallbacks; dedicated UI pending |
 | B19 | DONE | Prompt-injection protection for retrieved content |
 | B20 | DONE | Trusted-domain/authority boosting in research ranking |
