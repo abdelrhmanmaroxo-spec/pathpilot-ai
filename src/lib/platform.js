@@ -121,6 +121,15 @@ export async function deleteUserAccount(userId) {
   return request('/api/admin/users/delete', { method: 'POST', body: JSON.stringify({ userId }) });
 }
 
+export async function setUserBan(userId, banned) {
+  const payload = await request('/api/admin/users/ban', { method: 'POST', body: JSON.stringify({ userId, banned }) });
+  return payload.user;
+}
+
+export async function sendOwnerPasswordReset(userId) {
+  return request('/api/admin/users/reset-password', { method: 'POST', body: JSON.stringify({ userId }) });
+}
+
 export async function inviteAdminByEmail(email) {
   return request('/api/admin/invites', { method: 'POST', body: JSON.stringify({ email }) });
 }
@@ -134,14 +143,38 @@ export async function revokeAdminInvite(email) {
   return request('/api/admin/invites/revoke', { method: 'POST', body: JSON.stringify({ email }) });
 }
 
+export async function loadAdminLoginLog() {
+  const payload = await request('/api/admin/login-log');
+  return payload.logins || [];
+}
+
+export async function loadOwnerAccountLog() {
+  const payload = await request('/api/admin/account-log');
+  return payload.accounts || [];
+}
+
+export async function exportOwnerData() {
+  const payload = await request('/api/admin/export');
+  return payload.snapshot;
+}
+
 export async function loadAdminDashboard() {
-  const [summary, users, apiUsage, errors, feedback, status] = await Promise.all([
+  const [summary, users, apiUsage, errors, feedback, status, loginLog] = await Promise.all([
     request('/api/admin/summary'),
     request('/api/admin/users'),
     request('/api/admin/api-usage'),
     request('/api/admin/errors'),
     request('/api/admin/feedback'),
     request('/api/status'),
+    request('/api/admin/login-log'),
   ]);
-  return { summary: summary.summary, users: users.users, apiUsage: apiUsage.requests, errors: errors.errors, feedback: feedback.feedback, status };
+  return {
+    summary: summary.summary,
+    users: users.users,
+    apiUsage: apiUsage.requests,
+    errors: errors.errors,
+    feedback: feedback.feedback,
+    status,
+    loginLog: loginLog.logins || [],
+  };
 }
