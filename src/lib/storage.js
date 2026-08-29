@@ -1,5 +1,12 @@
 const HISTORY_KEY = 'pathpilot.history.v1';
+const PREFERENCES_KEY = 'pathpilot.preferences.v1';
 const MAX_HISTORY = 24;
+
+export const DEFAULT_PREFERENCES = {
+  displayName: '',
+  audience: 'self',
+  responseStyle: 'balanced',
+};
 
 export function loadHistory(storage = globalThis.localStorage) {
   try {
@@ -30,4 +37,23 @@ export function createHistoryItem({ mode, tool, prompt, answer, source }) {
 
 export function clearHistory(storage = globalThis.localStorage) {
   storage.removeItem(HISTORY_KEY);
+}
+
+export function loadPreferences(storage = globalThis.localStorage) {
+  try {
+    const value = JSON.parse(storage.getItem(PREFERENCES_KEY) || '{}');
+    return { ...DEFAULT_PREFERENCES, ...(value && typeof value === 'object' ? value : {}) };
+  } catch {
+    return { ...DEFAULT_PREFERENCES };
+  }
+}
+
+export function savePreferences(preferences, storage = globalThis.localStorage) {
+  const safePreferences = {
+    displayName: String(preferences.displayName || '').slice(0, 60),
+    audience: ['self', 'teacher', 'recruiter', 'team'].includes(preferences.audience) ? preferences.audience : 'self',
+    responseStyle: ['concise', 'balanced', 'detailed'].includes(preferences.responseStyle) ? preferences.responseStyle : 'balanced',
+  };
+  storage.setItem(PREFERENCES_KEY, JSON.stringify(safePreferences));
+  return safePreferences;
 }

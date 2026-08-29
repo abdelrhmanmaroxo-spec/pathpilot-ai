@@ -20,16 +20,22 @@ import {
   Home,
   Link,
   ListChecks,
+  Layers3,
   LoaderCircle,
   Mail,
   Menu,
+  MonitorSmartphone,
   RotateCcw,
+  ScrollText,
   Send,
+  Share2,
   ShieldCheck,
+  SlidersHorizontal,
   Smartphone,
   Sparkles,
   Target,
   Trash2,
+  UserRound,
   Wifi,
   WifiOff,
   X,
@@ -40,17 +46,26 @@ import {
   hasLiveAI,
   TOOL_LIBRARY,
 } from './lib/assistant.js';
-import { clearHistory, createHistoryItem, loadHistory, saveHistory } from './lib/storage.js';
+import {
+  clearHistory,
+  createHistoryItem,
+  loadHistory,
+  loadPreferences,
+  saveHistory,
+  savePreferences,
+} from './lib/storage.js';
 
 const TOOL_ICONS = {
   explain: BrainCircuit,
   summarize: BookOpen,
   plan: CalendarRange,
   quiz: CircleHelp,
+  flashcards: Layers3,
   email: Mail,
   tasks: ListChecks,
   meeting: ClipboardList,
   cv: FileCheck2,
+  cover: ScrollText,
 };
 
 const MODE_CONTENT = {
@@ -85,7 +100,7 @@ function Brand({ compact = false }) {
   );
 }
 
-function Header({ mode, onInstall, canInstall, installed, online }) {
+function Header({ mode, onInstall, installed, online }) {
   const [menuOpen, setMenuOpen] = useState(false);
 
   const navigate = (nextMode) => {
@@ -107,7 +122,7 @@ function Header({ mode, onInstall, canInstall, installed, online }) {
             {online ? <Wifi size={15} /> : <WifiOff size={15} />}
           </span>
           {!installed && (
-            <button className="button button-ghost install-button" type="button" onClick={onInstall} disabled={!canInstall} title={!canInstall ? 'افتح قائمة المتصفح واختر تثبيت التطبيق' : ''}>
+            <button className="button button-ghost install-button" type="button" onClick={onInstall}>
               <Smartphone size={17} /> تثبيت
             </button>
           )}
@@ -121,7 +136,48 @@ function Header({ mode, onInstall, canInstall, installed, online }) {
   );
 }
 
-function Landing({ onSelect, onInstall, canInstall }) {
+function detectPlatform() {
+  const agent = navigator.userAgent.toLowerCase();
+  if (/iphone|ipad|ipod/.test(agent)) return 'ios';
+  if (/android/.test(agent)) return 'android';
+  return 'desktop';
+}
+
+function InstallDialog({ open, onClose, onInstall, canInstall, installed }) {
+  if (!open) return null;
+  const platform = detectPlatform();
+  const instructions = {
+    ios: ['افتح الرابط في Safari.', 'اضغط زر المشاركة.', 'اختر «إضافة إلى الشاشة الرئيسية».'],
+    android: ['افتح الرابط في Chrome.', 'اضغط قائمة ⋮.', 'اختر «تثبيت التطبيق» أو «إضافة للشاشة الرئيسية».'],
+    desktop: ['افتح الرابط في Chrome أو Edge.', 'اضغط علامة التثبيت بجوار شريط العنوان.', 'أكد التثبيت ليفتح PathPilot كتطبيق مستقل.'],
+  }[platform];
+
+  return (
+    <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+      <section className="install-dialog" role="dialog" aria-modal="true" aria-labelledby="install-title">
+        <button className="dialog-close" type="button" onClick={onClose} aria-label="إغلاق"><X size={20} /></button>
+        <div className="dialog-icon"><MonitorSmartphone /></div>
+        <span className="eyebrow">INSTALL PATHPILOT</span>
+        <h2 id="install-title">خليه تطبيق على جهازك.</h2>
+        <p>يعمل على Windows وAndroid وiPhone/iPad، ولا يحتاج حسابًا. بيانات كل مستخدم تبقى محفوظة على جهازه.</p>
+        {installed ? (
+          <div className="install-success"><BadgeCheck /> PathPilot مثبت بالفعل على هذا الجهاز.</div>
+        ) : canInstall ? (
+          <button className="button button-primary dialog-install" type="button" onClick={onInstall}><Download size={18} /> تثبيت الآن</button>
+        ) : (
+          <ol className="install-steps">
+            {instructions.map((step) => <li key={step}>{step}</li>)}
+          </ol>
+        )}
+        <div className="platform-row" aria-label="الأنظمة المدعومة">
+          <span>Windows</span><span>Android</span><span>iPhone & iPad</span>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function Landing({ onSelect, onInstall }) {
   return (
     <main>
       <section className="hero page-shell">
@@ -138,7 +194,7 @@ function Landing({ onSelect, onInstall, canInstall }) {
             </button>
           </div>
           <div className="trust-row">
-            <span><ShieldCheck size={17} /> بياناتك محليًا</span>
+            <span><ShieldCheck size={17} /> بدون حساب</span>
             <span><Smartphone size={17} /> موقع + تطبيق</span>
             <span><WifiOff size={17} /> يعمل Offline</span>
           </div>
@@ -165,15 +221,15 @@ function Landing({ onSelect, onInstall, canInstall }) {
               </div>
             </div>
           </div>
-          <div className="floating-card floating-study"><GraduationCap /> <span><b>Study</b><small>4 smart tools</small></span></div>
-          <div className="floating-card floating-work"><BriefcaseBusiness /> <span><b>Work</b><small>4 pro tools</small></span></div>
+          <div className="floating-card floating-study"><GraduationCap /> <span><b>Study</b><small>5 smart tools</small></span></div>
+          <div className="floating-card floating-work"><BriefcaseBusiness /> <span><b>Work</b><small>5 pro tools</small></span></div>
         </div>
       </section>
 
       <section className="proof-strip">
         <div className="page-shell proof-grid">
           <div><strong>02</strong><span>مساحات متخصصة</span></div>
-          <div><strong>08</strong><span>أدوات عملية</span></div>
+          <div><strong>10</strong><span>أدوات عملية</span></div>
           <div><strong>PWA</strong><span>قابل للتثبيت</span></div>
           <div><strong>RTL</strong><span>تجربة عربية أصلية</span></div>
         </div>
@@ -196,6 +252,7 @@ function Landing({ onSelect, onInstall, canInstall }) {
               <li><Check /> تلخيص وكلمات أساسية</li>
               <li><Check /> خطة مذاكرة قابلة للتنفيذ</li>
               <li><Check /> اختبار مراجعة نشط</li>
+              <li><Check /> بطاقات سؤال وجواب</li>
             </ul>
             <button type="button" onClick={() => onSelect('study')}>ابدأ الدراسة <ChevronLeft /></button>
           </article>
@@ -209,6 +266,7 @@ function Landing({ onSelect, onInstall, canInstall }) {
               <li><Check /> مهام وأولويات ومخرجات</li>
               <li><Check /> قرارات وخطوات من الاجتماعات</li>
               <li><Check /> CV bullets بلا ادعاءات</li>
+              <li><Check /> خطاب تقديم مخصص</li>
             </ul>
             <button type="button" onClick={() => onSelect('work')}>ابدأ العمل <ChevronLeft /></button>
           </article>
@@ -219,9 +277,10 @@ function Landing({ onSelect, onInstall, canInstall }) {
         <div>
           <span className="eyebrow"><Smartphone size={15} /> INSTALLABLE PWA</span>
           <h2>نفس التجربة. موقع وتطبيق.</h2>
-          <p>ثبّت PathPilot على الموبايل أو الكمبيوتر وافتحه بسرعة حتى مع اتصال ضعيف.</p>
+          <p>ثبّت PathPilot على Windows أو Android أو iPhone/iPad وافتحه بسرعة حتى مع اتصال ضعيف.</p>
+          <div className="install-platforms"><span>Windows</span><span>Android</span><span>iOS</span><span>بدون حساب</span></div>
         </div>
-        <button className="button button-light" type="button" onClick={onInstall} disabled={!canInstall}>
+        <button className="button button-light" type="button" onClick={onInstall}>
           <Download size={18} /> تثبيت PathPilot
         </button>
       </section>
@@ -247,7 +306,7 @@ function ToolRail({ mode, selectedTool, onSelect }) {
   );
 }
 
-function ResultCard({ answer, source, onCopy, onDownload }) {
+function ResultCard({ answer, source, onCopy, onDownload, onShare }) {
   if (!answer) {
     return (
       <div className="empty-result">
@@ -264,6 +323,7 @@ function ResultCard({ answer, source, onCopy, onDownload }) {
         <div><span className="assistant-avatar"><Sparkles size={18} /></span><div><strong>PathPilot Assistant</strong><small>{source === 'live' ? 'Live AI response' : 'Smart local demo'}</small></div></div>
         <div className="result-actions">
           <button type="button" onClick={onCopy} title="نسخ النتيجة"><Copy size={17} /></button>
+          <button type="button" onClick={onShare} title="مشاركة النتيجة"><Share2 size={17} /></button>
           <button type="button" onClick={onDownload} title="تنزيل النتيجة"><Download size={17} /></button>
         </div>
       </div>
@@ -296,7 +356,37 @@ function HistoryPanel({ items, onOpen, onClear }) {
   );
 }
 
-function Workspace({ mode, history, onNewHistory, onClearHistory, notify }) {
+function PreferencesPanel({ preferences, onChange }) {
+  const update = (key, value) => onChange({ ...preferences, [key]: value });
+  return (
+    <section className="preferences-panel" aria-label="تخصيص النتيجة">
+      <div className="preference-heading"><SlidersHorizontal size={17} /><span><strong>خصّص النتيجة</strong><small>تُحفظ الإعدادات على جهازك فقط</small></span></div>
+      <label>
+        <span><UserRound size={14} /> اسمك <small>اختياري</small></span>
+        <input value={preferences.displayName} onChange={(event) => update('displayName', event.target.value)} placeholder="يظهر في الرسائل فقط" maxLength={60} />
+      </label>
+      <label>
+        <span>النتيجة موجهة إلى</span>
+        <select value={preferences.audience} onChange={(event) => update('audience', event.target.value)}>
+          <option value="self">استخدام شخصي</option>
+          <option value="teacher">مدرس أو مشرف</option>
+          <option value="recruiter">مسؤول توظيف</option>
+          <option value="team">فريق عمل</option>
+        </select>
+      </label>
+      <label>
+        <span>مستوى التفاصيل</span>
+        <select value={preferences.responseStyle} onChange={(event) => update('responseStyle', event.target.value)}>
+          <option value="concise">مختصر</option>
+          <option value="balanced">متوازن</option>
+          <option value="detailed">مفصل</option>
+        </select>
+      </label>
+    </section>
+  );
+}
+
+function Workspace({ mode, history, preferences, onPreferencesChange, onNewHistory, onClearHistory, notify }) {
   const tools = TOOL_LIBRARY[mode];
   const [selectedTool, setSelectedTool] = useState(tools[0].id);
   const [prompt, setPrompt] = useState('');
@@ -320,7 +410,7 @@ function Workspace({ mode, history, onNewHistory, onClearHistory, notify }) {
     }
     setLoading(true);
     try {
-      const result = await generateAssistantResponse({ mode, tool: selectedTool, prompt });
+      const result = await generateAssistantResponse({ mode, tool: selectedTool, prompt, preferences });
       setAnswer(result.answer);
       setSource(result.source);
       onNewHistory(createHistoryItem({ mode, tool: selectedTool, prompt: prompt.trim(), answer: result.answer, source: result.source }));
@@ -337,13 +427,26 @@ function Workspace({ mode, history, onNewHistory, onClearHistory, notify }) {
   };
 
   const downloadAnswer = () => {
-    const blob = new Blob([answer], { type: 'text/plain;charset=utf-8' });
+    const blob = new Blob([`# ${tool.label}\n\n${answer}`], { type: 'text/markdown;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `pathpilot-${selectedTool}.txt`;
+    link.download = `pathpilot-${selectedTool}.md`;
     link.click();
     URL.revokeObjectURL(url);
+  };
+
+  const shareAnswer = async () => {
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: `PathPilot — ${tool.label}`, text: answer });
+        return;
+      } catch (error) {
+        if (error.name === 'AbortError') return;
+      }
+    }
+    await navigator.clipboard.writeText(answer);
+    notify('المشاركة غير متاحة هنا؛ تم نسخ النتيجة بدلًا منها.');
   };
 
   const openHistory = (item) => {
@@ -389,6 +492,7 @@ function Workspace({ mode, history, onNewHistory, onClearHistory, notify }) {
               <div><span>{getModeLabel(mode)}</span><h2>{tool.label}</h2><p>{tool.description}</p></div>
             </div>
             <form onSubmit={handleSubmit}>
+              <PreferencesPanel preferences={preferences} onChange={onPreferencesChange} />
               <label htmlFor="assistant-prompt">اكتب طلبك بالتفصيل</label>
               <textarea id="assistant-prompt" value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder={tool.placeholder} maxLength={4000} rows={7} />
               <div className="starter-row">
@@ -406,7 +510,7 @@ function Workspace({ mode, history, onNewHistory, onClearHistory, notify }) {
             </form>
           </section>
 
-          <ResultCard answer={answer} source={source} onCopy={copyAnswer} onDownload={downloadAnswer} />
+          <ResultCard answer={answer} source={source} onCopy={copyAnswer} onDownload={downloadAnswer} onShare={shareAnswer} />
         </div>
         <HistoryPanel items={history} onOpen={openHistory} onClear={onClearHistory} />
       </div>
@@ -432,7 +536,9 @@ function Footer() {
 export default function App() {
   const [mode, setMode] = useState(routeFromHash);
   const [historyItems, setHistoryItems] = useState(loadHistory);
+  const [preferences, setPreferences] = useState(loadPreferences);
   const [installPrompt, setInstallPrompt] = useState(null);
+  const [installOpen, setInstallOpen] = useState(false);
   const [installed, setInstalled] = useState(() => window.matchMedia('(display-mode: standalone)').matches);
   const [online, setOnline] = useState(navigator.onLine);
   const [toast, setToast] = useState('');
@@ -469,13 +575,21 @@ export default function App() {
 
   const handleInstall = async () => {
     if (!installPrompt) {
-      setToast('من قائمة المتصفح اختر «تثبيت التطبيق» أو Add to Home Screen.');
+      setInstallOpen(true);
       return;
     }
     await installPrompt.prompt();
     const choice = await installPrompt.userChoice;
-    if (choice.outcome === 'accepted') setInstalled(true);
+    if (choice.outcome === 'accepted') {
+      setInstalled(true);
+      setInstallOpen(false);
+    }
     setInstallPrompt(null);
+  };
+
+  const updatePreferences = (nextPreferences) => {
+    const saved = savePreferences(nextPreferences);
+    setPreferences(saved);
   };
 
   const addHistory = (item) => {
@@ -494,13 +608,15 @@ export default function App() {
 
   return (
     <div className="app">
-      <Header mode={mode} onInstall={handleInstall} canInstall={Boolean(installPrompt)} installed={installed} online={online} />
+      <Header mode={mode} onInstall={() => setInstallOpen(true)} installed={installed} online={online} />
       {!mode ? (
-        <Landing onSelect={selectMode} onInstall={handleInstall} canInstall={Boolean(installPrompt)} />
+        <Landing onSelect={selectMode} onInstall={() => setInstallOpen(true)} />
       ) : (
         <Workspace
           mode={mode}
           history={historyItems}
+          preferences={preferences}
+          onPreferencesChange={updatePreferences}
           onNewHistory={addHistory}
           onClearHistory={handleClearHistory}
           notify={setToast}
@@ -508,6 +624,7 @@ export default function App() {
         />
       )}
       <Footer />
+      <InstallDialog open={installOpen} onClose={() => setInstallOpen(false)} onInstall={handleInstall} canInstall={Boolean(installPrompt)} installed={installed} />
       {toast && <div className="toast" role="status"><BadgeCheck size={18} /> {toast}</div>}
     </div>
   );

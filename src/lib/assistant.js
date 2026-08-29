@@ -28,6 +28,13 @@ export const TOOL_LIBRARY = {
       placeholder: 'اكتب الموضوع أو الصق الملخص الذي تريد أسئلة عليه…',
       starters: ['اختبار عن أساسيات الشبكات', 'أسئلة على OOP', 'اختبرني في مبادئ الاقتصاد'],
     },
+    {
+      id: 'flashcards',
+      label: 'بطاقات مراجعة',
+      description: 'حوّل أي موضوع إلى بطاقات سؤال وجواب سريعة.',
+      placeholder: 'اكتب الموضوع أو الصق النقاط التي تريد تحويلها إلى بطاقات…',
+      starters: ['بطاقات عن أساسيات الشبكات', 'راجع مصطلحات قواعد البيانات', 'بطاقات سريعة قبل الامتحان'],
+    },
   ],
   work: [
     {
@@ -58,10 +65,23 @@ export const TOOL_LIBRARY = {
       placeholder: 'مثال: عملت على اختبار ردود نموذج AI واكتشفت أخطاء متكررة…',
       starters: ['حوّل خبرتي إلى CV bullet', 'صغ إنجازًا تقنيًا', 'حسّن وصف المشروع للـHR'],
     },
+    {
+      id: 'cover',
+      label: 'خطاب تقديم',
+      description: 'مسودة مخصصة تربط خبرتك بمتطلبات الوظيفة.',
+      placeholder: 'الصق وصف الوظيفة واكتب أهم خبرة حقيقية عندك مرتبطة بها…',
+      starters: ['خطاب لوظيفة AI Evaluator', 'تقديم على IT Support', 'رسالة تقديم لمطور Junior'],
+    },
   ],
 };
 
 const MODE_LABELS = { study: 'مساحة الدراسة', work: 'مساحة العمل' };
+const AUDIENCE_LABELS = {
+  self: 'استخدام شخصي',
+  teacher: 'مدرس أو مشرف',
+  recruiter: 'مسؤول توظيف',
+  team: 'فريق عمل',
+};
 
 export const hasLiveAI = Boolean(import.meta.env?.VITE_AI_API_URL?.trim());
 
@@ -101,7 +121,7 @@ function studySummary(prompt) {
 function studyPlan(prompt) {
   const keywords = extractKeywords(prompt, 4);
   const focus = keywords.length ? keywords.join('، ') : cleanInput(prompt);
-  return `خطة مذاكرة قابلة للتنفيذ\nالهدف: ${focus}\n\nاليوم 1 — تشخيص وتجهيز\n• حدّد المطلوب ومصادر المذاكرة.\n• اختبر مستواك في 10 دقائق.\n\nاليومان 2–3 — فهم نشط\n• جلستان تركيز × 35 دقيقة.\n• لخص كل جلسة في 5 نقاط.\n\nاليومان 4–5 — تطبيق\n• حل أمثلة من دون الرجوع للحل.\n• سجّل الأخطاء المتكررة وسببها.\n\nاليوم 6 — محاكاة\n• اختبار بوقت محدد.\n• راجع نقاط الضعف فقط.\n\nاليوم 7 — تثبيت\n• مراجعة البطاقات والملخصات.\n• راحة ونوم جيد قبل التقييم.\n\nمقياس النجاح\nتستطيع شرح الفكرة وحل مثال جديد من دون مساعدة.`;
+  return `خطة مذاكرة قابلة للتنفيذ\nالهدف: ${focus}\n\nاليوم 1 — تشخيص وتجهيز\n• حدّد المطلوب ومصادر المذاكرة.\n• اختبر مستواك في 10 دقائق.\n\nاليومان 2–3 — فهم نشط\n• جلستان تركيز × 35 دقيقة.\n• لخّص كل جلسة في 5 نقاط.\n\nاليومان 4–5 — تطبيق\n• حل أمثلة من دون الرجوع للحل.\n• سجّل الأخطاء المتكررة وسببها.\n\nاليوم 6 — محاكاة\n• اختبار بوقت محدد.\n• راجع نقاط الضعف فقط.\n\nاليوم 7 — تثبيت\n• مراجعة البطاقات والملخصات.\n• راحة ونوم جيد قبل التقييم.\n\nمقياس النجاح\nتستطيع شرح الفكرة وحل مثال جديد من دون مساعدة.`;
 }
 
 function studyQuiz(prompt) {
@@ -110,8 +130,19 @@ function studyQuiz(prompt) {
   return `اختبار مراجعة: ${subject}\n\n1. عرّف ${subject} بكلماتك في سطرين.\n2. ما المشكلة التي يحلّها؟\n3. اذكر مثالًا صحيحًا ومثالًا مضادًا.\n4. ما أكثر نقطة يمكن أن تسبب التباسًا؟\n5. كيف تربط ${subject} بـ${topics[1] || 'موضوع سبق أن درسته'}؟\n\nتحدّي تطبيقي\nصمّم مسألة صغيرة تستخدم فيها الفكرة، ثم اشرح خطوات الحل من دون حفظ.\n\nالتقييم\nامنح نفسك نقطتين لكل إجابة: الفكرة صحيحة + المثال واضح. أقل من 7/10 يعني أن الموضوع يحتاج جولة فهم إضافية.`;
 }
 
-function workEmail(prompt) {
-  return `الموضوع: متابعة واضحة بخصوص ${cleanInput(prompt).slice(0, 70)}\n\nمرحبًا،\n\nأتمنى أن تكون بخير. أكتب إليك بخصوص ${cleanInput(prompt)}. أود التأكد من الخطوة التالية والموعد الأنسب لاستكمال الموضوع، حتى أتمكن من ترتيب التنفيذ بصورة واضحة.\n\nأنا جاهز لتقديم أي تفاصيل إضافية مطلوبة. هل يناسبك أن نتفق على الخطوة التالية والموعد المستهدف؟\n\nشكرًا لوقتك،\nعبدالرحمن عصام`;
+function studyFlashcards(prompt) {
+  const topics = extractKeywords(prompt, 5);
+  const subjects = topics.length ? topics : [cleanInput(prompt)];
+  return `بطاقات المراجعة\n${subjects.map((topic, index) => `\n${index + 1}. السؤال: ما المقصود بـ${topic}؟\n   الإجابة: اكتب تعريفًا واضحًا، ثم اربطه بمثال واحد من موضوعك.`).join('\n')}\n\nطريقة الاستخدام\nغطِّ الإجابات، أجب بصوت مرتفع، ثم صنّف كل بطاقة: أعرفها / تحتاج مراجعة. أعد البطاقات الصعبة بعد 10 دقائق.`;
+}
+
+function signature(preferences = {}) {
+  const name = cleanInput(preferences.displayName);
+  return name ? `\n${name}` : '';
+}
+
+function workEmail(prompt, preferences) {
+  return `الموضوع: متابعة واضحة بخصوص ${cleanInput(prompt).slice(0, 70)}\n\nمرحبًا،\n\nأتمنى أن تكون بخير. أكتب إليك بخصوص ${cleanInput(prompt)}. أود التأكد من الخطوة التالية والموعد الأنسب لاستكمال الموضوع، حتى أتمكن من ترتيب التنفيذ بصورة واضحة.\n\nأنا جاهز لتقديم أي تفاصيل إضافية مطلوبة. هل يناسبك أن نتفق على الخطوة التالية والموعد المستهدف؟\n\nمع خالص التحية،${signature(preferences)}`;
 }
 
 function workTasks(prompt) {
@@ -129,23 +160,45 @@ function workCv(prompt) {
   return `صياغة مقترحة للسيرة الذاتية\n• ${action.charAt(0).toUpperCase()}${action.slice(1)}، مع توثيق خطوات التنفيذ ومراجعة الجودة لضمان مخرجات دقيقة وقابلة للتسليم.\n\nنسخة مناسبة لـLinkedIn\nنفذت ${action} مع تركيز على الدقة، حل المشكلات، وتحويل المتطلبات إلى نتائج عملية واضحة.\n\nمهم\nأضف رقمًا فقط لو تستطيع إثباته: عدد الحالات، زمن التسليم، نسبة التحسن، أو حجم البيانات. لا تضف مقاييس تقديرية.`;
 }
 
+function workCover(prompt, preferences) {
+  const name = cleanInput(preferences?.displayName);
+  return `مسودة خطاب تقديم\n\nالسادة فريق التوظيف المحترمون،\n\nأتقدم باهتمام لهذه الفرصة لأن متطلباتها ترتبط مباشرة بخبرتي العملية في ${cleanInput(prompt)}. أركز في عملي على فهم المطلوب بدقة، تنفيذ المهام بصورة منظمة، مراجعة الجودة، وتوثيق النتائج بشكل واضح.\n\nما أقدمه للدور\n• قدرة على تحويل التعليمات إلى خطوات تنفيذ قابلة للفحص.\n• اهتمام بالتفاصيل واكتشاف الأخطاء قبل التسليم.\n• تواصل واضح واستعداد للتعلم والعمل مع فرق متنوعة.\n\nيسعدني مناقشة كيفية توظيف خبرتي في احتياجات الفريق، وتقديم أمثلة حقيقية على أعمال مرتبطة بالدور.\n\nمع خالص التحية،${name ? `\n${name}` : ''}\n\nقبل الإرسال\nاستبدل الوصف العام بمهارتين من إعلان الوظيفة، وأضف مثالًا حقيقيًا واحدًا من خبرتك من دون ادعاء أرقام غير موثقة.`;
+}
+
 const DEMO_GENERATORS = {
-  study: { explain: studyExplain, summarize: studySummary, plan: studyPlan, quiz: studyQuiz },
-  work: { email: workEmail, tasks: workTasks, meeting: workMeeting, cv: workCv },
+  study: { explain: studyExplain, summarize: studySummary, plan: studyPlan, quiz: studyQuiz, flashcards: studyFlashcards },
+  work: { email: workEmail, tasks: workTasks, meeting: workMeeting, cv: workCv, cover: workCover },
 };
 
-export function generateDemoResponse({ mode, tool, prompt }) {
+function applyResponseStyle(answer, preferences = {}) {
+  const style = preferences.responseStyle || 'balanced';
+  if (style === 'detailed') {
+    return `${answer}\n\nخطوة تالية مقترحة\nراجع الناتج مقابل سياقك الحقيقي، عدّل الأسماء والمواعيد، ثم استخدمه كمسودة قابلة للتحسين.`;
+  }
+  if (style === 'concise') {
+    const lines = answer.split('\n').filter((line) => line.trim());
+    return lines.slice(0, 9).join('\n');
+  }
+  return answer;
+}
+
+export function generateDemoResponse({ mode, tool, prompt, preferences = {} }) {
   const cleanPrompt = cleanInput(prompt);
   if (cleanPrompt.length < 4) throw new Error('اكتب تفاصيل أكثر حتى أساعدك بشكل مفيد.');
   const generator = DEMO_GENERATORS[mode]?.[tool];
   if (!generator) throw new Error('الأداة المطلوبة غير متاحة.');
-  return generator(cleanPrompt);
+  const answer = generator(cleanPrompt, preferences);
+  const audience = AUDIENCE_LABELS[preferences.audience];
+  const contextualAnswer = audience && preferences.audience !== 'self'
+    ? `مخصص لـ: ${audience}\n\n${answer}`
+    : answer;
+  return applyResponseStyle(contextualAnswer, preferences);
 }
 
-export async function generateAssistantResponse({ mode, tool, prompt }) {
+export async function generateAssistantResponse({ mode, tool, prompt, preferences = {} }) {
   if (!hasLiveAI) {
     await new Promise((resolve) => setTimeout(resolve, 450));
-    return { answer: generateDemoResponse({ mode, tool, prompt }), source: 'demo' };
+    return { answer: generateDemoResponse({ mode, tool, prompt, preferences }), source: 'demo' };
   }
 
   const controller = new AbortController();
@@ -154,7 +207,7 @@ export async function generateAssistantResponse({ mode, tool, prompt }) {
     const response = await fetch(import.meta.env.VITE_AI_API_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ mode, tool, prompt: cleanInput(prompt) }),
+      body: JSON.stringify({ mode, tool, prompt: cleanInput(prompt), preferences }),
       signal: controller.signal,
     });
     if (!response.ok) throw new Error(`AI service returned ${response.status}`);
@@ -163,7 +216,7 @@ export async function generateAssistantResponse({ mode, tool, prompt }) {
     return { answer: payload.answer.trim(), source: 'live' };
   } catch (error) {
     console.warn('Live AI unavailable; using local demo.', error);
-    return { answer: generateDemoResponse({ mode, tool, prompt }), source: 'demo-fallback' };
+    return { answer: generateDemoResponse({ mode, tool, prompt, preferences }), source: 'demo-fallback' };
   } finally {
     clearTimeout(timeout);
   }
