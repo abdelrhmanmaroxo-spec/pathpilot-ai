@@ -1,7 +1,7 @@
 import { buildExpertKnowledgeContext as buildBaseKnowledge } from './local-knowledge-context.js';
 import { retrieveProExpertise, LOCAL_EXPERTISE_PRO_STATS } from './local-expertise-pro.js';
 
-export const LOCAL_AUGMENTED_KNOWLEDGE_VERSION = '2026.08.29-augmented-v1';
+export const LOCAL_AUGMENTED_KNOWLEDGE_VERSION = '2026.08.29-augmented-v2';
 
 function normalize(value) {
   return String(value || '')
@@ -14,6 +14,15 @@ function normalize(value) {
     .replace(/[^\p{L}\p{N}+#.\-\s]/gu, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+export function latestPromptForRetrieval(value) {
+  const prompt = String(value || '').trim();
+  if (!prompt.startsWith('LATEST USER REQUEST\n')) return prompt;
+  const start = 'LATEST USER REQUEST\n'.length;
+  const end = prompt.indexOf('\n\nCONVERSATION CONTEXT ANALYSIS', start);
+  if (end < 0) return prompt;
+  return prompt.slice(start, end).trim() || prompt;
 }
 
 function unique(items, limit) {
@@ -69,13 +78,14 @@ function mergeStats(baseStats) {
 }
 
 export function buildExpertKnowledgeContext({ prompt, tool = 'ask', mode = 'general', preferences = {}, maxChars = 10_500 } = {}) {
+  const retrievalPrompt = latestPromptForRetrieval(prompt);
   const budget = Math.max(4_500, Math.min(18_000, Number(maxChars || 10_500)));
   const baseBudget = Math.max(3_500, Math.floor(budget * 0.7));
   const proBudget = Math.max(900, budget - baseBudget - 120);
-  const base = buildBaseKnowledge({ prompt, tool, mode, preferences, maxChars: baseBudget });
+  const base = buildBaseKnowledge({ prompt: retrievalPrompt, tool, mode, preferences, maxChars: baseBudget });
   const proLimit = preferences.responseStyle === 'detailed' ? 12 : preferences.responseStyle === 'concise' ? 6 : 9;
   const proEntries = retrieveProExpertise({
-    prompt,
+    prompt: retrievalPrompt,
     tool,
     mode,
     limit: proLimit,
@@ -93,5 +103,6 @@ export function buildExpertKnowledgeContext({ prompt, tool = 'ask', mode = 'gene
     scores: { ...base.scores, ...proScores },
     version: `${base.version}+${LOCAL_AUGMENTED_KNOWLEDGE_VERSION}`,
     stats: mergeStats(base.stats),
+    retrievalPrompt,
   };
 }
