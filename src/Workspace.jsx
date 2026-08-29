@@ -17,7 +17,8 @@ import {
 import { supportsBrowserLLM } from './lib/local-llm.js';
 import { createHistoryItem } from './lib/storage.js';
 import { hasPlatformBackend, reportClientError, sendFeedback, trackUsage } from './lib/platform.js';
-import { HistoryPanel, PreferencesPanel, ResultCard, TOOL_ICONS, ToolRail } from './components/WorkspacePanels.jsx';
+import { TOOL_ICONS } from './lib/tool-icons.js';
+import { HistoryPanel, PreferencesPanel, ResultCard, ToolRail } from './components/WorkspacePanels.jsx';
 
 const MODE_CONTENT = {
   study: { eyebrow: 'STUDY WORKSPACE', title: 'ذاكر بفهم، مش بحفظ.', description: 'حوّل المحاضرات والأهداف إلى شرح واضح، مراجعة نشطة، وخطة واقعية.', icon: GraduationCap },
