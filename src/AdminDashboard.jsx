@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Activity, AlertTriangle, Bot, BriefcaseBusiness, GraduationCap, MessageSquareText, RefreshCw, Sparkles, Users } from 'lucide-react';
-import { hasPlatformBackend, loadAdminDashboard } from './lib/platform.js';
+import { Activity, AlertTriangle, Bot, BriefcaseBusiness, Crown, GraduationCap, MessageSquareText, RefreshCw, ShieldCheck, Sparkles, Users } from 'lucide-react';
+import { hasPlatformBackend, loadAdminDashboard, updateUserRole } from './lib/platform.js';
 
 const TABS = [
   ['analytics', 'Analytics'],
@@ -23,6 +23,7 @@ export default function AdminDashboard({ user, onBack }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
+  const [roleBusy, setRoleBusy] = useState('');
 
   const refresh = async () => {
     if (!hasPlatformBackend || user?.role !== 'admin') return;
@@ -47,6 +48,24 @@ export default function AdminDashboard({ user, onBack }) {
     return Object.fromEntries(['general', 'study', 'work'].map((key) => [key, total ? Math.round(((usage[key] || 0) / total) * 100) : 0]));
   }, [data]);
 
+  const changeRole = async (item) => {
+    if (!user?.isOwner || item.isOwner) return;
+    const nextRole = item.role === 'admin' ? 'user' : 'admin';
+    setRoleBusy(item.id);
+    setError('');
+    try {
+      const updated = await updateUserRole(item.id, nextRole);
+      setData((current) => ({
+        ...current,
+        users: current.users.map((entry) => entry.id === item.id ? { ...entry, ...updated } : entry),
+      }));
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setRoleBusy('');
+    }
+  };
+
   if (!hasPlatformBackend) return <main className="admin-page page-shell"><EmptyAdmin>لوحة الإدارة جاهزة في الكود، لكنها لن تستقبل بيانات قبل نشر الـBackend وربط VITE_PLATFORM_API_URL.</EmptyAdmin></main>;
   if (user?.role !== 'admin') return <main className="admin-page page-shell"><EmptyAdmin>هذه الصفحة متاحة لحساب المدير فقط.</EmptyAdmin></main>;
 
@@ -57,6 +76,7 @@ export default function AdminDashboard({ user, onBack }) {
         <div><button type="button" onClick={onBack}>العودة للتطبيق</button><button type="button" onClick={refresh} disabled={loading}><RefreshCw className={loading ? 'spin' : ''} /> تحديث</button></div>
       </header>
 
+      {user?.isOwner && <div className="admin-error" style={{ borderColor: 'rgba(255,215,64,.35)', color: 'inherit' }}><Crown /> أنت مالك المنصة. أنت فقط من يستطيع إضافة أو إزالة صلاحية Admin للمستخدمين.</div>}
       {error && <div className="admin-error"><AlertTriangle /> {error}</div>}
       <section className="admin-metrics">
         <Metric icon={Users} label="Total users" value={data?.summary?.totalUsers ?? '—'} hint={`${data?.summary?.activeToday ?? 0} active today`} />
@@ -69,7 +89,7 @@ export default function AdminDashboard({ user, onBack }) {
         <div><span className={data?.status?.apiOnline ? 'provider-dot online' : 'provider-dot'} /><div><small>AI Provider</small><strong>{data?.status?.provider || 'Not configured'}</strong><small>{data?.status?.model || 'Waiting for model'}</small></div></div>
         <div><small>API Status</small><strong>{data?.status?.apiOnline ? 'Online' : 'Offline'}</strong></div>
         <div><small>Database</small><strong>{data?.status?.databaseOnline ? 'Online' : 'Offline'}</strong></div>
-        <div><small>API mode</small><strong>{data?.status?.apiMode || '—'}</strong></div>
+        <div><small>Google Sign-In</small><strong>{data?.status?.googleAuthAvailable ? 'Ready' : 'Not configured'}</strong></div>
       </section>
 
       <nav className="admin-tabs" aria-label="Admin sections">
@@ -85,7 +105,7 @@ export default function AdminDashboard({ user, onBack }) {
         </section>
       )}
 
-      {tab === 'users' && <section className="admin-table-wrap">{data?.users?.length ? <table><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Created</th><th>Last active</th></tr></thead><tbody>{data.users.map((item) => <tr key={item.id}><td>{item.name}</td><td>{item.email}</td><td>{item.role}</td><td>{new Date(item.created_at).toLocaleDateString()}</td><td>{new Date(item.last_seen_at).toLocaleString()}</td></tr>)}</tbody></table> : <EmptyAdmin>لا يوجد مستخدمون بعد.</EmptyAdmin>}</section>}
+      {tab === 'users' && <section className="admin-table-wrap">{data?.users?.length ? <table><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Created</th><th>Last active</th><th>Admin control</th></tr></thead><tbody>{data.users.map((item) => <tr key={item.id}><td>{item.name}</td><td>{item.email}</td><td>{item.isOwner ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><Crown size={14} /> Owner</span> : item.role}</td><td>{new Date(item.created_at).toLocaleDateString()}</td><td>{new Date(item.last_seen_at).toLocaleString()}</td><td>{item.isOwner ? <strong>Protected owner</strong> : user?.isOwner ? <button type="button" className="button button-ghost" disabled={roleBusy === item.id} onClick={() => changeRole(item)}><ShieldCheck size={15} /> {roleBusy === item.id ? '...' : item.role === 'admin' ? 'Remove Admin' : 'Make Admin'}</button> : <span>Owner only</span>}</td></tr>)}</tbody></table> : <EmptyAdmin>لا يوجد مستخدمون بعد.</EmptyAdmin>}</section>}
       {tab === 'api' && <section className="admin-table-wrap">{data?.apiUsage?.length ? <table><thead><tr><th>Workspace</th><th>Tool</th><th>Model</th><th>Status</th><th>Latency</th><th>Time</th></tr></thead><tbody>{data.apiUsage.map((item) => <tr key={item.id}><td>{item.workspace}</td><td>{item.tool}</td><td>{item.model || '—'}</td><td><span className={`request-status ${item.status}`}>{item.status}</span></td><td>{item.latency_ms == null ? '—' : `${item.latency_ms} ms`}</td><td>{new Date(item.created_at).toLocaleString()}</td></tr>)}</tbody></table> : <EmptyAdmin>لا توجد طلبات AI بعد.</EmptyAdmin>}</section>}
       {tab === 'errors' && <section className="admin-feed">{data?.errors?.length ? data.errors.map((item) => <article key={item.id}><AlertTriangle /><div><strong>{item.message}</strong><p>{item.context}</p><small>{new Date(item.created_at).toLocaleString()}</small></div></article>) : <EmptyAdmin>لا توجد أخطاء مسجلة.</EmptyAdmin>}</section>}
       {tab === 'feedback' && <section className="admin-feed">{data?.feedback?.length ? data.feedback.map((item) => <article key={item.id}><MessageSquareText /><div><strong>{'★'.repeat(item.rating)}{'☆'.repeat(5 - item.rating)}</strong><p>{item.message || 'No written feedback'}</p><small>{item.workspace || 'general'} · {item.tool || 'unknown'} · {new Date(item.created_at).toLocaleString()}</small></div></article>) : <EmptyAdmin>لا توجد ملاحظات بعد.</EmptyAdmin>}</section>}
