@@ -26,6 +26,18 @@ const GAP_HINTS = {
   general: 'هدف قيود بدائل مخاطر تنفيذ تحقق',
 };
 
+const CHALLENGE_HINTS = {
+  comparison: 'متى يكون الاختيار العكسي أفضل وما الشرط الذي يقلب القرار',
+  diagnosis: 'فرضية بديلة سبب غير مباشر نقطة فشل سابقة وكيف أفند السبب الأول',
+  plan: 'ما الذي قد يفشل الخطة اعتماد خفي تأخير مورد ناقص نقطة تراجع',
+  research: 'دليل مضاد مصدر مستقل تحيز تضارب مصالح claim لا تدعمه الأدلة',
+  writing: 'سوء فهم محتمل غموض نبرة خاطئة ادعاء غير مدعوم',
+  brainstorm: 'لماذا قد تفشل الفكرة وما أرخص تجربة تقتل الافتراض مبكرًا',
+  learn: 'مثال مضاد حد المفهوم التباس شائع سؤال نقل لموقف جديد',
+  decision: 'ندم محتمل downside أسوأ حالة شرط توقف حساسية القرار',
+  general: 'افتراض مخفي بديل معقول خطر فشل وكيف أختبره بسرعة',
+};
+
 function normalize(value) {
   return String(value || '').toLowerCase().replace(/\s+/g, ' ').trim();
 }
@@ -35,35 +47,54 @@ export function detectLocalIntent(prompt, tool = 'ask') {
   if (tool === 'decide') return 'comparison';
   if (tool === 'brainstorm') return 'brainstorm';
   if (tool === 'research') return 'research';
-  if (['rewrite','email','cover','cv','content'].includes(tool)) return 'writing';
-  if (['plan','organize','tasks'].includes(tool)) return 'plan';
+  if (['rewrite', 'email', 'cover', 'cv', 'content'].includes(tool)) return 'writing';
+  if (['plan', 'organize', 'tasks'].includes(tool)) return 'plan';
   if (tool === 'qa') return 'diagnosis';
-  if (['explain','quiz','flashcards','summarize'].includes(tool)) return 'learn';
+  if (['explain', 'quiz', 'flashcards', 'summarize'].includes(tool)) return 'learn';
   return INTENTS.find(([, pattern]) => pattern.test(text))?.[0] || 'general';
 }
 
 export function extractLocalEntities(prompt, limit = 8) {
-  const stop = new Set(['هذا','هذه','ذلك','على','إلى','الى','من','في','عن','مع','او','أو','هل','عايز','اريد','أريد','اعمل','ساعدني','best','with','from','that','this','what','how','the','and','for']);
+  const stop = new Set(['هذا', 'هذه', 'ذلك', 'على', 'إلى', 'الى', 'من', 'في', 'عن', 'مع', 'او', 'أو', 'هل', 'عايز', 'اريد', 'أريد', 'اعمل', 'ساعدني', 'best', 'with', 'from', 'that', 'this', 'what', 'how', 'the', 'and', 'for']);
   const counts = new Map();
   const words = normalize(prompt).match(/[-\p{L}\p{N}+#.]{2,}/gu) || [];
   for (const word of words) {
     if (stop.has(word)) continue;
     counts.set(word, (counts.get(word) || 0) + 1);
   }
-  return [...counts.entries()].sort((a, b) => b[1] - a[1] || b[0].length - a[0].length).slice(0, limit).map(([word]) => word);
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1] || b[0].length - a[0].length)
+    .slice(0, limit)
+    .map(([word]) => word);
+}
+
+export function extractLocalConstraints(prompt, limit = 6) {
+  const text = String(prompt || '');
+  const candidates = [];
+  const patterns = [
+    /\b\d+(?:\.\d+)?\s*(?:دقيقة|دقائق|ساعة|ساعات|يوم|أيام|اسبوع|أسبوع|أسابيع|شهر|شهور|minute|minutes|hour|hours|day|days|week|weeks|month|months)\b/gi,
+    /(?:\$|€|£|جنيه|دولار|ريال|egp|usd|eur)\s*\d+(?:[.,]\d+)?|\d+(?:[.,]\d+)?\s*(?:\$|€|£|جنيه|دولار|ريال|egp|usd|eur)/gi,
+    /\b(?:windows|linux|macos|android|ios|chrome|edge|firefox|node(?:\.js)?|python|react|vue|railway|github|webgpu)\b/gi,
+    /(?:لازم|ضروري|شرط|بدون|فقط|أقصى|اقل|أقل|must|without|only|max(?:imum)?|min(?:imum)?)[^،,.\n]{0,55}/gi,
+  ];
+  for (const pattern of patterns) {
+    const matches = text.match(pattern) || [];
+    for (const match of matches) candidates.push(match.trim());
+  }
+  return [...new Set(candidates)].slice(0, limit);
 }
 
 function taskShape(intent) {
   const shapes = {
-    comparison: ['حدد الخيارات الحقيقية', 'اختر معايير القرار المهمة', 'قارن نقاط القوة والضعف', 'استبعد ما يفشل في الشروط الأساسية', 'قدّم اختيارًا حسب حالة الاستخدام'],
-    diagnosis: ['حدد المتوقع والفعلي', 'حدد آخر تغيير محتمل', 'قلّص المشكلة لأصغر حالة', 'رتب الأسباب بالاحتمال والتأثير', 'اختبر فرضية واحدة في كل مرة', 'تحقق أن الإصلاح لم يكسر شيئًا آخر'],
-    plan: ['حدد النتيجة النهائية', 'حدد القيود والموارد', 'قسّم لمراحل صغيرة', 'ضع نقطة تحقق لكل مرحلة', 'أضف هامشًا للفشل أو التأخير', 'ابدأ بأصغر خطوة تقلل الغموض'],
-    research: ['حدد الادعاءات التي تحتاج تحققًا', 'فضّل المصدر الأولي أو الرسمي', 'قارن أكثر من مصدر عند التعارض', 'افصل الحقائق عن الاستنتاج', 'علّم ما يحتاج تحديثًا حيًا'],
-    writing: ['حدد الجمهور والهدف', 'ابدأ بالرسالة الأساسية', 'رتب التفاصيل حسب الأهمية', 'احذف الحشو', 'اختم بخطوة تالية واضحة'],
-    brainstorm: ['وسّع مساحة الحلول أولًا', 'قسّم الأفكار حسب التكلفة والمخاطرة', 'أضف اتجاهات غير تقليدية', 'رتب أقوى الأفكار بالقيمة وسهولة الاختبار', 'حدد تجربة صغيرة لكل فكرة قوية'],
-    learn: ['عرّف الفكرة ببساطة', 'اربطها بمشكلة تحلها', 'اعط مثالًا', 'اذكر خطأ شائعًا', 'اختبر الفهم بحالة جديدة'],
-    decision: ['حدد ما يهم المستخدم فعلًا', 'فرّق بين شرط أساسي وتفضيل', 'وازن الفائدة والتكلفة والمخاطرة', 'اذكر ما قد يغيّر القرار', 'قدّم توصية مشروطة'],
-    general: ['حدد المطلوب الحقيقي', 'استخرج القيود', 'قسّم المشكلة', 'افحص البدائل', 'اختر خطوة عملية قابلة للاختبار'],
+    comparison: ['حدد الخيارات الحقيقية', 'استخرج الشروط التي لا يمكن التنازل عنها', 'اختر معايير القرار المهمة ورتبها', 'قارن نقاط القوة والضعف حسب حالة الاستخدام', 'اختبر متى ينقلب القرار للخيار الآخر', 'قدّم اختيارًا مشروطًا لا ترتيبًا مطلقًا'],
+    diagnosis: ['حدد المتوقع والفعلي', 'ثبّت البيئة وآخر تغيير سبق المشكلة', 'قلّص المشكلة لأصغر حالة قابلة لإعادة الإنتاج', 'رتب الأسباب بالاحتمال والتأثير وسهولة الاختبار', 'اختبر فرضية واحدة ثم حاول تفنيدها', 'تحقق أن الإصلاح أزال السبب ولم يخفِ العرض فقط'],
+    plan: ['حدد النتيجة النهائية ومعيار قبولها', 'استخرج القيود والموارد والاعتماديات', 'قسّم لمراحل صغيرة لها مخرجات قابلة للمراجعة', 'ضع نقطة تحقق ومعيار توقف لكل مرحلة', 'أضف هامشًا للفشل أو التأخير وخطة تراجع', 'ابدأ بأصغر خطوة تقلل أكبر قدر من الغموض'],
+    research: ['حوّل السؤال إلى ادعاءات قابلة للتحقق', 'فضّل المصدر الأولي أو الرسمي', 'ابحث عن مصدر مستقل ودليل مضاد', 'افصل الحقيقة عن الاستنتاج والتوقع', 'راجع تاريخ المعلومة وتعارض المصالح', 'علّم بوضوح ما يحتاج بحثًا حيًا'],
+    writing: ['حدد الجمهور والهدف والنتيجة المطلوبة', 'ابدأ بالرسالة الأساسية مباشرة', 'رتب التفاصيل حسب ما يحتاجه القارئ', 'احذف الحشو والادعاءات غير المدعومة', 'اختبر أين يمكن أن يُفهم النص بشكل خاطئ', 'اختم بخطوة تالية واضحة'],
+    brainstorm: ['وسّع مساحة الحلول قبل التقييم', 'قسّم الأفكار حسب القيمة والتكلفة والمخاطرة', 'أضف اتجاهات مختلفة بدل نسخ الفكرة نفسها', 'حدد الافتراض الأخطر في كل فكرة قوية', 'صمم تجربة صغيرة ورخيصة لاختبار الافتراض', 'رتب الأفكار بالقيمة وسهولة التحقق'],
+    learn: ['عرّف الفكرة ببساطة وحدد حدودها', 'اربطها بمشكلة تحلها', 'اعط مثالًا عمليًا ومثالًا مضادًا', 'اذكر خطأ شائعًا ولماذا هو خطأ', 'اطلب تطبيق الفكرة في حالة جديدة', 'صحح الفهم بناء على نتيجة التطبيق'],
+    decision: ['حدد ما يهم المستخدم فعلًا', 'فرّق بين شرط أساسي وتفضيل', 'وازن الفائدة والتكلفة والمخاطرة', 'اختبر أسوأ حالة وندم القرار', 'حدد ما الذي لو تغير سيقلب القرار', 'قدّم توصية مشروطة مع نقطة إعادة تقييم'],
+    general: ['حدد المطلوب الحقيقي', 'استخرج القيود والافتراضات', 'قسّم المشكلة إلى أجزاء قابلة للاختبار', 'افحص بديلًا معقولًا للتفسير الأول', 'اختر خطوة عملية تقلل الغموض', 'راجع النتيجة قبل التوسع'],
   };
   return shapes[intent] || shapes.general;
 }
@@ -81,20 +112,26 @@ function uniquePacks(...groups) {
 
 function secondPassQuery(prompt, intent, entities, firstPass) {
   const covered = firstPass.map((pack) => pack.id).join(' ');
-  return `${prompt} ${entities.join(' ')} ${GAP_HINTS[intent] || GAP_HINTS.general} ابحث محليًا عن جوانب مكملة غير مغطاة ${covered}`;
+  return `${prompt} ${entities.join(' ')} ${GAP_HINTS[intent] || GAP_HINTS.general} جوانب مكملة غير مغطاة ${covered}`;
 }
 
-function deriveCrossDomainInsights(packs, intent, max = 6) {
+function challengePassQuery(prompt, intent, entities, packs) {
+  const covered = packs.map((pack) => pack.id).join(' ');
+  return `${prompt} ${entities.join(' ')} ${CHALLENGE_HINTS[intent] || CHALLENGE_HINTS.general} اختبر الافتراضات وابحث عن تفسير أو مخاطرة بديلة ${covered}`;
+}
+
+function deriveCrossDomainInsights(packs, intent, max = 7) {
   const facts = [...new Set(packs.flatMap((pack) => pack.facts || []))];
   const mistakes = [...new Set(packs.flatMap((pack) => pack.mistakes || []))];
   const steps = [...new Set(packs.flatMap((pack) => pack.steps || []))];
   const out = [];
   if (facts[0]) out.push(`• قاعدة أساسية: ${facts[0]}`);
   if (facts[1]) out.push(`• عامل مكمل: ${facts[1]}`);
-  if (facts[2] && ['comparison','decision','research'].includes(intent)) out.push(`• عامل قد يغيّر النتيجة: ${facts[2]}`);
+  if (facts[2] && ['comparison', 'decision', 'research', 'diagnosis'].includes(intent)) out.push(`• عامل قد يغيّر النتيجة: ${facts[2]}`);
   if (mistakes[0]) out.push(`• مخاطرة متوقعة: ${mistakes[0]}`);
+  if (mistakes[1] && ['research', 'decision', 'diagnosis'].includes(intent)) out.push(`• فشل بديل يجب استبعاده: ${mistakes[1]}`);
   if (steps[0]) out.push(`• خطوة عملية أولى: ${steps[0]}`);
-  if (steps[1] && ['diagnosis','plan'].includes(intent)) out.push(`• الخطوة التالية: ${steps[1]}`);
+  if (steps[1] && ['diagnosis', 'plan', 'research'].includes(intent)) out.push(`• بعدها مباشرة: ${steps[1]}`);
   return out.slice(0, max);
 }
 
@@ -108,16 +145,29 @@ function conflictChecks(packs) {
   return checks.slice(0, 3);
 }
 
-function confidenceLabel(firstPass, secondPass, entities) {
-  const total = uniquePacks(firstPass, secondPass).length;
-  if (total >= 4 && entities.length >= 3) return 'مرتفع نسبيًا';
+function confidenceLabel(firstPass, secondPass, challengePass, entities) {
+  const total = uniquePacks(firstPass, secondPass, challengePass).length;
+  if (total >= 5 && entities.length >= 3) return 'مرتفع نسبيًا';
+  if (total >= 3) return 'متوسط إلى جيد';
   if (total >= 2) return 'متوسط';
   return 'منخفض';
+}
+
+function buildSummary(intent, packs, constraints) {
+  const facts = [...new Set(packs.flatMap((pack) => pack.facts || []))];
+  const steps = [...new Set(packs.flatMap((pack) => pack.steps || []))];
+  const lines = [];
+  if (facts[0]) lines.push(`• أهم ما يحكم الإجابة: ${facts[0]}`);
+  if (steps[0]) lines.push(`• أفضل بداية عملية: ${steps[0]}`);
+  if (constraints.length) lines.push(`• القرار لازم يحترم القيود المذكورة: ${constraints.join('، ')}.`);
+  if (!lines.length) lines.push(`• تم التعامل مع الطلب كمسألة ${intent} مع تقليل الافتراضات غير المدعومة.`);
+  return lines;
 }
 
 export function advancedLocalResponse({ prompt, tool = 'ask', mode = 'general', preferences = {} }) {
   const intent = detectLocalIntent(prompt, tool);
   const entities = extractLocalEntities(prompt, 10);
+  const constraints = extractLocalConstraints(prompt, 6);
   const detailed = preferences.responseStyle === 'detailed';
   const concise = preferences.responseStyle === 'concise';
   const limit = detailed ? 6 : concise ? 3 : 4;
@@ -125,28 +175,34 @@ export function advancedLocalResponse({ prompt, tool = 'ask', mode = 'general', 
   const firstPass = retrieveLocalKnowledge({ prompt, tool, mode, limit });
   const expandedQuery = secondPassQuery(prompt, intent, entities, firstPass);
   const secondPass = retrieveLocalKnowledge({ prompt: expandedQuery, tool, mode, limit });
-  const packs = uniquePacks(firstPass, secondPass).slice(0, detailed ? 9 : 7);
-  const firstIds = new Set(firstPass.map((pack) => pack.id));
-  const newlyFound = packs.filter((pack) => !firstIds.has(pack.id));
-  const insights = deriveCrossDomainInsights(packs, intent, detailed ? 7 : concise ? 4 : 6);
+  const mergedBeforeChallenge = uniquePacks(firstPass, secondPass);
+  const challengeQuery = challengePassQuery(prompt, intent, entities, mergedBeforeChallenge);
+  const challengePass = retrieveLocalKnowledge({ prompt: challengeQuery, tool, mode, limit: concise ? 2 : limit });
+  const packs = uniquePacks(firstPass, secondPass, challengePass).slice(0, detailed ? 11 : concise ? 6 : 9);
+  const insights = deriveCrossDomainInsights(packs, intent, detailed ? 8 : concise ? 4 : 6);
   const checks = conflictChecks(packs);
   const steps = taskShape(intent).slice(0, concise ? 4 : detailed ? 7 : 6);
   const base = localReasonedResponse({ prompt, tool, mode, preferences });
+  const summary = buildSummary(intent, packs, constraints);
 
   const lines = [
     '🧠 PathPilot Local Reasoner',
-    'طبقة الاستدلال المحلي',
     `• نوع المهمة: ${intent}`,
-    `• الموضوعات المستخرجة: ${entities.length ? entities.join('، ') : 'لم يتم استخراج كيانات واضحة'}`,
-    `• الاسترجاع الأول: ${firstPass.length ? firstPass.map((pack) => pack.id).join(' + ') : 'معرفة عامة'}`,
-    `• الاسترجاع الثاني: ${newlyFound.length ? newlyFound.map((pack) => pack.id).join(' + ') : 'لم يحتج مجالًا إضافيًا واضحًا'}`,
-    `• ثقة المطابقة: ${confidenceLabel(firstPass, secondPass, entities)}`,
+    `• الموضوعات المستخرجة: ${entities.length ? entities.join('، ') : 'لم يتم استخراج عناصر واضحة'}`,
+    `• القيود المكتشفة: ${constraints.length ? constraints.join('، ') : 'لا توجد قيود صريحة؛ تجنبت افتراض قيود من عندي'}`,
+    `• ثقة المطابقة: ${confidenceLabel(firstPass, secondPass, challengePass, entities)}`,
+    '',
+    'الخلاصة',
+    ...summary,
     '',
     'خطة المعالجة',
     ...steps.map((step, index) => `${index + 1}. ${step}`),
     '',
     'استنتاجات من أكثر من مجال',
     ...(insights.length ? insights : ['• لا يوجد تطابق معرفي قوي؛ قلّل الافتراضات واطلب تفاصيل إضافية عند الحاجة.']),
+    '',
+    'اختبار عكسي قبل اعتماد الإجابة',
+    `• حاول إثبات أن أول تفسير أو اختيار غير صحيح: ${CHALLENGE_HINTS[intent] || CHALLENGE_HINTS.general}.`,
   ];
 
   if (checks.length) lines.push('', 'فحوص تعارض ومخاطر', ...checks.map((check) => `• ${check}`));
