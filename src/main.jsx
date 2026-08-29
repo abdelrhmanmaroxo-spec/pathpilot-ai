@@ -17,6 +17,22 @@ import './i18n.css';
 import './account-experience.css';
 import './conversation-experience.css';
 
+function initLanguageEventBridge() {
+  const body = document.body;
+  if (!body) return;
+  let lastLanguage = body.dataset.language === 'en' ? 'en' : 'ar';
+  const announce = () => {
+    const language = body.dataset.language === 'en' ? 'en' : 'ar';
+    if (language === lastLanguage) return;
+    lastLanguage = language;
+    window.dispatchEvent(new CustomEvent('pathpilot:language-changed', { detail: { language } }));
+  };
+  const observer = new MutationObserver(announce);
+  observer.observe(body, { attributes: true, attributeFilter: ['data-language'] });
+}
+
+initLanguageEventBridge();
+
 createRoot(document.getElementById('root')).render(
   <StrictMode>
     <ErrorBoundary>
