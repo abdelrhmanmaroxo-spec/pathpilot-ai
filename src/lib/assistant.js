@@ -66,56 +66,47 @@ function localComparison(prompt) {
 
 function localBrainstorm(prompt) {
   const topic = cleanInput(prompt);
-  return `أفكار موسعة حول: ${topic}\n\nعملية وسريعة\n1. نسخة مصغرة تحل المشكلة الأساسية فقط.\n2. خدمة موجهة لشريحة ضيقة.\n3. قالب أو أداة قابلة لإعادة الاستخدام.\n4. أتمتة جزء متكرر.\n\nأقوى من المعتاد\n5. دمج فكرتين في تجربة أبسط.\n6. تخصيص حسب نوع المستخدم.\n7. قياس تقدم واضح.\n8. نسخة مجانية محدودة تقود لقيمة مدفوعة.\n\nتجريبية\n9. مساعد يقترح الخطوة التالية.\n10. نظام توصية يشرح سبب الاختيار.\n11. لوحة قياس للأخطاء والفرص.\n12. تجربة مشاركة وتقييم.\n\nاختيار سريع\nابدأ بأعلى فكرة في القيمة + سهولة الاختبار + تكلفة منخفضة + نتيجة قابلة للقياس.`;
+  return `أفكار موسعة حول: ${topic}\n\nعملية وسريعة\n1. نسخة مصغرة تحل المشكلة الأساسية فقط.\n2. خدمة موجهة لشريحة ضيقة.\n3. قالب أو أداة قابلة لإعادة الاستخدام.\n4. أتمتة جزء متكرر.\n\nأقوى من المعتاد\n5. دمج فكرتين في تجربة أبسط.\n6. تخصيص حسب نوع المستخدم.\n7. قياس تقدم واضح.\n8. نسخة مجانية محدودة تقود لقيمة مدفوعة.\n\nتجريبية\n9. مساعد يقترح الخطوة التالية.\n10. نظام توصية يشرح سبب الاختيار.\n11. لوحة قياس للأخطاء والفرص.\n12. تجربة تفاعلية تتغير حسب مدخلات المستخدم.\n\nاختبار سريع\nاختر فكرتين فقط واسأل: هل تحل مشكلة حقيقية؟ هل أقدر أبني نسخة صغيرة منها هذا الأسبوع؟`;
 }
 
 function localStudy(tool, prompt) {
+  const keywords = extractKeywords(prompt);
   if (tool === 'summarize') {
-    const items = sentences(prompt).slice(0, 7);
-    return `ملخص احتياطي\n${(items.length ? items : [prompt]).map((item) => `• ${item}`).join('\n')}`;
+    const points = sentences(prompt).slice(0, 8);
+    return `ملخص مركز\n${points.length ? points.map((item, index) => `${index + 1}. ${item}`).join('\n') : `• ${prompt}`}\n\nكلمات أساسية\n${keywords.join(' • ') || 'استخرج المصطلحات الأساسية من النص.'}\n\nمراجعة نشطة\nحاول شرح الفكرة بصوتك في دقيقتين، ثم ارجع للنقاط التي لم تستطع تذكرها.`;
   }
-  if (tool === 'quiz') return `اختبار سريع حول: ${prompt}\n\n1. عرّف الفكرة بكلماتك.\n2. أعط مثالًا صحيحًا.\n3. أعط مثالًا مضادًا.\n4. اشرح خطأ شائعًا.\n5. طبّق الفكرة على حالة جديدة.\n\nالإجابة الجيدة تشرح لماذا، وليس فقط ماذا.`;
-  if (tool === 'flashcards') return `بطاقات مراجعة حول: ${prompt}\n\n1. ما التعريف الأساسي؟\n2. ما أهم استخدام؟\n3. ما الفرق عن أقرب مفهوم مشابه؟\n4. ما الخطأ الشائع؟\n5. ما مثال عملي؟`;
-  if (tool === 'plan') return `خطة دراسة احتياطية\nالهدف: ${prompt}\n\nاليوم 1: تشخيص المستوى وتجميع المصادر.\nاليومان 2 و3: فهم المفاهيم الأساسية مع أمثلة.\nاليومان 4 و5: تطبيق وأسئلة بدون الرجوع للحل.\nاليوم 6: اختبار محاكاة وتحليل الأخطاء.\nاليوم 7: مراجعة مركزة ونقاط الضعف فقط.`;
-  if (tool === 'research') return `خريطة بحث احتياطية\nالموضوع: ${prompt}\n\n• التعريف والسياق\n• السؤال الرئيسي والأسئلة الفرعية\n• المصادر الأولية المطلوبة\n• الأدلة المؤيدة والمعارضة\n• المقارنات والبدائل\n• القيود وما يحتاج تحققًا حديثًا\n• الاستنتاجات والأسئلة المفتوحة`;
-  return `شرح احتياطي\nالموضوع: ${prompt}\n\nابدأ بتعريف الفكرة، ثم المشكلة التي تحلها، ثم كيف تعمل، ثم مثال عملي، ثم خطأ شائع، وأخيرًا حالة جديدة تختبر بها فهمك. تعذر الوصول للمحرك الحي، لذلك لن أضيف حقائق حديثة غير متحققة.`;
+  if (tool === 'plan') return `خطة مذاكرة قابلة للتنفيذ\nالهدف: ${prompt}\n\n1. قياس نقطة البداية — 20 دقيقة\n2. تقسيم المنهج إلى وحدات صغيرة مرتبة بالأهمية.\n3. جلسات تركيز 45–60 دقيقة يتبعها استرجاع من الذاكرة.\n4. نهاية كل جلسة: 5 أسئلة بدون الرجوع للمصدر.\n5. مراجعة تراكمية بعد كل 3 جلسات.\n6. آخر 20% من الوقت: نماذج وأسئلة على مناطق الضعف.\n\nقاعدة التنفيذ\nلو تأخرت، قلّل كمية المحتوى لا وقت الاسترجاع والاختبار.`;
+  if (tool === 'quiz') return `اختبار فهم\nالموضوع: ${prompt}\n\n1. عرّف الفكرة الأساسية بكلماتك.\n2. اذكر مثالًا صحيحًا ومثالًا مضادًا.\n3. ما الخطأ الشائع في هذا الموضوع؟\n4. طبّق الفكرة على موقف جديد.\n5. لخّصها في جملة واحدة لشخص مبتدئ.\n\nطريقة الاستخدام\nجاوب من الذاكرة أولًا، ثم راجع المصدر وصحح إجاباتك بلون مختلف.`;
+  if (tool === 'flashcards') return `بطاقات مراجعة\nالموضوع: ${prompt}\n\n• س: ما الفكرة الأساسية؟\n  ج: اكتب تعريفًا قصيرًا جدًا من المصدر.\n• س: لماذا تهم هذه الفكرة؟\n  ج: اربطها باستخدام حقيقي.\n• س: ما مثالها؟\n  ج: استخدم أبسط مثال صحيح.\n• س: ما الفرق بينها وبين أقرب مفهوم مشابه؟\n  ج: ركّز على معيار واحد حاسم.\n• س: ما الخطأ الشائع؟\n  ج: دوّن الخطأ وطريقة اكتشافه.`;
+  if (tool === 'research') return `خريطة بحث\nالموضوع: ${prompt}\n\nأسئلة البحث\n1. ما تعريف وحدود الموضوع؟\n2. ما أهم النظريات أو التقنيات المرتبطة به؟\n3. ما الأدلة المؤيدة والمعارضة؟\n4. ما التطبيقات الحالية؟\n5. أين توجد فجوات أو أسئلة مفتوحة؟\n\nترتيب المصادر\nمصادر أولية أو رسمية ← أوراق ومراجع أكاديمية ← مصادر شرح موثوقة ← أمثلة تطبيقية.\n\nالمخرج النهائي\nملخص تنفيذي + محاور + أدلة لكل محور + قائمة أسئلة تحتاج تحقق.`;
+  return `شرح مبسّط\nالموضوع: ${prompt}\n\nابدأ بالفكرة الكبيرة: حاول تحديد «ما المشكلة التي يحلها هذا المفهوم؟». بعد ذلك افهم المكوّنات الأساسية واحدة واحدة واربط كل جزء بمثال صغير.\n\nمصطلحات تستحق التركيز\n${keywords.join(' • ') || 'التعريف • المكونات • المثال • التطبيق'}\n\nمثال عملي\nحوّل المفهوم إلى موقف تعرفه، وحدد المدخلات، ما الذي يحدث بينها، والنتيجة.\n\nسؤال مراجعة\nلو تغير عنصر أساسي في المثال، كيف ستتغير النتيجة ولماذا؟`;
 }
 
 function localWork(tool, prompt, preferences) {
-  const name = cleanInput(preferences.displayName);
-  if (tool === 'email') return `الموضوع: متابعة بخصوص ${prompt.slice(0, 70)}\n\nمرحبًا،\n\nأكتب إليك بخصوص ${prompt}. أود تأكيد الخطوة التالية وأي موعد أو متطلبات لازمة حتى أتمكن من استكمال الموضوع بصورة واضحة.\n\nشكرًا لوقتك، ويسعدني إرسال أي تفاصيل إضافية.\n\nمع خالص التحية${name ? `،\n${name}` : ''}`;
-  if (tool === 'cv') return `صياغة CV احتياطية\n• ${prompt}، مع التركيز على التنفيذ، الدقة، حل المشكلات، ومراجعة الجودة دون إضافة أرقام أو نتائج غير موثقة.`;
-  if (tool === 'cover') return `مسودة خطاب تقديم\n\nالسادة فريق التوظيف المحترمون،\n\nأتقدم لهذه الفرصة لأن متطلباتها ترتبط بخبرتي في ${prompt}. أركز على تنفيذ المتطلبات بدقة، مراجعة الجودة، حل المشكلات، والتواصل الواضح.\n\nيسعدني مناقشة أمثلة حقيقية من خبرتي وكيف يمكن توظيفها لدعم الفريق.\n\nمع خالص التحية${name ? `،\n${name}` : ''}`;
-  if (tool === 'qa') return `تقرير QA احتياطي\n\nالمشكلة: ${prompt}\n\n• المتوقع: [اكتب السلوك الصحيح]\n• الفعلي: ${prompt}\n• خطوات إعادة الإنتاج: ابدأ من الحالة النظيفة وسجل كل خطوة.\n• البيئة: الجهاز، النظام، المتصفح، الإصدار.\n• التأثير: من يتأثر وما الذي يتعطل.\n• الأدلة: لقطة شاشة، وقت الحدوث، والرسائل الظاهرة.\n• إعادة الاختبار: كرر نفس الخطوات بعد الإصلاح.`;
-  if (tool === 'meeting') return `ملخص اجتماع احتياطي\n${sentences(prompt).slice(0, 6).map((item) => `• ${item}`).join('\n') || `• ${prompt}`}\n\nاستخرج بعد ذلك: القرارات، المسؤول، الموعد، المخاطر، والأسئلة المفتوحة.`;
-  return `خطة تنفيذ احتياطية\nالهدف: ${prompt}\n\n1. عرّف المخرج النهائي ومعيار قبوله.\n2. اجمع الاعتماديات والمدخلات.\n3. نفّذ أصغر نسخة قابلة للمراجعة.\n4. اختبر الحالات الأساسية والطرفية.\n5. وثّق النتيجة والخطوة التالية.`;
-}
-
-function detectIntent(prompt) {
-  if (/(قارن|مقارنة|أفضل|اختار|أختار|ولا|compare|best|choose)/i.test(prompt)) return 'comparison';
-  if (/(فكرة|أفكار|brainstorm|اقتراح)/i.test(prompt)) return 'brainstorm';
-  if (/(مشكلة|خطأ|مش شغال|لا يعمل|error|bug|fix)/i.test(prompt)) return 'problem';
-  if (/(اكتب|صياغ|رسالة|بوست|مقال|سكريبت|write)/i.test(prompt)) return 'writing';
-  if (/(ازاي|كيف|طريقة|ابدأ|أنفذ|خطة|how)/i.test(prompt)) return 'howto';
-  return 'general';
+  const name = cleanInput(preferences?.displayName);
+  if (tool === 'email') return `Subject: Follow-up / Next Step\n\nHello,\n\n${prompt}\n\nPlease let me know the best next step or if you need anything else from me.\n\nBest regards,\n${name || '[Your name]'}`;
+  if (tool === 'tasks') return `خطة تنفيذ\nالهدف: ${prompt}\n\nالآن\n1. حدّد المخرج النهائي ومعيار القبول.\n2. اجمع المدخلات والاعتماديات الناقصة.\n3. نفّذ أصغر جزء يزيل أكبر قدر من عدم اليقين.\n\nبعدها\n4. قسّم التنفيذ إلى وحدات يمكن اختبارها.\n5. راجع الجودة قبل الدمج أو التسليم.\n6. وثّق ما تم وما تبقى والمالك والموعد.\n\nتعريف الانتهاء\nمخرج قابل للتسليم + مراجعة مكتملة + لا توجد نقاط حرجة بلا مالك.`;
+  if (tool === 'meeting') return `ملخص اجتماع منظم\nالملاحظات: ${prompt}\n\nالقرارات\n• حوّل كل قرار واضح إلى جملة واحدة.\n\nAction items\n• [المهمة] — Owner: [الاسم] — Due: [الموعد]\n\nأسئلة مفتوحة\n• ما الذي لم يُحسم؟\n\nمخاطر / Dependencies\n• ما الذي قد يؤخر التنفيذ أو يحتاج موافقة خارجية؟`;
+  if (tool === 'cv') return `CV bullet مقترح\n• Executed ${prompt.replace(/[.!؟]+$/u, '')}, documenting findings and applying structured quality checks to support accurate, consistent delivery.\n\nقبل الاستخدام\nاستبدل أي صياغة عامة برقم أو أداة أو نتيجة حقيقية لو كانت عندك، ولا تضف ادعاء لم يحدث.`;
+  if (tool === 'cover') return `Dear Hiring Team,\n\nI am interested in this opportunity because it aligns with my hands-on experience and the type of work I want to continue developing. My relevant background includes ${prompt}\n\nI focus on careful execution, clear documentation, and learning project-specific guidelines quickly. I would welcome the opportunity to discuss how this experience can support your team.\n\nBest regards,\n${name || '[Your name]'}`;
+  return `QA / Bug Report\n\nSummary\n${prompt}\n\nEnvironment\n• Device / OS: [add]\n• Browser / app version: [add]\n\nSteps to reproduce\n1. [step]\n2. [step]\n3. [step]\n\nExpected result\n[what should happen]\n\nActual result\n[what happened]\n\nImpact / Severity\n[who is affected and how badly]\n\nEvidence\n[screenshot, recording, logs, timestamp]`;
 }
 
 function localGeneral(tool, prompt) {
+  if (tool === 'rewrite') {
+    const compact = cleanInput(prompt);
+    return `نسخة أوضح\n${compact}\n\nمراجعة سريعة\n• الفكرة الأساسية واضحة ومباشرة.\n• احذف أي تكرار لا يضيف معلومة.\n• ضع الطلب أو الخطوة التالية في آخر سطر إن كان النص رسالة عملية.`;
+  }
   if (tool === 'brainstorm') return localBrainstorm(prompt);
-  if (tool === 'decide' || detectIntent(prompt) === 'comparison') return localComparison(prompt);
-  if (tool === 'rewrite') return `نسخة أوضح\n\n${sentences(prompt).join('\n\n') || prompt}\n\nراجع الأسماء والأرقام والمواعيد قبل الاستخدام.`;
-  if (tool === 'organize') return `تنظيم عملي\nالمدخلات: ${prompt}\n\n1. أهم نتيجة اليوم.\n2. جلستان تركيز للمهمات الثقيلة.\n3. دفعة واحدة للأعمال القصيرة.\n4. 20٪ وقت احتياطي.\n5. مراجعة سريعة ونقل مهمة واحدة فقط لليوم التالي.`;
-  if (tool === 'content') return `هيكل محتوى\nالموضوع: ${prompt}\n\n• Hook واضح\n• المشكلة\n• الفكرة الرئيسية\n• 3 نقاط قيمة\n• مثال عملي\n• خطأ شائع\n• CTA واحد واضح`;
-  const intent = detectIntent(prompt);
-  if (intent === 'problem') return `تشخيص احتياطي\nالمشكلة: ${prompt}\n\n1. ما المتوقع وما الفعلي؟\n2. ما آخر تغيير سبق المشكلة؟\n3. هل يمكن إعادة المشكلة بأصغر حالة؟\n4. ما رسالة الخطأ والبيئة؟\n5. اختبر تغييرًا واحدًا في كل مرة.`;
-  if (intent === 'howto') return `خطة بداية\nالهدف: ${prompt}\n\n1. عرّف النتيجة النهائية.\n2. حدّد ما لديك وما ينقصك.\n3. نفّذ أصغر خطوة تقلل الغموض.\n4. اختبر النتيجة.\n5. حسّن بناءً على ما تعلمته.`;
-  if (intent === 'writing') return `مسودة احتياطية\nالهدف: ${prompt}\n\nابدأ بالرسالة الأساسية مباشرة، أضف السياق الضروري فقط، رتّب التفاصيل حسب أهميتها، ثم اختم بخطوة تالية واضحة.`;
-  return `رد احتياطي مفيد\nطلبك: ${prompt}\n\nالمحرك الحي غير متاح في هذه اللحظة. حدّد الهدف والقيود والبدائل والمخاطر ثم اختر أصغر خطوة عملية قابلة للاختبار. المعلومات الحديثة أو المتغيرة تحتاج إعادة المحاولة عند عودة الاتصال.`;
+  if (tool === 'decide') return localComparison(prompt);
+  if (tool === 'organize') return `تنظيم عملي\nالمطلوب: ${prompt}\n\n1. ثبّت المواعيد التي لا يمكن تحريكها.\n2. اختر أهم 1–3 نتائج لليوم.\n3. ضع أصعب مهمة في فترة طاقة عالية.\n4. اجمع الأعمال الصغيرة في كتلة واحدة.\n5. اترك 20% من الوقت فراغًا للتأخير والطوارئ.\n6. في النهاية انقل غير الضروري بدل تمديد اليوم بلا نهاية.`;
+  if (tool === 'content') return `هيكل محتوى\nالموضوع: ${prompt}\n\nHook\nابدأ بالمشكلة أو النتيجة التي تهم الجمهور فورًا.\n\nالقيمة\n• الفكرة الأساسية.\n• مثال أو دليل.\n• خطوة قابلة للتطبيق.\n\nالخاتمة\nلخّص الرسالة في سطر واحد ثم ضع CTA مناسبًا للمنصة.`;
+  return `تحليل أولي\nطلبك: ${prompt}\n\nأفضل طريقة للبدء\n1. حدّد النتيجة التي تريد الوصول لها بدقة.\n2. افصل الحقائق المؤكدة عن الافتراضات.\n3. اكتشف أكبر معلومة ناقصة قد تغيّر القرار.\n4. نفّذ أصغر خطوة آمنة تعطيك معلومة جديدة.\n5. راجع النتيجة وعدّل المسار بدل الالتزام بخطة ثابتة.\n\nلو كان الطلب يعتمد على أسعار أو أخبار أو معلومات تتغير بمرور الوقت، استخدم البحث الحي قبل اتخاذ قرار نهائي.`;
 }
 
 function applyResponseStyle(answer, preferences = {}) {
-  if (preferences.responseStyle === 'concise') return answer.split('\n').filter((line) => line.trim()).slice(0, 14).join('\n');
-  if (preferences.responseStyle === 'detailed') return `${answer}\n\nمراجعة نهائية\nتحقق من الأسماء والأرقام والمواعيد وأي معلومة متغيرة قبل اتخاذ قرار نهائي.`;
+  if (preferences.responseStyle === 'concise') return answer.split('\n').slice(0, 14).join('\n');
+  if (preferences.responseStyle === 'detailed') return `${answer}\n\nتحقق قبل التنفيذ\n• ما الافتراضات الموجودة؟\n• ما المعلومة التي لو تغيرت ستغيّر القرار؟\n• ما معيار النجاح الواضح؟`;
   return answer;
 }
 
@@ -140,13 +131,21 @@ function fallbackResponse(args, reason) {
   };
 }
 
-async function llmAwareFallback(args, reason, allowColdStart) {
+function throwIfAborted(signal) {
+  if (!signal?.aborted) return;
+  if (signal.reason instanceof Error) throw signal.reason;
+  throw new DOMException('The operation was aborted.', 'AbortError');
+}
+
+async function llmAwareFallback(args, reason, allowColdStart, signal) {
+  throwIfAborted(signal);
   if (args.preferences?.localLlmEnabled && (allowColdStart || isBrowserLLMReady())) {
     try {
       const localLlm = await generateBrowserLLMResponse({
         ...args,
         timeoutMs: allowColdStart ? 70_000 : 25_000,
       });
+      throwIfAborted(signal);
       if (localLlm?.answer) {
         return {
           answer: `🧠 Local LLM · Beta\nتشغيل نموذج لغوي محلي على جهازك مع موسوعة PathPilot كسياق. المعلومات الحديثة ما زالت تحتاج بحثًا حيًا للتأكيد.\n\n${localLlm.answer}`,
@@ -156,18 +155,28 @@ async function llmAwareFallback(args, reason, allowColdStart) {
         };
       }
     } catch (error) {
+      if (signal?.aborted) throw error;
       console.warn('PathPilot on-device LLM unavailable; falling back to deterministic local reasoner.', error);
     }
   }
+  throwIfAborted(signal);
   return fallbackResponse(args, reason);
 }
 
-export async function generateAssistantResponse({ mode, tool, prompt, preferences = {} }) {
+export async function generateAssistantResponse({ mode, tool, prompt, preferences = {}, signal }) {
   const args = { mode, tool, prompt, preferences };
-  if (!hasLiveAI) return llmAwareFallback(args, 'offline', true);
+  throwIfAborted(signal);
+  if (!hasLiveAI) return llmAwareFallback(args, 'offline', true, signal);
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 85000);
+  let timedOut = false;
+  const abortFromCaller = () => controller.abort(signal?.reason || new DOMException('The operation was aborted.', 'AbortError'));
+  if (signal) signal.addEventListener('abort', abortFromCaller, { once: true });
+  const timeout = setTimeout(() => {
+    timedOut = true;
+    controller.abort(new DOMException('Live AI request timed out.', 'TimeoutError'));
+  }, 85_000);
+
   try {
     const response = await fetch(import.meta.env.VITE_AI_API_URL, {
       method: 'POST',
@@ -185,12 +194,15 @@ export async function generateAssistantResponse({ mode, tool, prompt, preference
       sources: Array.isArray(payload.sources) ? payload.sources : [],
       sourceCount: Number(payload.sourceCount || 0),
       targetReached: Boolean(payload.targetReached),
+      route: payload.route || null,
     };
   } catch (error) {
+    if (signal?.aborted) throw error;
     console.warn('PathPilot live response failed; trying local AI tiers.', error);
-    return llmAwareFallback(args, error?.name === 'AbortError' ? 'timeout' : 'offline', false);
+    return llmAwareFallback(args, timedOut || error?.name === 'TimeoutError' ? 'timeout' : 'offline', false, signal);
   } finally {
     clearTimeout(timeout);
+    if (signal) signal.removeEventListener('abort', abortFromCaller);
   }
 }
 
