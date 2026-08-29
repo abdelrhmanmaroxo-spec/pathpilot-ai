@@ -1,40 +1,44 @@
 # PathPilot AI
 
-> منصة عربية ذكية تساعد الطالب في الجامعة، ثم ترافقه إلى بيئة العمل — كتطبيق ويب قابل للتثبيت.
+> مساعد عربي عام للدراسة والعمل والمهام اليومية — موقع وPWA قابل للتثبيت، مع Backend وحسابات وتحليلات ولوحة إدارة جاهزة للنشر.
 
 [![CI](https://github.com/abdelrhmanmaroxo-spec/pathpilot-ai/actions/workflows/ci.yml/badge.svg)](https://github.com/abdelrhmanmaroxo-spec/pathpilot-ai/actions/workflows/ci.yml)
 [![PWA](https://img.shields.io/badge/PWA-installable-6d5dfc)](https://abdelrhmanmaroxo-spec.github.io/pathpilot-ai/)
 [![React](https://img.shields.io/badge/React-19-149eca)](https://react.dev/)
 
-## لماذا PathPilot؟
+## ما الذي يقدمه؟
 
-المشروع يجمع مسارين في تجربة واحدة واضحة:
+PathPilot يقسم الطلبات إلى ثلاث مساحات و18 أداة:
 
-- **Study Workspace:** شرح المفاهيم، تلخيص الملاحظات، إنشاء خطة مذاكرة، توليد أسئلة مراجعة، وبطاقات سؤال وجواب.
-- **Work Workspace:** كتابة بريد احترافي، تحويل الأهداف إلى مهام، تلخيص الاجتماعات، صياغة إنجازات للسيرة الذاتية، وإنشاء خطاب تقديم دون اختلاق أرقام.
+- **Universal Workspace:** سؤال عام، إعادة كتابة، توليد أفكار، مقارنة قرارات، تنظيم، وصناعة محتوى.
+- **Study Workspace:** شرح، تلخيص، خطة مذاكرة، اختبار، بطاقات مراجعة، وخريطة بحث.
+- **Work Workspace:** بريد احترافي، مهام، اجتماع، CV bullets، خطاب تقديم، وتقارير QA/Bug Reports.
 
-يعمل التطبيق فورًا لكل مستخدم في **Smart Demo Mode** من دون تسجيل أو مفاتيح سرية، ويمكن ربطه بواجهة AI حقيقية من خلال متغير بيئة واحد. الاسم والتفضيلات والسجل محفوظة محليًا على جهاز المستخدم ولا تُنشر في المستودع.
+النسخة العامة تعمل حاليًا في **وضع محلي غير مدعوم بنموذج AI حقيقي**، وتعرض ذلك للمستخدم بوضوح. عند نشر الخادم وإضافة مفتاح المزود في أسرار الاستضافة، تتحول الطلبات إلى Live AI تلقائيًا؛ وإذا توقف الخادم يظل الوضع المحلي متاحًا.
 
-## الاستخدام والتثبيت
+## النسخة العامة والتثبيت
 
-افتح النسخة العامة من أي جهاز: [PathPilot AI Live](https://abdelrhmanmaroxo-spec.github.io/pathpilot-ai/)
+افتح [PathPilot AI Live](https://abdelrhmanmaroxo-spec.github.io/pathpilot-ai/) من أي جهاز.
 
-- **Windows:** افتح الرابط في Chrome أو Edge ثم اختر Install من شريط العنوان.
-- **Android:** افتح الرابط في Chrome ثم اختر Install app أو Add to Home screen.
-- **iPhone / iPad:** افتح الرابط في Safari، اضغط Share، ثم Add to Home Screen.
-- يمكن استخدامه كموقع عادي من دون تثبيت، وتظل الوظائف المحلية متاحة بعد أول زيارة عند ضعف أو انقطاع الاتصال.
+- **Windows:** Chrome أو Edge ثم Install من شريط العنوان.
+- **Android:** Chrome ثم Install app أو Add to Home screen.
+- **iPhone / iPad:** Safari ثم Share ثم Add to Home Screen.
+- يمكن استخدامه كموقع عادي، وتظل واجهة التطبيق والوظائف المحلية متاحة بعد أول زيارة عند ضعف الاتصال.
 
-## أبرز النقاط التقنية
+## المنصة الكاملة
 
-- React 19 + Vite 8
-- واجهة عربية RTL متجاوبة ومراعية لإمكانية الوصول
-- PWA قابلة للتثبيت مع Service Worker ودعم Offline
-- AI provider adapter مع fallback محلي آمن للعرض
-- 10 أدوات عملية مع تخصيص الجمهور ومستوى التفاصيل
-- سجل محلي، مشاركة النتائج، نسخها، وتنزيلها بصيغة Markdown
-- تجربة تثبيت ذكية مع تعليمات خاصة بـWindows وAndroid وiOS
-- ESLint + اختبارات Node + GitHub Actions CI
-- GitHub Pages deployment workflow
+المستودع يحتوي على طبقتين منفصلتين:
+
+- **Frontend:** React 19 + Vite، RTL، PWA، 18 أداة، تخصيص، سجل محلي، مشاركة، تنزيل، تقييمات، وحالة اتصال واضحة.
+- **Backend:** Node HTTP server، SQLite، حسابات، جلسات مشفرة، صلاحية Admin، تحليلات فعلية، سجل أخطاء، Feedback، Rate limiting، CORS، وAI provider adapter.
+
+لوحة `PathPilot Admin` لا تعرض بيانات تجريبية. المقاييس تأتي من قاعدة البيانات وتشمل:
+
+- إجمالي المستخدمين والنشطين اليوم.
+- عدد طلبات AI ونسبة النجاح.
+- استخدام مساحات General وStudy وWork.
+- حالة قاعدة البيانات ومزود AI والموديل.
+- المستخدمين والأخطاء والتقييمات.
 
 ## التشغيل محليًا
 
@@ -43,39 +47,52 @@ npm install
 npm run dev
 ```
 
-الفحص قبل الدمج:
+تشغيل الخادم في Terminal أخرى:
+
+```bash
+npm run server
+```
+
+الفحص الكامل قبل النشر:
 
 ```bash
 npm run check
 ```
 
-## ربط AI حقيقي
+## تفعيل الحسابات والتحليلات وLive AI
 
-أنشئ ملف `.env.local`:
+1. انشر مجلد المشروع على استضافة تدعم Node وقرصًا دائمًا لملف SQLite.
+2. أضف القيم التالية في **Encrypted Secrets** الخاصة بالاستضافة، لا داخل GitHub أو كود الواجهة:
 
 ```env
-VITE_AI_API_URL=https://your-secure-backend.example.com/assistant
+AI_API_KEY=your-secret-provider-key
+AI_PROVIDER=OpenAI
+AI_MODEL=your-model-name
+AI_BASE_URL=https://api.openai.com/v1
+AI_API_MODE=chat-completions
+ALLOWED_ORIGINS=https://abdelrhmanmaroxo-spec.github.io,http://localhost:5173
+ADMIN_EMAIL=your-admin-email@example.com
+DATABASE_PATH=server/data/pathpilot.sqlite
+PORT=8787
 ```
 
-يرسل التطبيق طلب `POST` بالشكل التالي:
+3. ابنِ الواجهة بالقيم العامة فقط:
 
-```json
-{
-  "mode": "study",
-  "tool": "explain",
-  "prompt": "اشرح مفهوم التعلّم العميق"
-}
+```env
+VITE_PLATFORM_API_URL=https://your-backend.example.com
+VITE_AI_API_URL=https://your-backend.example.com/api/assistant
 ```
 
-ويستقبل:
+الحساب الذي يُنشأ بنفس `ADMIN_EMAIL` يأخذ صلاحية Admin. لا يوجد مفتاح داخل المتصفح أو المستودع. راجع [دليل الخادم](server/README.md) لكل الإعدادات.
 
-```json
-{
-  "answer": "..."
-}
-```
+## الأمان والخصوصية
 
-> لا تضع مفتاح مزود الذكاء الاصطناعي داخل متغيرات Vite أو كود الواجهة. المفتاح يجب أن يبقى في Backend آمن.
+- كلمات المرور محفوظة بصيغة `scrypt` مع salt، والجلسات لا تحفظ التوكن الخام في قاعدة البيانات.
+- مفاتيح AI تقرأ في الخادم فقط.
+- CORS يسمح بالنطاقات المحددة فقط، مع حدود للطلبات والتحقق من المدخلات.
+- وضع العرض المحلي لا يرفع محتوى المستخدم إلى خادم خارجي.
+- عند تفعيل الخادم تُسجل أحداث الاستخدام التشغيلية اللازمة للتحليلات، ولا تُحفظ نصوص طلبات AI في جداول التحليلات.
+- التطبيق ينبه المستخدم إلى التحقق من القرارات الطبية والقانونية والمالية عالية المخاطر.
 
 ## البناء والنشر
 
@@ -84,15 +101,9 @@ npm run build
 npm run preview
 ```
 
-Workflow النشر موجود في `.github/workflows/deploy-pages.yml` ويجهّز التطبيق لـGitHub Pages.
-
-## الخصوصية
-
-- لا يرفع وضع العرض المحلي أي محتوى إلى خادم خارجي.
-- عند تفعيل AI API، تظهر للمستخدم حالة الاتصال بوضوح.
-- المستندات والنتائج لا تُخزن في المستودع.
+GitHub Actions يفحص المشروع وينشر الواجهة على GitHub Pages. لأن Pages استضافة Static، يجب نشر `server/` على استضافة Node منفصلة لتفعيل الحسابات وقاعدة البيانات وLive AI للعامة.
 
 ## المطور
 
-**Abdelrhman Essam** — AI Quality & Full-Stack Developer  
+**Abdelrhman Essam** — AI Quality & Full-Stack Developer
 [LinkedIn](https://www.linkedin.com/in/abdelrhman-essam-vib/) · [GitHub](https://github.com/abdelrhmanmaroxo-spec)

@@ -1,7 +1,7 @@
 {
   "name": "PathPilot AI — Study & Work Assistant",
   "short_name": "PathPilot",
-  "description": "مساعد عربي ذكي للدراسة والعمل",
+  "description": "مساعد عربي عام للدراسة والعمل والمهام اليومية",
   "id": "./",
   "lang": "ar",
   "dir": "rtl",
@@ -16,6 +16,12 @@
   "prefer_related_applications": false,
   "launch_handler": { "client_mode": "navigate-existing" },
   "shortcuts": [
+    {
+      "name": "المساعد العام",
+      "short_name": "اسأل",
+      "url": "./#/general",
+      "icons": [{ "src": "./icons/icon-192.png", "sizes": "192x192" }]
+    },
     {
       "name": "مساحة الدراسة",
       "short_name": "الدراسة",

@@ -1,15 +1,17 @@
 {
   "name": "pathpilot-ai",
   "private": true,
-  "version": "2.0.0",
+  "version": "3.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "server": "node server/index.js",
     "preview": "vite preview",
     "lint": "eslint .",
-    "test": "node --test src/lib/*.test.js",
-    "check": "npm run lint && npm run test && npm run build"
+    "test": "node --test src/lib/*.test.js server/lib/*.test.js server/*.test.js",
+    "check:server": "node --check server/index.js",
+    "check": "npm run lint && npm run test && npm run check:server && npm run build"
   },
   "dependencies": {
     "lucide-react": "^1.35.0",

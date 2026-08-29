@@ -6,3 +6,6 @@ dist
 *.local
 .DS_Store
 npm-debug.log*
+server/data/
+*.sqlite
+*.sqlite-*

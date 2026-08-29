@@ -22,6 +22,8 @@ import {
   ListChecks,
   Layers3,
   LoaderCircle,
+  LogIn,
+  LogOut,
   Mail,
   Menu,
   MonitorSmartphone,
@@ -33,6 +35,7 @@ import {
   SlidersHorizontal,
   Smartphone,
   Sparkles,
+  Star,
   Target,
   Trash2,
   UserRound,
@@ -40,6 +43,8 @@ import {
   WifiOff,
   X,
 } from 'lucide-react';
+import AdminDashboard from './AdminDashboard.jsx';
+import AuthDialog from './AuthDialog.jsx';
 import {
   generateAssistantResponse,
   getModeLabel,
@@ -54,6 +59,14 @@ import {
   saveHistory,
   savePreferences,
 } from './lib/storage.js';
+import {
+  getCurrentUser,
+  hasPlatformBackend,
+  logoutAccount,
+  reportClientError,
+  sendFeedback,
+  trackUsage,
+} from './lib/platform.js';
 
 const TOOL_ICONS = {
   explain: BrainCircuit,
@@ -61,11 +74,19 @@ const TOOL_ICONS = {
   plan: CalendarRange,
   quiz: CircleHelp,
   flashcards: Layers3,
+  research: Target,
   email: Mail,
   tasks: ListChecks,
   meeting: ClipboardList,
   cv: FileCheck2,
   cover: ScrollText,
+  qa: ClipboardList,
+  ask: Sparkles,
+  rewrite: FileCheck2,
+  brainstorm: BrainCircuit,
+  decide: ListChecks,
+  organize: CalendarRange,
+  content: BookOpen,
 };
 
 const MODE_CONTENT = {
@@ -81,11 +102,17 @@ const MODE_CONTENT = {
     description: 'حوّل الأفكار والاجتماعات والخبرات إلى مخرجات مهنية جاهزة للتنفيذ.',
     icon: BriefcaseBusiness,
   },
+  general: {
+    eyebrow: 'UNIVERSAL WORKSPACE',
+    title: 'اكتب أي حاجة. وابدأ من هنا.',
+    description: 'أسئلة، مشاكل، نصوص، أفكار، قرارات، وتنظيم يومك في مساحة واحدة مرنة.',
+    icon: Sparkles,
+  },
 };
 
 function routeFromHash() {
   const route = window.location.hash.replace('#/', '').replace('#', '');
-  return route === 'study' || route === 'work' ? route : null;
+  return ['study', 'work', 'general', 'admin'].includes(route) ? route : null;
 }
 
 function Brand({ compact = false }) {
@@ -100,7 +127,7 @@ function Brand({ compact = false }) {
   );
 }
 
-function Header({ mode, onInstall, installed, online }) {
+function Header({ mode, onInstall, installed, online, user, onAccount, onLogout }) {
   const [menuOpen, setMenuOpen] = useState(false);
 
   const navigate = (nextMode) => {
@@ -114,8 +141,10 @@ function Header({ mode, onInstall, installed, online }) {
         <Brand compact />
         <nav className={menuOpen ? 'main-nav is-open' : 'main-nav'} aria-label="التنقل الرئيسي">
           <button className={!mode ? 'active' : ''} type="button" onClick={() => navigate(null)}><Home size={16} /> الرئيسية</button>
+          <button className={mode === 'general' ? 'active' : ''} type="button" onClick={() => navigate('general')}><Sparkles size={16} /> المساعد العام</button>
           <button className={mode === 'study' ? 'active' : ''} type="button" onClick={() => navigate('study')}><GraduationCap size={16} /> الدراسة</button>
           <button className={mode === 'work' ? 'active' : ''} type="button" onClick={() => navigate('work')}><BriefcaseBusiness size={16} /> العمل</button>
+          {user?.role === 'admin' && <button className={mode === 'admin' ? 'active' : ''} type="button" onClick={() => navigate('admin')}><ShieldCheck size={16} /> الإدارة</button>}
         </nav>
         <div className="header-actions">
           <span className={online ? 'status-dot online' : 'status-dot offline'} title={online ? 'متصل' : 'يعمل Offline'}>
@@ -127,6 +156,8 @@ function Header({ mode, onInstall, installed, online }) {
             </button>
           )}
           {installed && <span className="installed-label"><Check size={15} /> مُثبّت</span>}
+          {hasPlatformBackend && !user && <button className="account-button" type="button" onClick={onAccount}><LogIn size={16} /> دخول</button>}
+          {hasPlatformBackend && user && <button className="account-button signed" type="button" onClick={onLogout} title="تسجيل الخروج"><UserRound size={16} /><span>{user.name.split(' ')[0]}</span><LogOut size={14} /></button>}
           <button className="menu-button" type="button" onClick={() => setMenuOpen((open) => !open)} aria-label="فتح القائمة" aria-expanded={menuOpen}>
             {menuOpen ? <X /> : <Menu />}
           </button>
@@ -182,22 +213,22 @@ function Landing({ onSelect, onInstall }) {
     <main>
       <section className="hero page-shell">
         <div className="hero-copy">
-          <div className="eyebrow"><Sparkles size={15} /> SMARTER STUDY. BETTER WORK.</div>
-          <h1>مساعدك الذكي<br /><span>من الجامعة إلى سوق العمل.</span></h1>
-          <p className="hero-lead">مساحتان في تطبيق واحد: أدوات تساعدك تفهم وتذاكر، وأدوات تحوّل شغلك إلى نتائج مهنية واضحة.</p>
+          <div className="eyebrow"><Sparkles size={15} /> ASK. LEARN. BUILD. DECIDE.</div>
+          <h1>مساعد واحد<br /><span>لأي سؤال أو مهمة.</span></h1>
+          <p className="hero-lead">ثلاث مساحات و18 أداة لتنظيم أي طلب: مساعد عام مرن، أدوات دراسة، وأدوات عمل احترافية.</p>
           <div className="hero-actions">
-            <button className="button button-primary" type="button" onClick={() => onSelect('study')}>
-              ابدأ مساحة الدراسة <ArrowLeft size={18} />
+            <button className="button button-primary" type="button" onClick={() => onSelect('general')}>
+              اسأل أي حاجة <ArrowLeft size={18} />
             </button>
-            <button className="button button-secondary" type="button" onClick={() => onSelect('work')}>
-              افتح مساحة العمل
-            </button>
+            <button className="button button-secondary" type="button" onClick={() => onSelect('study')}>الدراسة</button>
+            <button className="button button-secondary" type="button" onClick={() => onSelect('work')}>العمل</button>
           </div>
           <div className="trust-row">
             <span><ShieldCheck size={17} /> بدون حساب</span>
             <span><Smartphone size={17} /> موقع + تطبيق</span>
             <span><WifiOff size={17} /> يعمل Offline</span>
           </div>
+          <p className="local-ai-note"><CircleHelp size={16} /> الردود الحالية محلية وليست مدعومة بنموذج AI حقيقي حتى الآن.</p>
         </div>
 
         <div className="hero-visual" aria-label="معاينة PathPilot AI">
@@ -221,15 +252,15 @@ function Landing({ onSelect, onInstall }) {
               </div>
             </div>
           </div>
-          <div className="floating-card floating-study"><GraduationCap /> <span><b>Study</b><small>5 smart tools</small></span></div>
-          <div className="floating-card floating-work"><BriefcaseBusiness /> <span><b>Work</b><small>5 pro tools</small></span></div>
+          <div className="floating-card floating-study"><GraduationCap /> <span><b>Study</b><small>6 smart tools</small></span></div>
+          <div className="floating-card floating-work"><BriefcaseBusiness /> <span><b>Work</b><small>6 pro tools</small></span></div>
         </div>
       </section>
 
       <section className="proof-strip">
         <div className="page-shell proof-grid">
-          <div><strong>02</strong><span>مساحات متخصصة</span></div>
-          <div><strong>10</strong><span>أدوات عملية</span></div>
+          <div><strong>03</strong><span>مساحات متخصصة</span></div>
+          <div><strong>18</strong><span>أداة عملية</span></div>
           <div><strong>PWA</strong><span>قابل للتثبيت</span></div>
           <div><strong>RTL</strong><span>تجربة عربية أصلية</span></div>
         </div>
@@ -237,14 +268,27 @@ function Landing({ onSelect, onInstall }) {
 
       <section className="section page-shell" id="workspaces">
         <div className="section-heading">
-          <div className="eyebrow"><Target size={15} /> ONE JOURNEY. TWO WORKSPACES.</div>
-          <h2>اختار المساحة المناسبة للحظة الحالية.</h2>
-          <p>من غير قوائم مزدحمة أو أدوات بلا هدف. كل مساحة مصممة لمخرجات محددة.</p>
+          <div className="eyebrow"><Target size={15} /> ONE APP. THREE WORKSPACES.</div>
+          <h2>أي طلب له مساحة مناسبة.</h2>
+          <p>ابدأ بالمساعد العام لأي موضوع، أو استخدم أدوات الدراسة والعمل للمخرجات المتخصصة.</p>
         </div>
         <div className="workspace-cards">
+          <article className="workspace-card general-card">
+            <div className="workspace-icon"><Sparkles /></div>
+            <span className="card-number">01</span>
+            <h3>Universal Workspace</h3>
+            <p>لأي سؤال أو مشكلة أو نص أو فكرة أو قرار من أي مستخدم.</p>
+            <ul>
+              <li><Check /> فهم تلقائي لنوع الطلب</li>
+              <li><Check /> تحسين وتنظيم أي نص</li>
+              <li><Check /> توليد أفكار ومقارنة خيارات</li>
+              <li><Check /> تنظيم اليوم وصناعة المحتوى</li>
+            </ul>
+            <button type="button" onClick={() => onSelect('general')}>افتح المساعد العام <ChevronLeft /></button>
+          </article>
           <article className="workspace-card study-card">
             <div className="workspace-icon"><GraduationCap /></div>
-            <span className="card-number">01</span>
+            <span className="card-number">02</span>
             <h3>Study Workspace</h3>
             <p>لفهم المحاضرات، ضغط وقت المراجعة، وتحويل الهدف إلى خطة يومية.</p>
             <ul>
@@ -253,12 +297,13 @@ function Landing({ onSelect, onInstall }) {
               <li><Check /> خطة مذاكرة قابلة للتنفيذ</li>
               <li><Check /> اختبار مراجعة نشط</li>
               <li><Check /> بطاقات سؤال وجواب</li>
+              <li><Check /> خريطة بحث منظمة</li>
             </ul>
             <button type="button" onClick={() => onSelect('study')}>ابدأ الدراسة <ChevronLeft /></button>
           </article>
           <article className="workspace-card work-card">
             <div className="workspace-icon"><BriefcaseBusiness /></div>
-            <span className="card-number">02</span>
+            <span className="card-number">03</span>
             <h3>Work Workspace</h3>
             <p>للكتابة المهنية، تخطيط التنفيذ، توثيق الاجتماعات وعرض الخبرة.</p>
             <ul>
@@ -267,6 +312,7 @@ function Landing({ onSelect, onInstall }) {
               <li><Check /> قرارات وخطوات من الاجتماعات</li>
               <li><Check /> CV bullets بلا ادعاءات</li>
               <li><Check /> خطاب تقديم مخصص</li>
+              <li><Check /> تقارير جودة وBug Reports</li>
             </ul>
             <button type="button" onClick={() => onSelect('work')}>ابدأ العمل <ChevronLeft /></button>
           </article>
@@ -306,7 +352,7 @@ function ToolRail({ mode, selectedTool, onSelect }) {
   );
 }
 
-function ResultCard({ answer, source, onCopy, onDownload, onShare }) {
+function ResultCard({ answer, source, onCopy, onDownload, onShare, onRate, feedbackEnabled }) {
   if (!answer) {
     return (
       <div className="empty-result">
@@ -328,6 +374,12 @@ function ResultCard({ answer, source, onCopy, onDownload, onShare }) {
         </div>
       </div>
       <pre>{answer}</pre>
+      {feedbackEnabled && (
+        <div className="result-feedback">
+          <span>قيّم النتيجة</span>
+          <div>{[1, 2, 3, 4, 5].map((rating) => <button type="button" key={rating} onClick={() => onRate(rating)} title={`${rating} من 5`} aria-label={`تقييم ${rating} من 5`}><Star size={16} /></button>)}</div>
+        </div>
+      )}
     </section>
   );
 }
@@ -345,7 +397,9 @@ function HistoryPanel({ items, onOpen, onClear }) {
         <div className="history-list">
           {items.slice(0, 6).map((item) => (
             <button type="button" key={item.id} onClick={() => onOpen(item)}>
-              <span className={`history-mode ${item.mode}`}>{item.mode === 'study' ? <GraduationCap size={16} /> : <BriefcaseBusiness size={16} />}</span>
+              <span className={`history-mode ${item.mode}`}>
+                {item.mode === 'study' ? <GraduationCap size={16} /> : item.mode === 'work' ? <BriefcaseBusiness size={16} /> : <Sparkles size={16} />}
+              </span>
               <span><strong>{item.prompt}</strong><small><Clock3 size={12} /> {new Date(item.createdAt).toLocaleDateString('ar-EG')}</small></span>
               <ChevronLeft size={16} />
             </button>
@@ -400,6 +454,7 @@ function Workspace({ mode, history, preferences, onPreferencesChange, onNewHisto
   const handleToolSelect = (toolId) => {
     setSelectedTool(toolId);
     setAnswer('');
+    trackUsage({ eventType: 'tool_selected', workspace: mode, tool: toolId });
   };
 
   const handleSubmit = async (event) => {
@@ -414,8 +469,10 @@ function Workspace({ mode, history, preferences, onPreferencesChange, onNewHisto
       setAnswer(result.answer);
       setSource(result.source);
       onNewHistory(createHistoryItem({ mode, tool: selectedTool, prompt: prompt.trim(), answer: result.answer, source: result.source }));
+      trackUsage({ eventType: 'tool_request', workspace: mode, tool: selectedTool, metadata: { source: result.source } });
     } catch (error) {
       notify(error.message || 'حدث خطأ غير متوقع.');
+      reportClientError(error, `${mode}:${selectedTool}`);
     } finally {
       setLoading(false);
     }
@@ -447,6 +504,16 @@ function Workspace({ mode, history, preferences, onPreferencesChange, onNewHisto
     }
     await navigator.clipboard.writeText(answer);
     notify('المشاركة غير متاحة هنا؛ تم نسخ النتيجة بدلًا منها.');
+  };
+
+  const rateAnswer = async (rating) => {
+    try {
+      await sendFeedback({ rating, workspace: mode, tool: selectedTool, message: '' });
+      notify('شكرًا، تم تسجيل تقييمك.');
+    } catch (error) {
+      notify('تعذر تسجيل التقييم حاليًا.');
+      reportClientError(error, 'feedback');
+    }
   };
 
   const openHistory = (item) => {
@@ -483,6 +550,13 @@ function Workspace({ mode, history, preferences, onPreferencesChange, onNewHisto
         <div className={hasLiveAI ? 'ai-status live' : 'ai-status demo'}><i /> {hasLiveAI ? 'Live AI متصل' : 'Smart Demo'}</div>
       </div>
 
+      {!hasLiveAI && (
+        <div className="page-shell local-disclaimer" role="note">
+          <CircleHelp size={19} />
+          <div><strong>ملاحظة مهمة</strong><span>الردود الحالية تُنشأ محليًا وليست مدعومة بنموذج AI حقيقي حتى الآن. لا تعتمد عليها وحدها في قرارات طبية أو قانونية أو مالية.</span></div>
+        </div>
+      )}
+
       <div className="page-shell workspace-layout">
         <ToolRail mode={mode} selectedTool={selectedTool} onSelect={handleToolSelect} />
         <div className="assistant-column">
@@ -494,12 +568,12 @@ function Workspace({ mode, history, preferences, onPreferencesChange, onNewHisto
             <form onSubmit={handleSubmit}>
               <PreferencesPanel preferences={preferences} onChange={onPreferencesChange} />
               <label htmlFor="assistant-prompt">اكتب طلبك بالتفصيل</label>
-              <textarea id="assistant-prompt" value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder={tool.placeholder} maxLength={4000} rows={7} />
+              <textarea id="assistant-prompt" value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder={tool.placeholder} maxLength={12000} rows={7} />
               <div className="starter-row">
                 {tool.starters.map((starter) => <button type="button" key={starter} onClick={() => setPrompt(starter)}>{starter}</button>)}
               </div>
               <div className="composer-footer">
-                <span>{prompt.length.toLocaleString('ar-EG')} / ٤٠٠٠</span>
+                <span>{prompt.length.toLocaleString('ar-EG')} / ١٢٬٠٠٠</span>
                 <div>
                   {(prompt || answer) && <button className="reset-button" type="button" onClick={() => { setPrompt(''); setAnswer(''); }}><RotateCcw size={16} /> جديد</button>}
                   <button className="button button-primary submit-button" type="submit" disabled={loading}>
@@ -510,7 +584,7 @@ function Workspace({ mode, history, preferences, onPreferencesChange, onNewHisto
             </form>
           </section>
 
-          <ResultCard answer={answer} source={source} onCopy={copyAnswer} onDownload={downloadAnswer} onShare={shareAnswer} />
+          <ResultCard answer={answer} source={source} onCopy={copyAnswer} onDownload={downloadAnswer} onShare={shareAnswer} onRate={rateAnswer} feedbackEnabled={hasPlatformBackend} />
         </div>
         <HistoryPanel items={history} onOpen={openHistory} onClear={onClearHistory} />
       </div>
@@ -522,7 +596,7 @@ function Footer() {
   return (
     <footer className="site-footer">
       <div className="page-shell footer-inner">
-        <div><Brand /><p>واجهة عربية ذكية للدراسة والعمل، صُممت كتجربة Web وPWA متكاملة.</p></div>
+        <div><Brand /><p>مساعد عربي عام للدراسة والعمل والحياة اليومية، صُمم كتجربة Web وPWA متكاملة.</p></div>
         <div className="footer-meta">
           <span>Built by Abdelrhman Essam</span>
           <a href="https://github.com/abdelrhmanmaroxo-spec" target="_blank" rel="noreferrer"><Code2 size={18} /> GitHub</a>
@@ -542,6 +616,8 @@ export default function App() {
   const [installed, setInstalled] = useState(() => window.matchMedia('(display-mode: standalone)').matches);
   const [online, setOnline] = useState(navigator.onLine);
   const [toast, setToast] = useState('');
+  const [user, setUser] = useState(null);
+  const [authOpen, setAuthOpen] = useState(false);
 
   useEffect(() => {
     const updateRoute = () => setMode(routeFromHash());
@@ -566,12 +642,23 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    let active = true;
+    getCurrentUser().then((currentUser) => {
+      if (active) setUser(currentUser);
+    });
+    return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
     if (!toast) return undefined;
     const timer = window.setTimeout(() => setToast(''), 2600);
     return () => window.clearTimeout(timer);
   }, [toast]);
 
-  const selectMode = (nextMode) => { window.location.hash = `/${nextMode}`; };
+  const selectMode = (nextMode) => {
+    window.location.hash = `/${nextMode}`;
+    trackUsage({ eventType: 'workspace_opened', workspace: nextMode });
+  };
 
   const handleInstall = async () => {
     if (!installPrompt) {
@@ -592,6 +679,21 @@ export default function App() {
     setPreferences(saved);
   };
 
+  const handleAuthenticated = (authenticatedUser) => {
+    setUser(authenticatedUser);
+    if (!preferences.displayName && authenticatedUser?.name) {
+      updatePreferences({ ...preferences, displayName: authenticatedUser.name });
+    }
+    setToast(`أهلًا ${authenticatedUser.name}.`);
+  };
+
+  const handleLogout = async () => {
+    await logoutAccount();
+    setUser(null);
+    if (mode === 'admin') window.location.hash = '';
+    setToast('تم تسجيل الخروج.');
+  };
+
   const addHistory = (item) => {
     setHistoryItems((items) => {
       const next = saveHistory([item, ...items]);
@@ -608,9 +710,11 @@ export default function App() {
 
   return (
     <div className="app">
-      <Header mode={mode} onInstall={() => setInstallOpen(true)} installed={installed} online={online} />
+      <Header mode={mode} onInstall={() => setInstallOpen(true)} installed={installed} online={online} user={user} onAccount={() => setAuthOpen(true)} onLogout={handleLogout} />
       {!mode ? (
         <Landing onSelect={selectMode} onInstall={() => setInstallOpen(true)} />
+      ) : mode === 'admin' ? (
+        <AdminDashboard user={user} onBack={() => { window.location.hash = ''; }} />
       ) : (
         <Workspace
           mode={mode}
@@ -625,6 +729,7 @@ export default function App() {
       )}
       <Footer />
       <InstallDialog open={installOpen} onClose={() => setInstallOpen(false)} onInstall={handleInstall} canInstall={Boolean(installPrompt)} installed={installed} />
+      <AuthDialog open={authOpen} onClose={() => setAuthOpen(false)} onAuthenticated={handleAuthenticated} />
       {toast && <div className="toast" role="status"><BadgeCheck size={18} /> {toast}</div>}
     </div>
   );

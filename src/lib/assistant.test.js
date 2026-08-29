@@ -2,9 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { extractKeywords, generateDemoResponse, TOOL_LIBRARY } from './assistant.js';
 
-test('each workspace exposes five focused tools', () => {
-  assert.equal(TOOL_LIBRARY.study.length, 5);
-  assert.equal(TOOL_LIBRARY.work.length, 5);
+test('three workspaces expose eighteen focused tools', () => {
+  assert.equal(TOOL_LIBRARY.study.length, 6);
+  assert.equal(TOOL_LIBRARY.work.length, 6);
+  assert.equal(TOOL_LIBRARY.general.length, 6);
 });
 
 test('keyword extraction returns useful repeated terms', () => {
@@ -50,6 +51,12 @@ test('concise mode returns a shorter useful response', () => {
 test('new public tools generate usable structured output', () => {
   const cards = generateDemoResponse({ mode: 'study', tool: 'flashcards', prompt: 'قواعد البيانات والشبكات' });
   const cover = generateDemoResponse({ mode: 'work', tool: 'cover', prompt: 'دعم فني وحل المشكلات' });
+  const general = generateDemoResponse({ mode: 'general', tool: 'brainstorm', prompt: 'أفكار مشروع يساعد الطلبة' });
+  const research = generateDemoResponse({ mode: 'study', tool: 'research', prompt: 'تأثير الذكاء الاصطناعي على التعليم' });
+  const quality = generateDemoResponse({ mode: 'work', tool: 'qa', prompt: 'زر تسجيل الدخول لا يستجيب على الهاتف' });
   assert.match(cards, /بطاقات المراجعة/);
   assert.match(cover, /خطاب تقديم/);
+  assert.match(general, /أفكار حول/);
+  assert.match(research, /خريطة بحث/);
+  assert.match(quality, /تقرير جودة/);
 });
