@@ -1,4 +1,4 @@
-import { advancedLocalResponse } from './local-reasoner.js';
+import { superLocalResponse } from './local-super-reasoner.js';
 
 export const TOOL_LIBRARY = {
   study: [
@@ -31,16 +31,27 @@ const MODE_LABELS = { study: 'مساحة الدراسة', work: 'مساحة ال
 const AUDIENCE_LABELS = { self: 'استخدام شخصي', teacher: 'مدرس أو مشرف', recruiter: 'مسؤول توظيف', team: 'فريق عمل' };
 export const hasLiveAI = Boolean(import.meta.env?.VITE_AI_API_URL?.trim());
 
-function cleanInput(value) { return String(value || '').replace(/\s+/g, ' ').trim(); }
-function sentences(value) { return String(value || '').split(/(?<=[.!؟\n])\s+/).map(cleanInput).filter((item) => item.length > 12); }
+function cleanInput(value) {
+  return String(value || '').replace(/\s+/g, ' ').trim();
+}
+
+function sentences(value) {
+  return String(value || '')
+    .split(/(?<=[.!؟\n])\s+/)
+    .map(cleanInput)
+    .filter((item) => item.length > 12);
+}
 
 export function extractKeywords(value, limit = 6) {
-  const stopWords = new Set(['هذا', 'هذه', 'ذلك', 'التي', 'الذي', 'على', 'إلى', 'من', 'في', 'عن', 'مع', 'أو', 'هو', 'هي', 'تم', 'كان', 'have', 'with', 'from', 'that', 'this', 'and', 'the', 'for']);
+  const stopWords = new Set(['هذا','هذه','ذلك','التي','الذي','على','إلى','من','في','عن','مع','أو','هو','هي','تم','كان','have','with','from','that','this','and','the','for']);
   const counts = new Map();
   String(value || '').toLowerCase().match(/[\p{L}\p{N}]{3,}/gu)?.forEach((word) => {
     if (!stopWords.has(word)) counts.set(word, (counts.get(word) || 0) + 1);
   });
-  return [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, limit).map(([word]) => word);
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, limit)
+    .map(([word]) => word);
 }
 
 function audiencePrefix(preferences = {}) {
@@ -49,18 +60,18 @@ function audiencePrefix(preferences = {}) {
 }
 
 function localComparison(prompt) {
-  return `مقارنة احتياطية\nطلبك: ${prompt}\n\nتعذر الوصول للمحرك الحي الآن، لذلك لن أخترع تفاصيل حديثة أو أسعارًا أو ترتيبات غير متحققة. لكن بدل ما أسيبك من غير رد، استخدم المقارنة العملية دي فورًا:\n\n1. حدّد 4 إلى 6 خيارات مرتبطة مباشرة بطلبك.\n2. قارن بينها في: سهولة البداية، جودة المحتوى، التطبيق العملي، التكلفة، دعم المجتمع، الشهادات، والملاءمة لهدفك.\n3. لكل خيار اكتب ميزتين وعيبين على الأقل.\n4. استبعد أي خيار يفشل في شرط أساسي عندك.\n5. رشّح خيارًا للمبتدئ، خيارًا للتطبيق العملي، وخيارًا لمن يريد مسارًا عميقًا.\n\nمهم\nهذه طبقة احتياطية فقط. بمجرد عودة البحث الحي، PathPilot يعيد نفس الطلب بمقارنة فعلية وأسماء ومصادر حديثة.`;
+  return `مقارنة احتياطية\nطلبك: ${prompt}\n\nتعذر الوصول للمحرك الحي الآن، لذلك لن أخترع تفاصيل حديثة أو أسعارًا أو ترتيبات غير متحققة.\n\n1. حدّد الخيارات الحقيقية المرتبطة بطلبك.\n2. قارن سهولة البداية، الجودة، التطبيق العملي، التكلفة، المجتمع، والملاءمة للهدف.\n3. لكل خيار اكتب نقاط قوة وضعف.\n4. استبعد ما يفشل في شرط أساسي.\n5. اختر حسب حالة الاستخدام لا حسب ترتيب مطلق.\n\nمهم\nبمجرد عودة البحث الحي، أعد الطلب للحصول على أسماء ومصادر حديثة.`;
 }
 
 function localBrainstorm(prompt) {
   const topic = cleanInput(prompt);
-  return `أفكار موسعة حول: ${topic}\n\nعملية وسريعة\n1. نسخة مصغرة تحل المشكلة الأساسية فقط.\n2. خدمة موجهة لشريحة ضيقة جدًا بدل جمهور عام.\n3. قالب أو أداة قابلة لإعادة الاستخدام.\n4. أتمتة جزء متكرر يستهلك وقتًا.\n\nأقوى من المعتاد\n5. دمج فكرتين موجودتين في تجربة واحدة أبسط.\n6. إضافة طبقة تخصيص حسب نوع المستخدم.\n7. تحويل المنتج إلى تجربة خطوة بخطوة مع قياس تقدم.\n8. بناء نسخة مجانية محدودة تقود لميزة مدفوعة واضحة.\n\nتجريبية\n9. مساعد ذكي يقترح الخطوة التالية بدل انتظار أمر المستخدم.\n10. نظام مقارنة أو توصية يشرح سبب الاختيار.\n11. لوحة قياس تعرض التقدم والأخطاء والفرص.\n12. تجربة جماعية تسمح بالمشاركة والتقييم والتعاون.\n\nاختيار سريع\nابدأ بأعلى فكرة في قيمة للمستخدم + سهولة الاختبار + تكلفة منخفضة + إمكانية قياس النتيجة خلال أسبوع.`;
+  return `أفكار موسعة حول: ${topic}\n\nعملية وسريعة\n1. نسخة مصغرة تحل المشكلة الأساسية فقط.\n2. خدمة موجهة لشريحة ضيقة.\n3. قالب أو أداة قابلة لإعادة الاستخدام.\n4. أتمتة جزء متكرر.\n\nأقوى من المعتاد\n5. دمج فكرتين في تجربة أبسط.\n6. تخصيص حسب نوع المستخدم.\n7. قياس تقدم واضح.\n8. نسخة مجانية محدودة تقود لقيمة مدفوعة.\n\nتجريبية\n9. مساعد يقترح الخطوة التالية.\n10. نظام توصية يشرح سبب الاختيار.\n11. لوحة قياس للأخطاء والفرص.\n12. تجربة مشاركة وتقييم.\n\nاختيار سريع\nابدأ بأعلى فكرة في القيمة + سهولة الاختبار + تكلفة منخفضة + نتيجة قابلة للقياس.`;
 }
 
 function localStudy(tool, prompt) {
   if (tool === 'summarize') {
     const items = sentences(prompt).slice(0, 7);
-    return `ملخص احتياطي\n${(items.length ? items : [cleanInput(prompt)]).map((item) => `• ${item}`).join('\n')}`;
+    return `ملخص احتياطي\n${(items.length ? items : [prompt]).map((item) => `• ${item}`).join('\n')}`;
   }
   if (tool === 'quiz') return `اختبار سريع حول: ${prompt}\n\n1. عرّف الفكرة بكلماتك.\n2. أعط مثالًا صحيحًا.\n3. أعط مثالًا مضادًا.\n4. اشرح خطأ شائعًا.\n5. طبّق الفكرة على حالة جديدة.\n\nالإجابة الجيدة تشرح لماذا، وليس فقط ماذا.`;
   if (tool === 'flashcards') return `بطاقات مراجعة حول: ${prompt}\n\n1. ما التعريف الأساسي؟\n2. ما أهم استخدام؟\n3. ما الفرق عن أقرب مفهوم مشابه؟\n4. ما الخطأ الشائع؟\n5. ما مثال عملي؟`;
@@ -71,9 +82,9 @@ function localStudy(tool, prompt) {
 
 function localWork(tool, prompt, preferences) {
   const name = cleanInput(preferences.displayName);
-  if (tool === 'email') return `الموضوع: متابعة بخصوص ${cleanInput(prompt).slice(0, 70)}\n\nمرحبًا،\n\nأكتب إليك بخصوص ${cleanInput(prompt)}. أود تأكيد الخطوة التالية وأي موعد أو متطلبات لازمة حتى أتمكن من استكمال الموضوع بصورة واضحة.\n\nشكرًا لوقتك، ويسعدني إرسال أي تفاصيل إضافية.\n\nمع خالص التحية${name ? `،\n${name}` : ''}`;
-  if (tool === 'cv') return `صياغة CV احتياطية\n• ${cleanInput(prompt)}، مع التركيز على التنفيذ، الدقة، حل المشكلات، ومراجعة الجودة دون إضافة أرقام أو نتائج غير موثقة.`;
-  if (tool === 'cover') return `مسودة خطاب تقديم\n\nالسادة فريق التوظيف المحترمون،\n\nأتقدم لهذه الفرصة لأن متطلباتها ترتبط بخبرتي في ${cleanInput(prompt)}. أركز على تنفيذ المتطلبات بدقة، مراجعة الجودة، حل المشكلات، والتواصل الواضح.\n\nيسعدني مناقشة أمثلة حقيقية من خبرتي وكيف يمكن توظيفها لدعم الفريق.\n\nمع خالص التحية${name ? `،\n${name}` : ''}`;
+  if (tool === 'email') return `الموضوع: متابعة بخصوص ${prompt.slice(0, 70)}\n\nمرحبًا،\n\nأكتب إليك بخصوص ${prompt}. أود تأكيد الخطوة التالية وأي موعد أو متطلبات لازمة حتى أتمكن من استكمال الموضوع بصورة واضحة.\n\nشكرًا لوقتك، ويسعدني إرسال أي تفاصيل إضافية.\n\nمع خالص التحية${name ? `،\n${name}` : ''}`;
+  if (tool === 'cv') return `صياغة CV احتياطية\n• ${prompt}، مع التركيز على التنفيذ، الدقة، حل المشكلات، ومراجعة الجودة دون إضافة أرقام أو نتائج غير موثقة.`;
+  if (tool === 'cover') return `مسودة خطاب تقديم\n\nالسادة فريق التوظيف المحترمون،\n\nأتقدم لهذه الفرصة لأن متطلباتها ترتبط بخبرتي في ${prompt}. أركز على تنفيذ المتطلبات بدقة، مراجعة الجودة، حل المشكلات، والتواصل الواضح.\n\nيسعدني مناقشة أمثلة حقيقية من خبرتي وكيف يمكن توظيفها لدعم الفريق.\n\nمع خالص التحية${name ? `،\n${name}` : ''}`;
   if (tool === 'qa') return `تقرير QA احتياطي\n\nالمشكلة: ${prompt}\n\n• المتوقع: [اكتب السلوك الصحيح]\n• الفعلي: ${prompt}\n• خطوات إعادة الإنتاج: ابدأ من الحالة النظيفة وسجل كل خطوة.\n• البيئة: الجهاز، النظام، المتصفح، الإصدار.\n• التأثير: من يتأثر وما الذي يتعطل.\n• الأدلة: لقطة شاشة، وقت الحدوث، والرسائل الظاهرة.\n• إعادة الاختبار: كرر نفس الخطوات بعد الإصلاح.`;
   if (tool === 'meeting') return `ملخص اجتماع احتياطي\n${sentences(prompt).slice(0, 6).map((item) => `• ${item}`).join('\n') || `• ${prompt}`}\n\nاستخرج بعد ذلك: القرارات، المسؤول، الموعد، المخاطر، والأسئلة المفتوحة.`;
   return `خطة تنفيذ احتياطية\nالهدف: ${prompt}\n\n1. عرّف المخرج النهائي ومعيار قبوله.\n2. اجمع الاعتماديات والمدخلات.\n3. نفّذ أصغر نسخة قابلة للمراجعة.\n4. اختبر الحالات الأساسية والطرفية.\n5. وثّق النتيجة والخطوة التالية.`;
@@ -91,18 +102,18 @@ function detectIntent(prompt) {
 function localGeneral(tool, prompt) {
   if (tool === 'brainstorm') return localBrainstorm(prompt);
   if (tool === 'decide' || detectIntent(prompt) === 'comparison') return localComparison(prompt);
-  if (tool === 'rewrite') return `نسخة أوضح\n\n${sentences(prompt).join('\n\n') || cleanInput(prompt)}\n\nراجع الأسماء والأرقام والمواعيد قبل الاستخدام.`;
+  if (tool === 'rewrite') return `نسخة أوضح\n\n${sentences(prompt).join('\n\n') || prompt}\n\nراجع الأسماء والأرقام والمواعيد قبل الاستخدام.`;
   if (tool === 'organize') return `تنظيم عملي\nالمدخلات: ${prompt}\n\n1. أهم نتيجة اليوم.\n2. جلستان تركيز للمهمات الثقيلة.\n3. دفعة واحدة للأعمال القصيرة.\n4. 20٪ وقت احتياطي.\n5. مراجعة سريعة ونقل مهمة واحدة فقط لليوم التالي.`;
   if (tool === 'content') return `هيكل محتوى\nالموضوع: ${prompt}\n\n• Hook واضح\n• المشكلة\n• الفكرة الرئيسية\n• 3 نقاط قيمة\n• مثال عملي\n• خطأ شائع\n• CTA واحد واضح`;
   const intent = detectIntent(prompt);
   if (intent === 'problem') return `تشخيص احتياطي\nالمشكلة: ${prompt}\n\n1. ما المتوقع وما الفعلي؟\n2. ما آخر تغيير سبق المشكلة؟\n3. هل يمكن إعادة المشكلة بأصغر حالة؟\n4. ما رسالة الخطأ والبيئة؟\n5. اختبر تغييرًا واحدًا في كل مرة.`;
   if (intent === 'howto') return `خطة بداية\nالهدف: ${prompt}\n\n1. عرّف النتيجة النهائية.\n2. حدّد ما لديك وما ينقصك.\n3. نفّذ أصغر خطوة تقلل الغموض.\n4. اختبر النتيجة.\n5. حسّن بناءً على ما تعلمته.`;
   if (intent === 'writing') return `مسودة احتياطية\nالهدف: ${prompt}\n\nابدأ بالرسالة الأساسية مباشرة، أضف السياق الضروري فقط، رتّب التفاصيل حسب أهميتها، ثم اختم بخطوة تالية واضحة.`;
-  return `رد احتياطي مفيد\nطلبك: ${prompt}\n\nالمحرك الحي غير متاح في هذه اللحظة. بدل ما أسيبك من غير رد، أفضل مسار هو: تحديد الهدف، القيود، البدائل، المخاطر، ثم اختيار أصغر خطوة عملية قابلة للاختبار. المعلومات الحديثة أو المتغيرة تحتاج إعادة المحاولة عند عودة الاتصال.`;
+  return `رد احتياطي مفيد\nطلبك: ${prompt}\n\nالمحرك الحي غير متاح في هذه اللحظة. حدّد الهدف والقيود والبدائل والمخاطر ثم اختر أصغر خطوة عملية قابلة للاختبار. المعلومات الحديثة أو المتغيرة تحتاج إعادة المحاولة عند عودة الاتصال.`;
 }
 
 function applyResponseStyle(answer, preferences = {}) {
-  if (preferences.responseStyle === 'concise') return answer.split('\n').filter((line) => line.trim()).slice(0, 12).join('\n');
+  if (preferences.responseStyle === 'concise') return answer.split('\n').filter((line) => line.trim()).slice(0, 14).join('\n');
   if (preferences.responseStyle === 'detailed') return `${answer}\n\nمراجعة نهائية\nتحقق من الأسماء والأرقام والمواعيد وأي معلومة متغيرة قبل اتخاذ قرار نهائي.`;
   return answer;
 }
@@ -118,11 +129,11 @@ export function generateDemoResponse({ mode, tool, prompt, preferences = {} }) {
 }
 
 function fallbackResponse(args, reason) {
-  const knowledgeAnswer = advancedLocalResponse(args);
+  const knowledgeAnswer = superLocalResponse(args);
   const specialized = generateDemoResponse(args);
   const reasonText = reason === 'timeout' ? 'انتهت مهلة الخدمة الحية قبل وصول النتيجة.' : 'تعذر الوصول إلى البحث والذكاء الحي في هذه المحاولة.';
   return {
-    answer: `⚠️ Local Intelligence Beta\n${reasonText}\nتم تشغيل قاعدة المعرفة المحلية ومحرك الاستدلال والاسترجاع بدل إيقاف الرد. المعلومات الحديثة تحتاج بحثًا حيًا للتأكيد.\n\n${knowledgeAnswer}\n\nتطبيق مباشر للأداة\n${specialized}`,
+    answer: `⚠️ Local Intelligence Beta\n${reasonText}\nتم تشغيل الموسوعة المحلية + الاسترجاع متعدد المراحل + محرك التفكير بدل إيقاف الرد. المعلومات الحديثة تحتاج بحثًا حيًا للتأكيد.\n\n${knowledgeAnswer}\n\nتطبيق مباشر للأداة\n${specialized}`,
     source: 'local-fallback',
     degraded: true,
   };
@@ -131,6 +142,7 @@ function fallbackResponse(args, reason) {
 export async function generateAssistantResponse({ mode, tool, prompt, preferences = {} }) {
   const args = { mode, tool, prompt, preferences };
   if (!hasLiveAI) return fallbackResponse(args, 'offline');
+
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 85000);
   try {
@@ -152,11 +164,13 @@ export async function generateAssistantResponse({ mode, tool, prompt, preference
       targetReached: Boolean(payload.targetReached),
     };
   } catch (error) {
-    console.warn('PathPilot live response failed; using advanced local intelligence fallback.', error);
+    console.warn('PathPilot live response failed; using encyclopedia local fallback.', error);
     return fallbackResponse(args, error?.name === 'AbortError' ? 'timeout' : 'offline');
   } finally {
     clearTimeout(timeout);
   }
 }
 
-export function getModeLabel(mode) { return MODE_LABELS[mode] || ''; }
+export function getModeLabel(mode) {
+  return MODE_LABELS[mode] || '';
+}
