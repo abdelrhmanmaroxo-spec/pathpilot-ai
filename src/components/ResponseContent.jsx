@@ -4,9 +4,18 @@ function language() {
   return document.body?.dataset?.language === 'en' ? 'en' : 'ar';
 }
 
+function safeExternalUrl(value) {
+  try {
+    const parsed = new URL(String(value || ''));
+    return ['http:', 'https:'].includes(parsed.protocol) ? parsed.href : '';
+  } catch {
+    return '';
+  }
+}
+
 function extractUrls(text) {
   const matches = String(text || '').match(/https?:\/\/[^\s)\]}>,]+/g) || [];
-  return [...new Set(matches.map((url) => url.replace(/[.,;:!?]+$/, '')))];
+  return [...new Set(matches.map((url) => safeExternalUrl(url.replace(/[.,;:!?]+$/, ''))).filter(Boolean))];
 }
 
 function cleanDisplayAnswer(value) {
@@ -38,7 +47,8 @@ function InlineText({ value }) {
   const chunks = String(value || '').split(/(https?:\/\/[^\s)\]}>,]+)/g);
   return chunks.map((chunk, index) => {
     if (/^https?:\/\//.test(chunk)) {
-      return <a key={`${chunk}-${index}`} href={chunk} target="_blank" rel="noreferrer">{chunk}</a>;
+      const safe = safeExternalUrl(chunk);
+      return safe ? <a key={`${safe}-${index}`} href={safe} target="_blank" rel="noopener noreferrer">{chunk}</a> : <span key={`${chunk}-${index}`}>{chunk}</span>;
     }
     const bold = chunk.split(/(\*\*[^*]+\*\*)/g);
     return bold.map((piece, pieceIndex) => (
@@ -100,7 +110,7 @@ function normalizeSources(answer, sources) {
   if (Array.isArray(sources) && sources.length) {
     return sources.slice(0, 8).map((source) => ({
       title: String(source?.title || source?.domain || source?.url || '').trim(),
-      url: String(source?.url || '').trim(),
+      url: safeExternalUrl(source?.url),
       domain: String(source?.domain || '').trim(),
       snippet: String(source?.snippet || '').trim(),
       quality: Number(source?.quality || 0),
@@ -136,7 +146,7 @@ export function SourceList({ answer, sources = [] }) {
         {items.map((source, index) => {
           const quality = sourceQuality(source, en);
           return (
-            <a className="source-card" key={`${source.url}-${index}`} href={source.url} target="_blank" rel="noreferrer">
+            <a className="source-card" key={`${source.url}-${index}`} href={source.url} target="_blank" rel="noopener noreferrer">
               <span className="source-number">{index + 1}</span>
               <span className="source-card-icon"><FileText size={16} /></span>
               <span className="source-card-copy">
