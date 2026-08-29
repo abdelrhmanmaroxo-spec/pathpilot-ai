@@ -1,4 +1,5 @@
 import {
+  BookOpen,
   BrainCircuit,
   BriefcaseBusiness,
   CalendarRange,
@@ -28,7 +29,7 @@ import { supportsBrowserLLM } from '../lib/local-llm.js';
 
 export const TOOL_ICONS = {
   explain: BrainCircuit,
-  summarize: BriefcaseBusiness,
+  summarize: BookOpen,
   plan: CalendarRange,
   quiz: CircleHelp,
   flashcards: Layers3,
@@ -44,7 +45,7 @@ export const TOOL_ICONS = {
   brainstorm: BrainCircuit,
   decide: ListChecks,
   organize: CalendarRange,
-  content: BriefcaseBusiness,
+  content: BookOpen,
 };
 
 function sourceLabel(source) {
