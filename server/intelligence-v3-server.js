@@ -9,11 +9,12 @@ import { initializeDatabase } from './lib/database.js';
 import { applySecurityHeaders, createSecurityGuard } from './lib/security.js';
 
 const SEARCH_TIMEOUT = 12_000;
-const NATIVE_AI_TIMEOUT = 24_000;
-const COMPAT_AI_TIMEOUT = 16_000;
-const REQUEST_BUDGET = 58_000;
+const NATIVE_AI_TIMEOUT = 28_000;
+const COMPAT_AI_TIMEOUT = 28_000;
+const REQUEST_BUDGET = 68_000;
 const MAX_SOURCES = 8;
 const IDEAL_SOURCES = 5;
+const MIN_GROUNDED_SOURCES = 3;
 
 const TOOL_GOALS = {
   explain: 'شرح واضح من الأساسيات إلى التطبيق', summarize: 'تلخيص دقيق بلا فقدان النقاط المهمة',
@@ -82,21 +83,30 @@ async function nativeGemini({env,prompt,mode,tool,preferences,grounded}) {
   const c=aiConfig(env); if (!c.configured || !c.baseUrl.includes('generativelanguage.googleapis.com')) return null;
   const system=buildSystemPrompt({mode,tool,preferences,groundedResearch:grounded});
   const url=`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(c.model)}:generateContent`;
-  const res=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json','x-goog-api-key':c.apiKey},body:JSON.stringify({systemInstruction:{parts:[{text:system}]},contents:[{role:'user',parts:[{text:prompt}]}],generationConfig:{temperature:grounded?0.2:0.4,maxOutputTokens:2500}}),signal:AbortSignal.timeout(NATIVE_AI_TIMEOUT)});
+  const res=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json','x-goog-api-key':c.apiKey},body:JSON.stringify({systemInstruction:{parts:[{text:system}]},contents:[{role:'user',parts:[{text:prompt}]}],generationConfig:{temperature:grounded?0.2:0.4,maxOutputTokens:3000}}),signal:AbortSignal.timeout(NATIVE_AI_TIMEOUT)});
   const payload=await res.json().catch(()=>({})); if(!res.ok) throw new Error(`GEMINI_${res.status}:${String(payload?.error?.message || '').slice(0,120)}`);
   const answer=payload?.candidates?.[0]?.content?.parts?.map((p)=>p.text||'').join('\n').trim(); if(!answer) throw new Error('GEMINI_EMPTY');
   return {answer,model:c.model,path:'native'};
 }
 async function compatible({env,prompt,mode,tool,preferences,grounded}) {
   const c=aiConfig(env); if(!c.configured) return null;
-  const request=buildProviderRequest({apiMode:c.apiMode,model:c.model,prompt,mode,tool,preferences,reasoningEffort:'low',groundedResearch:grounded});
+  const request=buildProviderRequest({apiMode:c.apiMode,model:c.model,prompt,mode,tool,preferences,reasoningEffort:c.reasoning || undefined,groundedResearch:grounded});
   const res=await fetch(c.endpoint,{method:'POST',headers:{Authorization:`Bearer ${c.apiKey}`,'Content-Type':'application/json'},body:JSON.stringify(request),signal:AbortSignal.timeout(COMPAT_AI_TIMEOUT)});
-  const payload=await res.json().catch(()=>({})); if(!res.ok) throw new Error(`AI_${res.status}`);
+  const payload=await res.json().catch(()=>({})); if(!res.ok) throw new Error(`AI_${res.status}:${String(payload?.error?.message || '').slice(0,120)}`);
   const answer=extractProviderText(payload,c.apiMode); if(!answer) throw new Error('AI_EMPTY'); return {answer,model:c.model,path:'compatible'};
 }
 async function fastAi(args) {
-  try { const native=await nativeGemini(args); if(native) return native; } catch(e) { console.warn('Fast native Gemini failed:',e?.message||e); }
-  try { return await compatible(args); } catch(e) { console.warn('Fast compatible AI failed:',e?.message||e); throw e; }
+  const c=aiConfig(args.env);
+  const preferCompatible = c.baseUrl.includes('/openai') || c.apiMode === 'responses' || Boolean(args.env.AI_ENDPOINT);
+  let firstError = null;
+  if (preferCompatible) {
+    try { const result=await compatible(args); if(result) return result; } catch(e) { firstError=e; console.warn('Configured AI compatibility path failed:',e?.message||e); }
+    try { const native=await nativeGemini(args); if(native) return native; } catch(e) { console.warn('Native Gemini fallback failed:',e?.message||e); if(!firstError) firstError=e; }
+  } else {
+    try { const native=await nativeGemini(args); if(native) return native; } catch(e) { firstError=e; console.warn('Native Gemini path failed:',e?.message||e); }
+    try { const result=await compatible(args); if(result) return result; } catch(e) { console.warn('Compatibility fallback failed:',e?.message||e); if(!firstError) firstError=e; }
+  }
+  throw firstError || new Error('AI_UNAVAILABLE');
 }
 function appendix(sources) { return sources.length ? `\n\nالمصادر المختارة (${sources.length})\n${sources.map((s,i)=>`[${i+1}] ${s.title}\n${s.url}`).join('\n\n')}` : ''; }
 function bestSearch(rounds) { return rounds.map((r)=>String(r?.answer||'').trim()).find(Boolean) || 'تم جمع مصادر مرتبطة، لكن مزود البحث لم يرجع ملخصًا نصيًا صالحًا.'; }
@@ -113,7 +123,10 @@ export function createIntelligenceV3Handler({env=process.env,baseApp,database}) 
     if(admin&&(path.startsWith('/api/admin/')||path.startsWith('/api/security/'))){const handled=await admin(req,res,origin,path);if(handled)return;}
     if(auth&&path.startsWith('/api/auth/')){const handled=await auth(req,res,origin,path);if(handled)return;}
     if(path.startsWith('/api/research')&&req.method==='OPTIONS'){res.writeHead(204,cors(origin,allowed));return res.end();}
-    if(req.method==='GET'&&path==='/api/research/status') return sendJson(res,200,{researchAvailable,synthesisAvailable,fallbackAvailable:synthesisAvailable,provider:researchAvailable?'Tavily':null,qualityFirst:true,idealQualitySources:IDEAL_SOURCES,maxDisplayedSources:MAX_SOURCES,nativeGeminiPreferred:aiConfig(env).baseUrl.includes('generativelanguage.googleapis.com'),latencyBudgetMs:REQUEST_BUDGET,beta:true,appliesToAllTools:true},origin,allowed);
+    if(req.method==='GET'&&path==='/api/research/status') {
+      const config=aiConfig(env);
+      return sendJson(res,200,{researchAvailable,synthesisAvailable,fallbackAvailable:synthesisAvailable,provider:researchAvailable?'Tavily':null,qualityFirst:true,idealQualitySources:IDEAL_SOURCES,maxDisplayedSources:MAX_SOURCES,preferredAIPath:config.baseUrl.includes('/openai')?'compatible':'native',aiModel:synthesisAvailable?config.model:null,latencyBudgetMs:REQUEST_BUDGET,beta:true,appliesToAllTools:true},origin,allowed);
+    }
     if(req.method!=='POST'||path!=='/api/research') return baseApp.handle(req,res);
     let body; try{body=await readJson(req);}catch(e){return sendJson(res,400,{error:'Invalid request.',code:String(e?.message||'INVALID')},origin,allowed);}
     const prompt=String(body.prompt||body.query||'').trim(),tool=String(body.tool||'ask').slice(0,40),mode=String(body.mode||'general').slice(0,30),preferences=body.preferences&&typeof body.preferences==='object'?body.preferences:{};
@@ -122,13 +135,30 @@ export function createIntelligenceV3Handler({env=process.env,baseApp,database}) 
     if(!researchAvailable){try{if(synthesisAvailable){const ai=await fastAi({env,prompt:directPrompt({prompt,tool,mode}),mode,tool,preferences,grounded:false});return sendJson(res,200,{answer:`🧠 PathPilot AI Beta\n\n${ai.answer}`,sources:[],sourceCount:0,sourceMode:'ai-fallback',synthesisModel:ai.model,synthesisPath:ai.path,researchFailed:false},origin,allowed);}}catch(e){console.warn('AI-only failed:',e?.message||e);}return sendJson(res,503,{error:'Research and AI are unavailable.'},origin,allowed);}
     try{
       const primary=await tavily(tavilyKey,query(prompt,tool,0)); let rounds=[primary],sources=selectSources(primary.results);
-      if(sources.length<IDEAL_SOURCES&&Date.now()-started<18000){try{const extra=await tavily(tavilyKey,query(prompt,tool,1));rounds.push(extra);sources=selectSources(rounds.flatMap((r)=>Array.isArray(r?.results)?r.results:[]));}catch(e){console.warn('Supplemental search skipped:',e?.message||e);}}
+
+      // Only spend time on a second search when the first round is too thin to ground an answer.
+      // Once we have a healthy evidence set, AI synthesis gets priority over chasing a cosmetic source count.
+      if(sources.length<MIN_GROUNDED_SOURCES&&Date.now()-started<18_000){try{const extra=await tavily(tavilyKey,query(prompt,tool,1));rounds.push(extra);sources=selectSources(rounds.flatMap((r)=>Array.isArray(r?.results)?r.results:[]));}catch(e){console.warn('Supplemental search skipped:',e?.message||e);}}
+
       let synthesis=null;
-      if(synthesisAvailable&&sources.length&&Date.now()-started<30000){try{synthesis=await fastAi({env,prompt:evidencePrompt({prompt,tool,mode,sources}),mode,tool,preferences,grounded:true});}catch(e){console.warn('Fast synthesis failed:',e?.message||e);}}
-      const answer=synthesis?.answer||bestSearch(rounds); const note=synthesis?`تم تحليل ${sources.length} مصادر مختارة بواسطة ${synthesis.model}.`:`تم اختيار ${sources.length} مصادر قوية. تعذر إكمال تركيب AI ضمن ميزانية السرعة، فتم استخدام أفضل ملخص بحث متاح.`;
-      return sendJson(res,200,{answer:`🌐 PathPilot Research Beta\n${note}\n\n${answer}${appendix(sources)}`,sources,sourceCount:sources.length,targetReached:sources.length>=IDEAL_SOURCES,provider:'Tavily',synthesisProvider:synthesis?'AI':'Tavily',synthesisModel:synthesis?.model||null,synthesisPath:synthesis?.path||null,sourceMode:synthesis?'research-ai':'research-search',researchFailed:false,qualityFirst:true,durationMs:Date.now()-started},origin,allowed);
+      let synthesisError='';
+      if(synthesisAvailable&&sources.length&&Date.now()-started<32_000){
+        try{synthesis=await fastAi({env,prompt:evidencePrompt({prompt,tool,mode,sources}),mode,tool,preferences,grounded:true});}
+        catch(e){synthesisError=String(e?.message||'AI_SYNTHESIS_FAILED').slice(0,120);console.warn('Grounded AI synthesis failed:',synthesisError);}
+      }
+
+      // If AI synthesis was unavailable and the first evidence set was still small, use the remaining time for one extra research pass.
+      if(!synthesis&&sources.length<IDEAL_SOURCES&&Date.now()-started<44_000){try{const extra=await tavily(tavilyKey,query(prompt,tool,1));rounds.push(extra);sources=selectSources(rounds.flatMap((r)=>Array.isArray(r?.results)?r.results:[]));}catch(e){console.warn('Post-synthesis supplemental search skipped:',e?.message||e);}}
+
+      const answer=synthesis?.answer||bestSearch(rounds);
+      const note=synthesis
+        ? `تم تحليل ${sources.length} مصادر قوية ودمجها بالذكاء الاصطناعي ${synthesis.model}.`
+        : synthesisAvailable
+          ? `تم التحقق من ${sources.length} مصادر وعرض أفضل ملخص بحث متاح لأن تركيب الذكاء الاصطناعي لم يكتمل في هذه المحاولة.`
+          : `تم التحقق من ${sources.length} مصادر قوية في وضع البحث فقط.`;
+      return sendJson(res,200,{answer:`🌐 PathPilot Research Beta\n${note}\n\n${answer}${appendix(sources)}`,sources,sourceCount:sources.length,targetReached:sources.length>=IDEAL_SOURCES,provider:'Tavily',synthesisProvider:synthesis?'AI':'Tavily',synthesisModel:synthesis?.model||null,synthesisPath:synthesis?.path||null,sourceMode:synthesis?'research-ai':'research-search',researchFailed:false,qualityFirst:true,aiAttempted:synthesisAvailable,aiSynthesisSucceeded:Boolean(synthesis),aiError:synthesisError||null,durationMs:Date.now()-started},origin,allowed);
     }catch(searchError){
-      if(synthesisAvailable&&Date.now()-started<35000){try{const ai=await fastAi({env,prompt:directPrompt({prompt,tool,mode}),mode,tool,preferences,grounded:false});return sendJson(res,200,{answer:`🧠 PathPilot AI fallback Beta\nتعذر البحث مؤقتًا، لكن الذكاء أكمل المهمة.\n\n${ai.answer}`,sources:[],sourceCount:0,sourceMode:'ai-fallback',synthesisModel:ai.model,synthesisPath:ai.path,researchFailed:true,durationMs:Date.now()-started},origin,allowed);}catch(e){console.warn('Fallback AI failed:',e?.message||e);}}
+      if(synthesisAvailable&&Date.now()-started<44_000){try{const ai=await fastAi({env,prompt:directPrompt({prompt,tool,mode}),mode,tool,preferences,grounded:false});return sendJson(res,200,{answer:`🧠 PathPilot AI fallback Beta\nتعذر البحث مؤقتًا، لكن الذكاء أكمل المهمة.\n\n${ai.answer}`,sources:[],sourceCount:0,sourceMode:'ai-fallback',synthesisModel:ai.model,synthesisPath:ai.path,researchFailed:true,durationMs:Date.now()-started},origin,allowed);}catch(e){console.warn('Fallback AI failed:',e?.message||e);}}
       return sendJson(res,502,{error:'Research and AI fallback failed.',code:String(searchError?.message||'FAILED').slice(0,120)},origin,allowed);
     }
   };
@@ -137,5 +167,5 @@ export function createIntelligenceV3Handler({env=process.env,baseApp,database}) 
 if(process.argv[1]?.endsWith('server/intelligence-v3-server.js')){
   const databasePath=process.env.DATABASE_PATH||'server/data/pathpilot.sqlite'; if(databasePath!==':memory:')mkdirSync(dirname(databasePath),{recursive:true});
   const database=initializeDatabase(databasePath),baseApp=createPathPilotServer({database}),handler=createIntelligenceV3Handler({baseApp,database}),port=Number(process.env.PORT||8787);
-  const server=createServer(handler); server.requestTimeout=65_000; server.headersTimeout=15_000; server.keepAliveTimeout=5_000; server.listen(port,'0.0.0.0',()=>console.log(`PathPilot intelligence v3 beta listening on port ${port}`));
+  const server=createServer(handler); server.requestTimeout=78_000; server.headersTimeout=15_000; server.keepAliveTimeout=5_000; server.listen(port,'0.0.0.0',()=>console.log(`PathPilot intelligence v3 beta listening on port ${port}`));
 }
