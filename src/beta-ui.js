@@ -1,5 +1,9 @@
 const BETA_STYLE_ID = 'pathpilot-beta-style';
 
+function language() {
+  return document.body?.dataset?.language === 'en' ? 'en' : 'ar';
+}
+
 function ensureStyles() {
   if (document.getElementById(BETA_STYLE_ID)) return;
   const style = document.createElement('style');
@@ -28,20 +32,28 @@ function ensureStyles() {
 }
 
 function addBetaBadges() {
+  const targetLanguage = language();
   document.querySelectorAll('.brand strong').forEach((brand) => {
-    if (brand.parentElement?.querySelector('.pathpilot-beta-badge')) return;
-    const badge = document.createElement('span');
-    badge.className = 'pathpilot-beta-badge';
-    badge.textContent = 'BETA';
-    badge.title = 'PathPilot نسخة تجريبية قيد التطوير والتحسين المستمر';
-    brand.insertAdjacentElement('afterend', badge);
+    let badge = brand.parentElement?.querySelector('.pathpilot-beta-badge');
+    if (!badge) {
+      badge = document.createElement('span');
+      badge.className = 'pathpilot-beta-badge';
+      badge.textContent = 'BETA';
+      brand.insertAdjacentElement('afterend', badge);
+    }
+    badge.title = targetLanguage === 'en'
+      ? 'PathPilot is a beta product under active development and continuous improvement.'
+      : 'PathPilot نسخة تجريبية قيد التطوير والتحسين المستمر';
   });
 }
 
 function updateLandingNote() {
+  const targetLanguage = language();
   document.querySelectorAll('.local-ai-note').forEach((note) => {
     note.classList.add('pathpilot-beta-note');
-    note.textContent = '🧪 PathPilot Beta: يستخدم بحث ويب وذكاء AI حي عندما تكون الخدمات متاحة، مع وضع احتياطي عند التعطل.';
+    note.textContent = targetLanguage === 'en'
+      ? '🧪 PathPilot Beta: uses web research and live AI when available, with resilient local fallback when services are unavailable.'
+      : '🧪 PathPilot Beta: يستخدم بحث ويب وذكاء AI حي عندما تكون الخدمات متاحة، مع وضع احتياطي عند التعطل.';
   });
 }
 
@@ -86,9 +98,21 @@ const observer = new MutationObserver(() => {
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', () => {
     refreshBetaUi();
-    observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+      attributes: true,
+      attributeFilter: ['data-language'],
+    });
   }, { once: true });
 } else {
   refreshBetaUi();
-  observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+  observer.observe(document.body, {
+    childList: true,
+    subtree: true,
+    characterData: true,
+    attributes: true,
+    attributeFilter: ['data-language'],
+  });
 }
