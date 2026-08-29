@@ -1,6 +1,7 @@
 import { createApiClient, PathPilotApiError } from './api-client.js';
 import { answerCache } from './answer-cache.js';
 import { generateAssistantResponse } from './assistant.js';
+import { agentPlanGuidance, planChatAgent, publicAgentToolSummary } from './chat-agent-orchestrator.js';
 import { hasExploitLikePayload } from './input-security.js';
 import { routeAssistantRequest } from './smart-router.js';
 
@@ -64,15 +65,45 @@ function normalizedResult(payload, route) {
   };
 }
 
+function compactAgentPlan(plan) {
+  return {
+    version: plan.version,
+    mode: plan.mode,
+    intent: plan.intent,
+    domain: plan.domain,
+    risk: plan.risk,
+    freshnessNeeded: plan.freshnessNeeded,
+    allowResearch: plan.allowResearch,
+    deepReview: plan.deepReview,
+    toolIds: plan.toolIds,
+  };
+}
+
+function withAgentMetadata(result, plan) {
+  return {
+    ...result,
+    agentPlan: compactAgentPlan(plan),
+    agentTools: publicAgentToolSummary(plan),
+  };
+}
+
 export async function generateRoutedAssistantResponse(args) {
   const contextualPrompt = String(args.prompt || '').trim();
   const latestPrompt = latestRequestFromContext(contextualPrompt);
-  const forceResearch = args.routeOptions?.forceResearch === true;
-  const deepThink = args.routeOptions?.deepThink === true;
+  const plan = planChatAgent({
+    prompt: latestPrompt,
+    forceResearch: args.routeOptions?.forceResearch === true,
+    deepThink: args.routeOptions?.deepThink === true,
+    voiceInput: args.routeOptions?.voiceInput === true,
+    disabledToolIds: args.routeOptions?.disabledToolIds || [],
+  });
+  const deepThink = plan.deepReview;
   const effectivePreferences = {
     ...(args.preferences || {}),
     responseStyle: deepThink ? 'detailed' : (args.preferences?.responseStyle || 'balanced'),
     deepThinkEnabled: deepThink,
+    agentPlan: compactAgentPlan(plan),
+    agentGuidance: agentPlanGuidance(plan),
   };
   assertSafePrompt(latestPrompt);
   await assertSystemAvailable(args.signal);
@@ -80,9 +111,9 @@ export async function generateRoutedAssistantResponse(args) {
   const decision = routeAssistantRequest({
     prompt: latestPrompt,
     tool: args.tool,
-    hasResearch: researchAvailable,
+    hasResearch: researchAvailable && plan.allowResearch,
     hasDirectAI: directAvailable,
-    forceResearch,
+    forceResearch: plan.forceResearch,
   });
 
   if (decision.route === 'direct-ai' && directClient) {
@@ -92,7 +123,7 @@ export async function generateRoutedAssistantResponse(args) {
       prompt: contextualPrompt,
       preferences: effectivePreferences,
     });
-    if (cached) return cached;
+    if (cached) return withAgentMetadata(cached, plan);
 
     try {
       const payload = await directClient.request('/api/assistant', {
@@ -114,10 +145,10 @@ export async function generateRoutedAssistantResponse(args) {
         preferences: effectivePreferences,
         result,
       });
-      return result;
+      return withAgentMetadata(result, plan);
     } catch (error) {
       if (args.signal?.aborted || error?.code === 'REQUEST_ABORTED' || error?.code === 'SYSTEM_PAUSED' || error?.code === 'UNSAFE_INPUT_BLOCKED') throw error;
-      console.warn('PathPilot direct route failed; falling back to grounded route.', error);
+      console.warn('PathPilot direct route failed; falling back to the next allowed agent tier.', error);
     }
   }
 
@@ -126,9 +157,10 @@ export async function generateRoutedAssistantResponse(args) {
     prompt: contextualPrompt,
     latestPrompt,
     preferences: effectivePreferences,
+    allowLiveAI: plan.allowResearch,
   });
-  return {
+  return withAgentMetadata({
     ...result,
     route: decision.route === 'research' ? 'research' : result.route || 'fallback',
-  };
+  }, plan);
 }
