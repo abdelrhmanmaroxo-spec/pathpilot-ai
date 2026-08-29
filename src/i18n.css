@@ -1,23 +1,26 @@
 .pathpilot-language-switch {
   position: fixed;
-  inset-block-start: 82px;
+  inset-block-start: 84px;
   inset-inline-end: 16px;
-  z-index: 120;
+  z-index: 180;
   min-width: 86px;
   padding: 9px 14px;
   border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: 999px;
-  background: rgba(14, 20, 36, 0.94);
+  background: rgba(14, 20, 36, 0.96);
   box-shadow: 0 12px 36px rgba(0, 0, 0, 0.28);
   color: #f8fafc;
   font: 700 13px/1 "Segoe UI", Tahoma, Arial, sans-serif;
   cursor: pointer;
   backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  transform: translateZ(0);
+  isolation: isolate;
   transition: transform 160ms ease, border-color 160ms ease, background 160ms ease;
 }
 
 .pathpilot-language-switch:hover {
-  transform: translateY(-1px);
+  transform: translate3d(0, -1px, 0);
   border-color: rgba(140, 255, 232, 0.42);
   background: rgba(25, 35, 58, 0.98);
 }
@@ -31,6 +34,13 @@ html[dir="ltr"] .brand { text-align: left; }
 html[dir="ltr"] input,
 html[dir="ltr"] textarea,
 html[dir="ltr"] select { text-align: left; }
+
+@media (max-width: 980px) {
+  .pathpilot-language-switch {
+    inset-block-start: 82px;
+    inset-inline-end: 10px;
+  }
+}
 
 @media (max-width: 720px) {
   .pathpilot-language-switch {
