@@ -17,6 +17,7 @@ import { hasPlatformBackend, reportClientError, sendFeedback, trackUsage } from 
 import { TOOL_ICONS } from './lib/tool-icons.js';
 import { buildConversationPrompt, createConversationTurn } from './lib/conversation-context.js';
 import ConversationThread from './components/ConversationThread.jsx';
+import VoiceControls from './components/VoiceControls.jsx';
 import { HistoryPanel, PreferencesPanel, ResultCard, ToolRail } from './components/WorkspacePanels.jsx';
 
 const MODE_CONTENT = {
@@ -227,6 +228,17 @@ export default function Workspace({ mode, history, preferences, onPreferencesCha
     return () => window.removeEventListener('pathpilot:history', handler);
   }, [mode]);
 
+  useEffect(() => {
+    const handler = (event) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault();
+        document.querySelector('#assistant-prompt')?.focus();
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
+
   useEffect(() => () => {
     abortRef.current?.abort();
     runTokenRef.current += 1;
@@ -261,7 +273,24 @@ export default function Workspace({ mode, history, preferences, onPreferencesCha
             <form onSubmit={handleSubmit}>
               <PreferencesPanel preferences={preferences} onChange={onPreferencesChange} />
               <label htmlFor="assistant-prompt">اكتب طلبك بالتفصيل</label>
-              <textarea id="assistant-prompt" value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder={turns.length ? (en ? 'Continue the conversation…' : 'كمّل المحادثة…') : tool.placeholder} maxLength={12000} rows={7} />
+              <textarea
+                id="assistant-prompt"
+                value={prompt}
+                onChange={(event) => setPrompt(event.target.value)}
+                onKeyDown={(event) => {
+                  if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+                    event.preventDefault();
+                    if (!loading) runPrompt(prompt);
+                  } else if (event.key === 'Escape' && loading) {
+                    event.preventDefault();
+                    stopGeneration();
+                  }
+                }}
+                placeholder={turns.length ? (en ? 'Continue the conversation…' : 'كمّل المحادثة…') : tool.placeholder}
+                maxLength={12000}
+                rows={7}
+              />
+              <VoiceControls value={prompt} onChange={setPrompt} answer={answer} notify={notify} />
               {!turns.length && <div className="starter-row">{tool.starters.map((starter) => <button type="button" key={starter} onClick={() => setPrompt(starter)}>{starter}</button>)}</div>}
               <div className="composer-footer">
                 <span>{prompt.length.toLocaleString('ar-EG')} / ١٢٬٠٠٠{turns.length ? ` · ${en ? 'context' : 'سياق'} ${turns.length}/6` : ''}</span>
