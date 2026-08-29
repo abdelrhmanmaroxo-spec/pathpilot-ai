@@ -170,6 +170,7 @@ export function createAuthResilience({
         }, origin, allowedOrigins);
       } catch (error) {
         const deliveryCode = getEmailDeliveryFailureCode(error, emailFrom, emailProvider);
+        console.warn(`Verification email failed: ${deliveryCode} (${deliveryMode})`);
         trackEvent(database, {
           userId: userRecord.id,
           eventType: 'verification_delivery_failed',
@@ -207,10 +208,12 @@ export function createAuthResilience({
       const email = normalizeEmail(body.email);
       const userRecord = EMAIL_PATTERN.test(email) ? findUserByEmail(database, email) : null;
       let deliveryPending = deliveryMode === 'sandbox';
+      let deliveryCode = deliveryPending ? 'EMAIL_SANDBOX_RESTRICTED' : null;
       if (userRecord && !userRecord.email_verified && !userRecord.disabled) {
         try {
           await issueVerification(request, userRecord);
           deliveryPending = false;
+          deliveryCode = null;
           trackEvent(database, {
             userId: userRecord.id,
             eventType: 'verification_resent',
@@ -218,10 +221,12 @@ export function createAuthResilience({
           });
         } catch (error) {
           deliveryPending = true;
+          deliveryCode = getEmailDeliveryFailureCode(error, emailFrom, emailProvider);
+          console.warn(`Verification email resend failed: ${deliveryCode} (${deliveryMode})`);
           trackEvent(database, {
             userId: userRecord.id,
             eventType: 'verification_resend_failed',
-            metadata: { code: getEmailDeliveryFailureCode(error, emailFrom, emailProvider), mode: deliveryMode },
+            metadata: { code: deliveryCode, mode: deliveryMode },
           });
         }
       }
@@ -229,6 +234,7 @@ export function createAuthResilience({
       sendJson(response, 202, {
         ok: true,
         deliveryPending,
+        deliveryCode,
         deliveryMode,
         message: 'If this account is waiting for verification, a delivery attempt has been made.',
       }, origin, allowedOrigins);
