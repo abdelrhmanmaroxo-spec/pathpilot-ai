@@ -26,15 +26,16 @@ export function needsFreshResearch(prompt, tool = 'ask') {
     || HIGH_STAKES_PATTERNS.some((pattern) => pattern.test(text));
 }
 
-export function routeAssistantRequest({ prompt, tool = 'ask', hasResearch = true, hasDirectAI = true } = {}) {
+export function routeAssistantRequest({ prompt, tool = 'ask', hasResearch = true, hasDirectAI = true, forceResearch = false } = {}) {
   const fresh = needsFreshResearch(prompt, tool);
+  if (forceResearch && hasResearch) return { route: 'research', reason: 'user-enabled-search', freshnessRequired: true };
   if (fresh && hasResearch) return { route: 'research', reason: 'fresh-or-grounded', freshnessRequired: true };
   if (DIRECT_TOOLS.has(tool) && hasDirectAI) return { route: 'direct-ai', reason: 'transformation-or-structured-task', freshnessRequired: false };
   if (hasDirectAI && !fresh) return { route: 'direct-ai', reason: 'stable-general-query', freshnessRequired: false };
-  if (hasResearch) return { route: 'research', reason: 'research-fallback', freshnessRequired: fresh };
-  return { route: 'local', reason: 'no-live-endpoint', freshnessRequired: fresh };
+  if (hasResearch) return { route: 'research', reason: forceResearch ? 'search-fallback' : 'research-fallback', freshnessRequired: fresh || forceResearch };
+  return { route: 'local', reason: forceResearch ? 'search-unavailable' : 'no-live-endpoint', freshnessRequired: fresh || forceResearch };
 }
 
-export function shouldBypassAnswerCache(prompt, tool = 'ask') {
-  return needsFreshResearch(prompt, tool);
+export function shouldBypassAnswerCache(prompt, tool = 'ask', { forceResearch = false } = {}) {
+  return forceResearch || needsFreshResearch(prompt, tool);
 }
