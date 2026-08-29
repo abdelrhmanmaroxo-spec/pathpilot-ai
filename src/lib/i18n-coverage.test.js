@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 const I18N_SOURCE_URL = new URL('./i18n.js', import.meta.url);
+const APP_CHROME_SOURCE_URL = new URL('../components/AppChrome.jsx', import.meta.url);
 
 async function loadTranslationCatalog() {
   const source = await readFile(I18N_SOURCE_URL, 'utf8');
@@ -16,6 +17,19 @@ async function loadTranslationCatalog() {
 
   const objectLiteral = source.slice(start + 'const AR_TO_EN = '.length, end + 2);
   return Function(`"use strict"; return (${objectLiteral});`)();
+}
+
+function extractQuotedArabicLiterals(source) {
+  const literals = new Set();
+  const pattern = /(['"])([^\n]*?[\u0600-\u06FF][^\n]*?)\1/g;
+  let match;
+
+  while ((match = pattern.exec(source)) !== null) {
+    const value = match[2].trim();
+    if (value) literals.add(value);
+  }
+
+  return [...literals].sort();
 }
 
 test('i18n catalog keeps every Arabic entry complete and reverse-safe', async () => {
@@ -44,4 +58,21 @@ test('i18n catalog keeps every Arabic entry complete and reverse-safe', async ()
   }
 
   assert.ok(englishToArabic.size >= 90, 'unique English translation coverage unexpectedly shrank below baseline');
+});
+
+test('AppChrome quoted Arabic UI literals are backed by the translation catalog', async () => {
+  const [catalog, source] = await Promise.all([
+    loadTranslationCatalog(),
+    readFile(APP_CHROME_SOURCE_URL, 'utf8'),
+  ]);
+
+  const literals = extractQuotedArabicLiterals(source);
+  assert.ok(literals.length >= 10, 'AppChrome Arabic literal coverage unexpectedly found too few UI strings');
+
+  const missing = literals.filter((literal) => !Object.hasOwn(catalog, literal));
+  assert.deepEqual(
+    missing,
+    [],
+    `AppChrome contains Arabic quoted UI text without an English catalog entry: ${missing.join(' | ')}`,
+  );
 });
