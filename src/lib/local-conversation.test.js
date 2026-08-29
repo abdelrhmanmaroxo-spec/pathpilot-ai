@@ -8,6 +8,14 @@ test('answers simple Arabic meta chat naturally without a research template', ()
   assert.doesNotMatch(answer, /تحليل أولي|أفضل طريقة للبدء|البحث الحي غير متاح/);
 });
 
+test('handles common Egyptian casual variants as conversation', () => {
+  for (const prompt of ['عامل اي', 'عامل اية؟', 'إيه الأخبار؟', 'الدنيا ايه']) {
+    const answer = localConversationalReply(prompt);
+    assert.match(answer, /تمام|جاهز/);
+    assert.doesNotMatch(answer, /تحليل أولي|RAG|framework|خطوات/);
+  }
+});
+
 test('answers identity and capability questions conversationally', () => {
   assert.match(localConversationalReply('انت مين؟'), /PathPilot AI/);
   assert.match(localConversationalReply('تقدر تعمل ايه؟'), /أشرح|أحلل|RAG|الأدوات/);

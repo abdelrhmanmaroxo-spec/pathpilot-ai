@@ -4,6 +4,7 @@ import { generateAssistantResponse } from './assistant.js';
 import { agentPlanGuidance, planChatAgent, publicAgentToolSummary } from './chat-agent-orchestrator.js';
 import { hasExploitLikePayload } from './input-security.js';
 import { generateLocalAgentResponse } from './local-agent-response.js';
+import { localConversationalReply } from './local-conversation.js';
 import { routeAssistantRequest } from './smart-router.js';
 
 const platformBase = String(import.meta.env?.VITE_PLATFORM_API_URL || '').trim();
@@ -106,6 +107,20 @@ function legacyPlan(routeOptions = {}) {
   };
 }
 
+function conversationalFastPath(prompt, enabled) {
+  if (!enabled) return null;
+  const answer = localConversationalReply(prompt);
+  if (!answer) return null;
+  return {
+    answer,
+    source: 'local-conversation',
+    degraded: false,
+    route: 'local-agent',
+    sources: [],
+    sourceCount: 0,
+  };
+}
+
 async function tryPreferredLocalAgent({ args, contextualPrompt, effectivePreferences, plan }) {
   if (plan?.mode !== 'auto' || !args.routeOptions?.preferLocalModel || !effectivePreferences.localLlmEnabled || plan.freshnessNeeded) return null;
   const local = await generateLocalAgentResponse({
@@ -124,6 +139,11 @@ export async function generateRoutedAssistantResponse(args) {
   const contextualPrompt = String(args.prompt || '').trim();
   const latestPrompt = latestRequestFromContext(contextualPrompt);
   const agentEnabled = args.routeOptions?.agentMode === 'auto' || args.routeOptions?.preferLocalModel === true;
+
+  assertSafePrompt(latestPrompt);
+  const conversational = conversationalFastPath(latestPrompt, agentEnabled);
+  if (conversational) return conversational;
+
   const plan = agentEnabled
     ? planChatAgent({
       prompt: latestPrompt,
@@ -143,7 +163,6 @@ export async function generateRoutedAssistantResponse(args) {
       agentGuidance: agentPlanGuidance(plan),
     } : {}),
   };
-  assertSafePrompt(latestPrompt);
   await assertSystemAvailable(args.signal);
 
   const preferredLocal = await tryPreferredLocalAgent({ args, contextualPrompt, effectivePreferences, plan });
