@@ -8,6 +8,7 @@ import { assertRuntimeConfig, logRuntimeConfig } from './lib/config.js';
 import { getSessionUser, initializeDatabase } from './lib/database.js';
 import { createCachedHealthProbe } from './lib/health.js';
 import { installProviderResilience } from './lib/provider-resilience.js';
+import { createRoleRateLimiter } from './lib/rate-limit.js';
 import { attachRequestContext } from './lib/request-context.js';
 
 function bearerToken(request) {
@@ -15,16 +16,21 @@ function bearerToken(request) {
   return header.startsWith('Bearer ') ? header.slice(7).trim() : '';
 }
 
-function healthCors(request, env) {
+function responseCors(request, env) {
   const origin = String(request.headers.origin || '');
   const allowed = new Set(String(env.ALLOWED_ORIGINS || '').split(',').map((item) => item.trim()).filter(Boolean));
   return {
-    'Access-Control-Allow-Methods': 'GET, OPTIONS',
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-    'Access-Control-Expose-Headers': 'X-Request-ID',
+    'Access-Control-Expose-Headers': 'X-Request-ID, X-RateLimit-Limit, X-RateLimit-Remaining',
     ...(origin && allowed.has(origin) ? { 'Access-Control-Allow-Origin': origin } : {}),
     Vary: 'Origin',
   };
+}
+
+function sessionUser(request, database) {
+  const token = bearerToken(request);
+  return token ? getSessionUser(database, hashToken(token)) : null;
 }
 
 export function startPathPilotServer({ env = process.env, logger = console } = {}) {
@@ -47,14 +53,34 @@ export function startPathPilotServer({ env = process.env, logger = console } = {
   const baseApp = createPathPilotServer({ env, database });
   const appHandler = createIntelligenceV3Handler({ env, baseApp, database });
   const deepHealth = createCachedHealthProbe({ env, database });
+  const roleLimiter = createRoleRateLimiter();
   const port = Number(env.PORT || 8787);
 
   const server = createServer((request, response) => {
     const requestId = attachRequestContext(request, response);
     const url = new URL(request.url || '/', 'http://localhost');
+    const cors = responseCors(request, env);
+    const user = sessionUser(request, database);
+    const rate = roleLimiter.check({
+      identity: user?.id || request.socket.remoteAddress || 'unknown',
+      role: user?.role || 'guest',
+      path: url.pathname,
+      method: request.method,
+    });
+    response.setHeader('X-RateLimit-Limit', String(Number.isFinite(rate.limit) ? rate.limit : 0));
+    response.setHeader('X-RateLimit-Remaining', String(Number.isFinite(rate.remaining) ? rate.remaining : 0));
+    if (!rate.allowed) {
+      response.writeHead(429, {
+        'Content-Type': 'application/json; charset=utf-8',
+        'Cache-Control': 'no-store',
+        'Retry-After': String(rate.retryAfterSeconds),
+        ...cors,
+      });
+      response.end(JSON.stringify({ error: 'Too many requests. Try again shortly.', code: 'RATE_LIMITED', requestId }));
+      return;
+    }
 
     if (url.pathname === '/api/admin/health/deep') {
-      const cors = healthCors(request, env);
       if (request.method === 'OPTIONS') {
         response.writeHead(204, cors);
         response.end();
@@ -65,8 +91,6 @@ export function startPathPilotServer({ env = process.env, logger = console } = {
         response.end(JSON.stringify({ error: 'Method not allowed.', code: 'METHOD_NOT_ALLOWED', requestId }));
         return;
       }
-      const token = bearerToken(request);
-      const user = token ? getSessionUser(database, hashToken(token)) : null;
       if (!user || user.role !== 'admin' || user.disabled) {
         response.writeHead(403, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...cors });
         response.end(JSON.stringify({ error: 'Admin access required.', code: 'ADMIN_REQUIRED', requestId }));
@@ -94,8 +118,7 @@ export function startPathPilotServer({ env = process.env, logger = console } = {
       response.writeHead(500, {
         'Content-Type': 'application/json; charset=utf-8',
         'Cache-Control': 'no-store',
-        'X-Request-ID': requestId,
-        'Access-Control-Expose-Headers': 'X-Request-ID',
+        ...cors,
       });
       response.end(JSON.stringify({ error: 'Internal server error.', code: 'INTERNAL_ERROR', requestId }));
     });
