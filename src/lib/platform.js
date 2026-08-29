@@ -52,7 +52,7 @@ async function request(path, options = {}) {
 function loginDeviceDetails() {
   const navigatorInfo = globalThis.navigator;
   const screenInfo = globalThis.screen;
-  let timezone = '';
+  let timezone;
   try { timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch { timezone = ''; }
   return {
     userAgent: navigatorInfo?.userAgent || '',
