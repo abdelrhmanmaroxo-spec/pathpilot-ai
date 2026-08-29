@@ -1,4 +1,5 @@
 import { superLocalResponse } from './local-super-reasoner.js';
+import { generateBrowserLLMResponse, isBrowserLLMReady } from './local-llm.js';
 
 export const TOOL_LIBRARY = {
   study: [
@@ -139,9 +140,31 @@ function fallbackResponse(args, reason) {
   };
 }
 
+async function llmAwareFallback(args, reason, allowColdStart) {
+  if (args.preferences?.localLlmEnabled && (allowColdStart || isBrowserLLMReady())) {
+    try {
+      const localLlm = await generateBrowserLLMResponse({
+        ...args,
+        timeoutMs: allowColdStart ? 70_000 : 25_000,
+      });
+      if (localLlm?.answer) {
+        return {
+          answer: `🧠 Local LLM · Beta\nتشغيل نموذج لغوي محلي على جهازك مع موسوعة PathPilot كسياق. المعلومات الحديثة ما زالت تحتاج بحثًا حيًا للتأكيد.\n\n${localLlm.answer}`,
+          source: 'local-llm',
+          degraded: true,
+          localModel: localLlm.model,
+        };
+      }
+    } catch (error) {
+      console.warn('PathPilot on-device LLM unavailable; falling back to deterministic local reasoner.', error);
+    }
+  }
+  return fallbackResponse(args, reason);
+}
+
 export async function generateAssistantResponse({ mode, tool, prompt, preferences = {} }) {
   const args = { mode, tool, prompt, preferences };
-  if (!hasLiveAI) return fallbackResponse(args, 'offline');
+  if (!hasLiveAI) return llmAwareFallback(args, 'offline', true);
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 85000);
@@ -164,8 +187,8 @@ export async function generateAssistantResponse({ mode, tool, prompt, preference
       targetReached: Boolean(payload.targetReached),
     };
   } catch (error) {
-    console.warn('PathPilot live response failed; using encyclopedia local fallback.', error);
-    return fallbackResponse(args, error?.name === 'AbortError' ? 'timeout' : 'offline');
+    console.warn('PathPilot live response failed; trying local AI tiers.', error);
+    return llmAwareFallback(args, error?.name === 'AbortError' ? 'timeout' : 'offline', false);
   } finally {
     clearTimeout(timeout);
   }
