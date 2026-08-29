@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import App from './App.jsx';
 import AccountExperience from './AccountExperience.jsx';
 import ConversationExperience from './ConversationExperience.jsx';
+import ErrorBoundary from './ErrorBoundary.jsx';
 import { initAttribution } from './lib/attribution.js';
 import { initLanguageSwitch } from './lib/i18n.js';
 import { initI18nOverrides } from './lib/i18n-overrides.js';
@@ -14,9 +15,11 @@ import './conversation-experience.css';
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
-    <App />
-    <AccountExperience />
-    <ConversationExperience />
+    <ErrorBoundary>
+      <App />
+      <AccountExperience />
+      <ConversationExperience />
+    </ErrorBoundary>
   </StrictMode>,
 );
 
