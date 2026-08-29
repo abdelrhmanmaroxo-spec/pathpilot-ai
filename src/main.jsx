@@ -17,6 +17,7 @@ import './i18n.css';
 import './account-experience.css';
 import './conversation-experience.css';
 import './chat-experience.css';
+import './chat-development.css';
 
 function initLanguageEventBridge() {
   const body = document.body;
