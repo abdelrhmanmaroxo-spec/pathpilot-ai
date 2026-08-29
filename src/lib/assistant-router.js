@@ -3,6 +3,7 @@ import { answerCache } from './answer-cache.js';
 import { generateAssistantResponse } from './assistant.js';
 import { agentPlanGuidance, planChatAgent, publicAgentToolSummary } from './chat-agent-orchestrator.js';
 import { hasExploitLikePayload } from './input-security.js';
+import { generateLocalAgentResponse } from './local-agent-response.js';
 import { routeAssistantRequest } from './smart-router.js';
 
 const platformBase = String(import.meta.env?.VITE_PLATFORM_API_URL || '').trim();
@@ -87,6 +88,20 @@ function withAgentMetadata(result, plan) {
   };
 }
 
+async function tryPreferredLocalAgent({ args, contextualPrompt, effectivePreferences, plan }) {
+  if (!args.routeOptions?.preferLocalModel || !effectivePreferences.localLlmEnabled || plan.freshnessNeeded) return null;
+  const local = await generateLocalAgentResponse({
+    mode: args.mode,
+    tool: args.tool,
+    prompt: contextualPrompt,
+    preferences: effectivePreferences,
+    signal: args.signal,
+    freshnessNeeded: false,
+    allowColdStart: true,
+  });
+  return local?.source === 'local-llm' ? local : null;
+}
+
 export async function generateRoutedAssistantResponse(args) {
   const contextualPrompt = String(args.prompt || '').trim();
   const latestPrompt = latestRequestFromContext(contextualPrompt);
@@ -107,6 +122,9 @@ export async function generateRoutedAssistantResponse(args) {
   };
   assertSafePrompt(latestPrompt);
   await assertSystemAvailable(args.signal);
+
+  const preferredLocal = await tryPreferredLocalAgent({ args, contextualPrompt, effectivePreferences, plan });
+  if (preferredLocal) return withAgentMetadata(preferredLocal, plan);
 
   const decision = routeAssistantRequest({
     prompt: latestPrompt,
@@ -152,15 +170,27 @@ export async function generateRoutedAssistantResponse(args) {
     }
   }
 
+  if (decision.route !== 'research') {
+    const local = await generateLocalAgentResponse({
+      mode: args.mode,
+      tool: args.tool,
+      prompt: contextualPrompt,
+      preferences: effectivePreferences,
+      signal: args.signal,
+      freshnessNeeded: plan.freshnessNeeded,
+      allowColdStart: true,
+    });
+    return withAgentMetadata(local, plan);
+  }
+
   const result = await generateAssistantResponse({
     ...args,
     prompt: contextualPrompt,
     latestPrompt,
     preferences: effectivePreferences,
-    allowLiveAI: plan.allowResearch,
   });
   return withAgentMetadata({
     ...result,
-    route: decision.route === 'research' ? 'research' : result.route || 'fallback',
+    route: 'research',
   }, plan);
 }
