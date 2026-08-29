@@ -3,6 +3,7 @@ import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { createPathPilotServer } from './index.js';
 import { createAdminExtensions } from './admin-extensions.js';
+import { createAuthResilience } from './auth-resilience.js';
 import { buildProviderRequest, buildSystemPrompt, extractProviderText } from './lib/ai-provider.js';
 import { initializeDatabase } from './lib/database.js';
 import { applySecurityHeaders, createSecurityGuard } from './lib/security.js';
@@ -103,11 +104,14 @@ function bestSearch(rounds) { return rounds.map((r)=>String(r?.answer||'').trim(
 export function createIntelligenceV3Handler({env=process.env,baseApp,database}) {
   const allowed=origins(env.ALLOWED_ORIGINS), tavilyKey=String(env.TAVILY_API_KEY||'').trim();
   const researchAvailable=Boolean(tavilyKey), synthesisAvailable=aiConfig(env).configured;
-  const guard=createSecurityGuard(), admin=database?createAdminExtensions({database,env,sendJson,allowedOrigins:allowed}):null;
+  const guard=createSecurityGuard();
+  const admin=database?createAdminExtensions({database,env,sendJson,allowedOrigins:allowed}):null;
+  const auth=database?createAuthResilience({database,env,sendJson,allowedOrigins:allowed}):null;
   return async function handler(req,res) {
     applySecurityHeaders(req,res); const origin=req.headers.origin||'', url=new URL(req.url||'/','http://localhost'), path=url.pathname;
     const security=guard.check(req); if(!security.allowed) return sendJson(res,security.status,{error:security.error,code:security.code},origin,allowed,security.retryAfterSeconds?{'Retry-After':String(security.retryAfterSeconds)}:{});
     if(admin&&(path.startsWith('/api/admin/')||path.startsWith('/api/security/'))){const handled=await admin(req,res,origin,path);if(handled)return;}
+    if(auth&&path.startsWith('/api/auth/')){const handled=await auth(req,res,origin,path);if(handled)return;}
     if(path.startsWith('/api/research')&&req.method==='OPTIONS'){res.writeHead(204,cors(origin,allowed));return res.end();}
     if(req.method==='GET'&&path==='/api/research/status') return sendJson(res,200,{researchAvailable,synthesisAvailable,fallbackAvailable:synthesisAvailable,provider:researchAvailable?'Tavily':null,qualityFirst:true,idealQualitySources:IDEAL_SOURCES,maxDisplayedSources:MAX_SOURCES,nativeGeminiPreferred:aiConfig(env).baseUrl.includes('generativelanguage.googleapis.com'),latencyBudgetMs:REQUEST_BUDGET,beta:true,appliesToAllTools:true},origin,allowed);
     if(req.method!=='POST'||path!=='/api/research') return baseApp.handle(req,res);
