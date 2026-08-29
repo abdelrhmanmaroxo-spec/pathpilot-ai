@@ -286,23 +286,28 @@ export default function CommandPalette({ user, history = [], onAccount, onInstal
   useEffect(() => {
     const body = document.body;
     if (!body) return undefined;
-    const syncLanguage = () => setLanguage(currentLanguage());
-    syncLanguage();
+    const syncLanguage = () => {
+      const nextLanguage = currentLanguage();
+      setLanguage(nextLanguage);
+      if (open) {
+        setPageEntries(collectVisiblePageEntries(() => {
+          setOpen(false);
+          setQuery('');
+        }, nextLanguage === 'en'));
+      }
+    };
+    const initialTimer = globalThis.setTimeout(syncLanguage, 0);
     const observer = new MutationObserver((records) => {
       if (records.some((record) => record.attributeName === 'data-language')) syncLanguage();
     });
     observer.observe(body, { attributes: true, attributeFilter: ['data-language'] });
     globalThis.addEventListener('pathpilot:language-changed', syncLanguage);
     return () => {
+      globalThis.clearTimeout(initialTimer);
       observer.disconnect();
       globalThis.removeEventListener('pathpilot:language-changed', syncLanguage);
     };
-  }, []);
-
-  useEffect(() => {
-    if (!open) return;
-    setPageEntries(collectVisiblePageEntries(close, en));
-  }, [en, open]);
+  }, [open]);
 
   useEffect(() => {
     const handler = (event) => {
