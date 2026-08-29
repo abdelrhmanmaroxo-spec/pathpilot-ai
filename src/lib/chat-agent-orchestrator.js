@@ -60,6 +60,7 @@ export const CHAT_AGENT_OPTION_GROUPS = Object.freeze([
   { id: 'voice', label: 'Voice dictation', toolIds: ['voice_dictation'] },
 ]);
 
+const CASUAL_PATTERN = /^(?:اهلا|أهلا|هاي|هلا|سلام|ازيك|عامل ايه|عامل إيه|اخبارك|أخبارك|انت مين|إنت مين|انت بتعمل اي|انت بتعمل إيه|إنت بتعمل اي|إنت بتعمل إيه|بتعمل اي|بتعمل إيه|تقدر تعمل ايه|تقدر تعمل إيه|شكرا|شكرًا|thanks|thank you|hi|hello|hey|how are you|who are you|what are you doing|what can you do)[؟?!.,\s]*$/i;
 const CODE_PATTERN = /\b(code|bug|debug|javascript|typescript|react|node|python|api|sql|database|css|html|oauth|jwt|backend|frontend|server|deploy|docker|linux|windows|macos)\b|(?:كود|برمج|باك.?اند|فرونت.?اند|قاعدة بيانات|داتا.?بيس|سيرفر|نشر|لينكس|ويندوز|ماك)/i;
 const SECURITY_PATTERN = /\b(security|secure|auth|oauth|jwt|token|password|permission|access control|xss|csrf|sql injection|vulnerability)\b|(?:أمان|امن|تأمين|صلاحيات|تسجيل دخول|كلمة مرور|توكن|ثغرة)/i;
 const PLANNING_PATTERN = /\b(plan|roadmap|steps|schedule|milestone|dependency|launch|project)\b|(?:خطة|خطوات|جدول|مراحل|اعتماديات|مشروع|اطلاق|إطلاق)/i;
@@ -73,6 +74,7 @@ function add(set, ...ids) {
 }
 
 function detectIntent(text) {
+  if (CASUAL_PATTERN.test(text.trim())) return 'conversation';
   if (COMPARISON_PATTERN.test(text)) return 'compare';
   if (PLANNING_PATTERN.test(text)) return 'plan';
   if (CODE_PATTERN.test(text)) return 'technical';
@@ -124,10 +126,11 @@ export function planChatAgent({ prompt = '', forceResearch = false, deepThink = 
   add(selected,
     'context_memory', 'intent_classifier', 'constraint_extractor', 'topic_linker',
     'language_detector', 'safety_guard', 'freshness_detector',
-    'rag_retriever', 'rag_reranker', 'knowledge_deduplicator', 'context_budgeter', 'domain_router',
+    'context_budgeter', 'domain_router',
     'confidence_estimator', 'final_quality_gate', 'model_router', 'local_llm', 'provider_fallback',
   );
 
+  if (intent !== 'conversation') add(selected, 'rag_retriever', 'rag_reranker', 'knowledge_deduplicator');
   if (freshnessNeeded) add(selected, 'query_expander', 'web_search', 'source_ranker', 'source_crosscheck', 'citation_guard', 'claim_verifier');
   if (deepThink || ANALYSIS_PATTERN.test(text) || risk === 'high' || text.length >= 450) {
     add(selected, 'deep_analyzer', 'assumption_checker', 'contradiction_checker', 'tradeoff_analyzer', 'failure_mode_analyzer', 'claim_verifier', 'risk_analyzer', 'answer_reviewer');
@@ -171,6 +174,9 @@ export function agentPlanGuidance(plan) {
     `Chat agent orchestration: ${plan.version || CHAT_AGENT_ORCHESTRATOR_VERSION}; selection mode: auto.`,
     `Detected intent: ${plan.intent || 'answer'}. Domain: ${plan.domain || 'general'}. Risk: ${plan.risk || 'normal'}.`,
     `Selected helper capabilities: ${ids}.`,
+    plan.intent === 'conversation'
+      ? 'This is casual conversation. Answer naturally and directly; do not force a report, RAG summary, or step-by-step framework.'
+      : '',
     plan.freshnessNeeded && !plan.allowResearch
       ? 'Fresh information appears relevant, but web research is disabled by the user. Do not guess current facts; clearly mark what needs live verification.'
       : '',
