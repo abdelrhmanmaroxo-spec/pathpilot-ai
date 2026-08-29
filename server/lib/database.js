@@ -75,6 +75,13 @@ export function initializeDatabase(filename = ':memory:') {
       expires_at TEXT NOT NULL,
       used_at TEXT
     );
+    CREATE TABLE IF NOT EXISTS password_resets (
+      token_hash TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      created_at TEXT NOT NULL,
+      expires_at TEXT NOT NULL,
+      used_at TEXT
+    );
     CREATE TABLE IF NOT EXISTS admin_invites (
       email TEXT PRIMARY KEY,
       invited_by TEXT,
@@ -84,6 +91,7 @@ export function initializeDatabase(filename = ':memory:') {
     CREATE INDEX IF NOT EXISTS events_created_idx ON events(created_at);
     CREATE INDEX IF NOT EXISTS ai_created_idx ON ai_requests(created_at);
     CREATE INDEX IF NOT EXISTS verification_user_idx ON email_verifications(user_id);
+    CREATE INDEX IF NOT EXISTS password_reset_user_idx ON password_resets(user_id);
   `);
 
   // Existing accounts predate email verification. Keep them usable after the migration.
@@ -128,6 +136,12 @@ export function setUserEmailVerified(database, userId, verified = true) {
   return findUserById(database, userId);
 }
 
+export function setUserPasswordHash(database, userId, passwordHash) {
+  database.prepare("UPDATE users SET password_hash = ?, auth_provider = CASE WHEN auth_provider = 'google' THEN 'password+google' ELSE 'password' END WHERE id = ?")
+    .run(passwordHash, userId);
+  return findUserById(database, userId);
+}
+
 export function createEmailVerification(database, { tokenHash, userId, hours = 24 }) {
   const createdAt = now();
   const expiresAt = new Date(Date.now() + hours * 3_600_000).toISOString();
@@ -146,6 +160,25 @@ export function consumeEmailVerification(database, tokenHash) {
   const verifiedAt = now();
   database.prepare('UPDATE email_verifications SET used_at = ? WHERE token_hash = ?').run(verifiedAt, tokenHash);
   database.prepare('UPDATE users SET email_verified = 1, verified_at = ? WHERE id = ?').run(verifiedAt, record.user_id);
+  return findUserById(database, record.user_id);
+}
+
+export function createPasswordReset(database, { tokenHash, userId, minutes = 30 }) {
+  const createdAt = now();
+  const expiresAt = new Date(Date.now() + minutes * 60_000).toISOString();
+  database.prepare('DELETE FROM password_resets WHERE user_id = ? AND used_at IS NULL').run(userId);
+  database.prepare('INSERT INTO password_resets (token_hash,user_id,created_at,expires_at,used_at) VALUES (?,?,?,?,NULL)')
+    .run(tokenHash, userId, createdAt, expiresAt);
+  return { createdAt, expiresAt };
+}
+
+export function consumePasswordReset(database, tokenHash) {
+  const record = database.prepare(`
+    SELECT token_hash,user_id FROM password_resets
+    WHERE token_hash = ? AND used_at IS NULL AND expires_at > ?
+  `).get(tokenHash, now());
+  if (!record) return null;
+  database.prepare('UPDATE password_resets SET used_at = ? WHERE token_hash = ?').run(now(), tokenHash);
   return findUserById(database, record.user_id);
 }
 
@@ -169,6 +202,10 @@ export function getSessionUser(database, tokenHash) {
 
 export function deleteSession(database, tokenHash) {
   database.prepare('DELETE FROM sessions WHERE token_hash = ?').run(tokenHash);
+}
+
+export function deleteSessionsForUser(database, userId) {
+  database.prepare('DELETE FROM sessions WHERE user_id = ?').run(userId);
 }
 
 export function upsertAdminInvite(database, { email, invitedBy = null }) {
