@@ -45,3 +45,21 @@ test('keeps deep-analysis answers separate from normal chat answers', () => {
   });
   assert.equal(miss, null);
 });
+
+test('keeps automatic agent tool plans isolated in cache', () => {
+  const cache = createAnswerCache({ threshold: 0.8 });
+  cache.store({
+    mode: 'general',
+    tool: 'ask',
+    prompt: 'اشرح OAuth ببساطة',
+    preferences: { agentPlan: { mode: 'auto', toolIds: ['context_memory', 'rag_retriever', 'web_search'] } },
+    result: { answer: 'grounded', source: 'live', degraded: false },
+  });
+  const miss = cache.find({
+    mode: 'general',
+    tool: 'ask',
+    prompt: 'اشرح OAuth ببساطة',
+    preferences: { agentPlan: { mode: 'auto', toolIds: ['context_memory', 'rag_retriever'] } },
+  });
+  assert.equal(miss, null);
+});
