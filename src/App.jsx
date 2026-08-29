@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { BadgeCheck } from 'lucide-react';
 import AdminDashboard from './AdminDashboard.jsx';
 import AuthDialog from './AuthDialog.jsx';
+import CommandPalette from './components/CommandPalette.jsx';
 import Landing from './components/Landing.jsx';
 import { Footer, Header, InstallDialog } from './components/AppChrome.jsx';
 import Workspace from './Workspace.jsx';
@@ -130,6 +131,7 @@ export default function App() {
   return (
     <div className="app">
       <Header mode={mode} onInstall={() => setInstallOpen(true)} installed={installed} online={online} user={user} onAccount={() => setAuthOpen(true)} onLogout={handleLogout} />
+      <CommandPalette />
       {!mode ? (
         <Landing onSelect={selectMode} onInstall={() => setInstallOpen(true)} />
       ) : mode === 'admin' ? (
