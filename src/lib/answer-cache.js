@@ -31,6 +31,7 @@ function preferenceSignature(preferences = {}) {
     audience: preferences.audience || 'self',
     responseStyle: preferences.responseStyle || 'balanced',
     displayName: String(preferences.displayName || '').trim().toLowerCase(),
+    deepThinkEnabled: preferences.deepThinkEnabled === true,
   });
 }
 
