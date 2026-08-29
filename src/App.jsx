@@ -131,7 +131,12 @@ export default function App() {
   return (
     <div className="app">
       <Header mode={mode} onInstall={() => setInstallOpen(true)} installed={installed} online={online} user={user} onAccount={() => setAuthOpen(true)} onLogout={handleLogout} />
-      <CommandPalette />
+      <CommandPalette
+        user={user}
+        history={historyItems}
+        onAccount={() => setAuthOpen(true)}
+        onInstall={() => setInstallOpen(true)}
+      />
       {!mode ? (
         <Landing onSelect={selectMode} onInstall={() => setInstallOpen(true)} />
       ) : mode === 'admin' ? (
