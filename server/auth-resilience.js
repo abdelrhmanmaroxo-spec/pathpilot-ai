@@ -40,6 +40,16 @@ function safeDeliveryMessage(mode) {
   return 'Account created and saved, but the verification email could not be delivered yet. You can retry verification later.';
 }
 
+function safeEmailFailureStage(error) {
+  const message = String(error?.message || '').toUpperCase();
+  const smtpStage = message.match(/^(SMTP_(?:GREETING|EHLO|AUTH|AUTH_USER|AUTH_PASS|MAIL_FROM|RCPT_TO|DATA|MESSAGE|QUIT|NOT_CONFIGURED|SECURE_REQUIRED|INVALID_ADDRESS|TIMEOUT|CONNECTION_CLOSED))/)?.[1];
+  if (smtpStage) return smtpStage;
+  const code = String(error?.code || '').toUpperCase();
+  if (['ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT', 'ENETUNREACH', 'EHOSTUNREACH', 'ENOTFOUND'].includes(code)) return `NETWORK_${code}`;
+  if (message.includes('TIMEOUT')) return 'SMTP_TIMEOUT';
+  return 'UNKNOWN';
+}
+
 export function createAuthResilience({
   database,
   env = process.env,
@@ -170,16 +180,18 @@ export function createAuthResilience({
         }, origin, allowedOrigins);
       } catch (error) {
         const deliveryCode = getEmailDeliveryFailureCode(error, emailFrom, emailProvider);
-        console.warn(`Verification email failed: ${deliveryCode} (${deliveryMode})`);
+        const deliveryStage = safeEmailFailureStage(error);
+        console.warn(`Verification email failed: ${deliveryCode} (${deliveryMode}) stage=${deliveryStage}`);
         trackEvent(database, {
           userId: userRecord.id,
           eventType: 'verification_delivery_failed',
-          metadata: { code: deliveryCode, mode: deliveryMode },
+          metadata: { code: deliveryCode, mode: deliveryMode, stage: deliveryStage },
         });
         sendJson(response, 202, {
           requiresVerification: true,
           deliveryPending: true,
           deliveryCode,
+          deliveryStage,
           deliveryMode,
           email,
           message: safeDeliveryMessage(deliveryMode),
@@ -209,6 +221,7 @@ export function createAuthResilience({
       const userRecord = EMAIL_PATTERN.test(email) ? findUserByEmail(database, email) : null;
       let deliveryPending = deliveryMode === 'sandbox';
       let deliveryCode = deliveryPending ? 'EMAIL_SANDBOX_RESTRICTED' : null;
+      let deliveryStage = null;
       if (userRecord && !userRecord.email_verified && !userRecord.disabled) {
         try {
           await issueVerification(request, userRecord);
@@ -222,11 +235,12 @@ export function createAuthResilience({
         } catch (error) {
           deliveryPending = true;
           deliveryCode = getEmailDeliveryFailureCode(error, emailFrom, emailProvider);
-          console.warn(`Verification email resend failed: ${deliveryCode} (${deliveryMode})`);
+          deliveryStage = safeEmailFailureStage(error);
+          console.warn(`Verification email resend failed: ${deliveryCode} (${deliveryMode}) stage=${deliveryStage}`);
           trackEvent(database, {
             userId: userRecord.id,
             eventType: 'verification_resend_failed',
-            metadata: { code: deliveryCode, mode: deliveryMode },
+            metadata: { code: deliveryCode, mode: deliveryMode, stage: deliveryStage },
           });
         }
       }
@@ -235,6 +249,7 @@ export function createAuthResilience({
         ok: true,
         deliveryPending,
         deliveryCode,
+        deliveryStage,
         deliveryMode,
         message: 'If this account is waiting for verification, a delivery attempt has been made.',
       }, origin, allowedOrigins);
