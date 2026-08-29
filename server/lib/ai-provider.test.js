@@ -20,6 +20,17 @@ test('deep analysis preference adds stricter verification without exposing chain
   assert.match(prompt, /Do not reveal hidden chain-of-thought/i);
 });
 
+test('automatic chat agent guidance reaches the provider system prompt', () => {
+  const prompt = buildSystemPrompt({
+    preferences: {
+      agentGuidance: 'Chat agent orchestration: agent-v1; selection mode: auto. Selected helper capabilities: context_memory, rag_retriever, final_quality_gate.',
+    },
+  });
+  assert.match(prompt, /selection mode: auto/i);
+  assert.match(prompt, /rag_retriever/);
+  assert.match(prompt, /final_quality_gate/);
+});
+
 test('provider request supports optional reasoning without requiring it', () => {
   const chat = buildProviderRequest({ apiMode: 'chat-completions', model: 'model-a', prompt: 'مرحبا', reasoningEffort: '' });
   const responses = buildProviderRequest({ apiMode: 'responses', model: 'model-b', prompt: 'مرحبا', reasoningEffort: 'medium' });
