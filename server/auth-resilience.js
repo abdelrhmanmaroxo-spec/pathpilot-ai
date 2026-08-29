@@ -34,6 +34,9 @@ function safeDeliveryMessage(mode) {
   if (mode === 'sandbox') {
     return 'Account created and saved, but email delivery is currently in test mode. The account is waiting for verification.';
   }
+  if (mode === 'gmail-smtp') {
+    return 'Account created and saved, but Gmail could not deliver the verification message yet. Check the mail settings and retry verification.';
+  }
   return 'Account created and saved, but the verification email could not be delivered yet. You can retry verification later.';
 }
 
@@ -47,8 +50,18 @@ export function createAuthResilience({
   const ownerEmail = normalizeEmail(env.OWNER_EMAIL || env.ADMIN_EMAIL);
   const apiKey = String(env.RESEND_API_KEY || '').trim();
   const emailFrom = String(env.EMAIL_FROM || '').trim();
-  const configured = Boolean(apiKey && emailFrom);
-  const deliveryMode = getEmailDeliveryMode(emailFrom);
+  const emailProvider = String(env.EMAIL_PROVIDER || '').trim().toLowerCase();
+  const smtp = {
+    host: String(env.SMTP_HOST || 'smtp.gmail.com').trim(),
+    port: Number(env.SMTP_PORT || 465),
+    secure: String(env.SMTP_SECURE || 'true').trim().toLowerCase() === 'true',
+    user: String(env.SMTP_USER || '').trim(),
+    pass: String(env.SMTP_PASS || '').replace(/\s+/g, ''),
+  };
+  const smtpConfigured = ['gmail', 'smtp'].includes(emailProvider) && Boolean(smtp.host && smtp.user && smtp.pass && emailFrom);
+  const resendConfigured = Boolean(apiKey && emailFrom);
+  const configured = smtpConfigured || resendConfigured;
+  const deliveryMode = getEmailDeliveryMode(emailFrom, emailProvider);
 
   function roleFor(email) {
     if (ownerEmail && email === ownerEmail) return 'admin';
@@ -70,6 +83,8 @@ export function createAuthResilience({
       to: userRecord.email,
       name: userRecord.name,
       verificationUrl: `${apiOrigin}/api/auth/verify-email?token=${encodeURIComponent(token)}`,
+      provider: emailProvider,
+      smtp,
     });
   }
 
@@ -142,14 +157,19 @@ export function createAuthResilience({
 
       try {
         await issueVerification(request, userRecord);
-        trackEvent(database, { userId: userRecord.id, eventType: 'verification_sent' });
+        trackEvent(database, {
+          userId: userRecord.id,
+          eventType: 'verification_sent',
+          metadata: { mode: deliveryMode },
+        });
         sendJson(response, 201, {
           requiresVerification: true,
           deliveryPending: false,
+          deliveryMode,
           email,
         }, origin, allowedOrigins);
       } catch (error) {
-        const deliveryCode = getEmailDeliveryFailureCode(error, emailFrom);
+        const deliveryCode = getEmailDeliveryFailureCode(error, emailFrom, emailProvider);
         trackEvent(database, {
           userId: userRecord.id,
           eventType: 'verification_delivery_failed',
@@ -191,13 +211,17 @@ export function createAuthResilience({
         try {
           await issueVerification(request, userRecord);
           deliveryPending = false;
-          trackEvent(database, { userId: userRecord.id, eventType: 'verification_resent' });
+          trackEvent(database, {
+            userId: userRecord.id,
+            eventType: 'verification_resent',
+            metadata: { mode: deliveryMode },
+          });
         } catch (error) {
           deliveryPending = true;
           trackEvent(database, {
             userId: userRecord.id,
             eventType: 'verification_resend_failed',
-            metadata: { code: getEmailDeliveryFailureCode(error, emailFrom), mode: deliveryMode },
+            metadata: { code: getEmailDeliveryFailureCode(error, emailFrom, emailProvider), mode: deliveryMode },
           });
         }
       }
