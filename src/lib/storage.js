@@ -6,6 +6,7 @@ export const DEFAULT_PREFERENCES = {
   displayName: '',
   audience: 'self',
   responseStyle: 'balanced',
+  localLlmEnabled: false,
 };
 
 export function loadHistory(storage = globalThis.localStorage) {
@@ -53,6 +54,7 @@ export function savePreferences(preferences, storage = globalThis.localStorage) 
     displayName: String(preferences.displayName || '').slice(0, 60),
     audience: ['self', 'teacher', 'recruiter', 'team'].includes(preferences.audience) ? preferences.audience : 'self',
     responseStyle: ['concise', 'balanced', 'detailed'].includes(preferences.responseStyle) ? preferences.responseStyle : 'balanced',
+    localLlmEnabled: preferences.localLlmEnabled === true,
   };
   storage.setItem(PREFERENCES_KEY, JSON.stringify(safePreferences));
   return safePreferences;
