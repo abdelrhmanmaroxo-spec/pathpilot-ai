@@ -6,6 +6,7 @@ import CommandPalette from './components/CommandPalette.jsx';
 import Landing from './components/Landing.jsx';
 import { Footer, Header, InstallDialog } from './components/AppChrome.jsx';
 import Workspace from './Workspace.jsx';
+import { canAccessAdminSearch, filterSearchHistory } from './lib/search-access.js';
 import {
   clearHistory,
   loadHistory,
@@ -128,15 +129,19 @@ export default function App() {
     setToast('تم مسح السجل.');
   };
 
+  const canSeeAdminSearch = canAccessAdminSearch(user);
+  const searchHistory = filterSearchHistory(historyItems, user);
+  const showGlobalSearch = mode !== 'admin' || canSeeAdminSearch;
+
   return (
     <div className="app">
       <Header mode={mode} onInstall={() => setInstallOpen(true)} installed={installed} online={online} user={user} onAccount={() => setAuthOpen(true)} onLogout={handleLogout} />
-      <CommandPalette
+      {showGlobalSearch && <CommandPalette
         user={user}
-        history={historyItems}
+        history={searchHistory}
         onAccount={() => setAuthOpen(true)}
         onInstall={() => setInstallOpen(true)}
-      />
+      />}
       {!mode ? (
         <Landing onSelect={selectMode} onInstall={() => setInstallOpen(true)} />
       ) : mode === 'admin' ? (
