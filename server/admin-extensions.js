@@ -20,6 +20,41 @@ function requestOrigin(request) {
   return host ? `${proto}://${host}` : '';
 }
 
+function clientIp(request) {
+  const forwarded = String(request.headers['x-forwarded-for'] || '')
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+  const value = forwarded[0]
+    || String(request.headers['cf-connecting-ip'] || '').trim()
+    || String(request.headers['x-real-ip'] || '').trim()
+    || String(request.socket?.remoteAddress || '').trim()
+    || 'unknown';
+  return value.replace(/^::ffff:/, '').slice(0, 80);
+}
+
+function describeDevice(userAgent, platform = '') {
+  const ua = String(userAgent || '');
+  let browser = 'Browser';
+  if (/Edg\//i.test(ua)) browser = 'Edge';
+  else if (/OPR\//i.test(ua)) browser = 'Opera';
+  else if (/Chrome\//i.test(ua) && !/Chromium/i.test(ua)) browser = 'Chrome';
+  else if (/Firefox\//i.test(ua)) browser = 'Firefox';
+  else if (/Safari\//i.test(ua) && !/Chrome\//i.test(ua)) browser = 'Safari';
+
+  let os = String(platform || '').trim();
+  if (!os) {
+    if (/Windows NT/i.test(ua)) os = 'Windows';
+    else if (/Android/i.test(ua)) os = 'Android';
+    else if (/iPhone|iPad|iPod/i.test(ua)) os = 'iOS/iPadOS';
+    else if (/Mac OS X/i.test(ua)) os = 'macOS';
+    else if (/Linux/i.test(ua)) os = 'Linux';
+    else os = 'Unknown OS';
+  }
+  const formFactor = /Mobile|Android|iPhone|iPad|iPod/i.test(ua) ? 'Mobile/Tablet' : 'Desktop';
+  return `${browser} · ${os} · ${formFactor}`.slice(0, 180);
+}
+
 function safeJson(value, fallback = null) {
   try {
     return JSON.parse(value || 'null') ?? fallback;
@@ -85,6 +120,40 @@ export function createAdminExtensions({ database, env = process.env, sendJson, a
   const emailReady = Boolean(resendApiKey && emailFrom);
 
   return async function handleAdminExtension(request, response, origin, path) {
+    if (request.method === 'POST' && path === '/api/security/login-device') {
+      const user = currentUser(database, request);
+      if (!user) {
+        sendJson(response, 401, { error: 'Not signed in.' }, origin, allowedOrigins);
+        return true;
+      }
+      const body = await readJson(request);
+      const userAgent = String(request.headers['user-agent'] || body.userAgent || '').slice(0, 500);
+      const metadata = {
+        ip: clientIp(request),
+        device: describeDevice(userAgent, body.platform),
+        userAgent,
+        platform: String(body.platform || '').slice(0, 120) || null,
+        language: String(body.language || '').slice(0, 40) || null,
+        timezone: String(body.timezone || '').slice(0, 80) || null,
+        screen: String(body.screen || '').slice(0, 40) || null,
+        recordedAt: new Date().toISOString(),
+      };
+      const latestLogin = database.prepare(`
+        SELECT id,event_type,created_at
+        FROM events
+        WHERE user_id = ? AND event_type IN ('login','google_login','google_account_created')
+        ORDER BY id DESC
+        LIMIT 1
+      `).get(user.id);
+      if (latestLogin) {
+        database.prepare('UPDATE events SET metadata_json = ? WHERE id = ?').run(JSON.stringify(metadata), latestLogin.id);
+      } else {
+        trackEvent(database, { userId: user.id, eventType: 'login_device', metadata });
+      }
+      sendJson(response, 200, { ok: true }, origin, allowedOrigins);
+      return true;
+    }
+
     if (request.method === 'GET' && path === '/api/admin/feedback') {
       if (!requireAdmin({ database, request, response, origin, allowedOrigins, sendJson })) return true;
       const feedback = database.prepare(`
@@ -106,10 +175,22 @@ export function createAdminExtensions({ database, env = process.env, sendJson, a
                u.id AS user_id,u.name AS user_name,u.email AS user_email,u.role,u.auth_provider
         FROM events e
         LEFT JOIN users u ON u.id = e.user_id
-        WHERE e.event_type IN ('login','google_login','google_account_created')
+        WHERE e.event_type IN ('login','google_login','google_account_created','login_device')
         ORDER BY e.created_at DESC
         LIMIT 200
-      `).all().map((item) => ({ ...item, metadata: safeJson(item.metadata_json, {}) }));
+      `).all().map((item) => {
+        const metadata = safeJson(item.metadata_json, {});
+        const ip = metadata.ip || '—';
+        const device = metadata.device || 'Unknown device';
+        return {
+          ...item,
+          metadata,
+          ip,
+          device,
+          event_key: item.event_type,
+          event_type: `${item.event_type} · IP ${ip} · ${device}`,
+        };
+      });
       sendJson(response, 200, { logins }, origin, allowedOrigins);
       return true;
     }
