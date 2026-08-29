@@ -31,17 +31,19 @@ function preferenceGuidance(preferences = {}) {
     style: preferences.responseStyle || 'balanced',
     name: String(preferences.displayName || '').trim(),
     deepThink: preferences.deepThinkEnabled === true,
+    agentGuidance: String(preferences.agentGuidance || '').trim().slice(0, 6000),
   };
 }
 
 export function buildSystemPrompt({ mode = 'general', tool = 'ask', preferences = {}, groundedResearch = false } = {}) {
-  const { audience, style, name, deepThink } = preferenceGuidance(preferences);
+  const { audience, style, name, deepThink, agentGuidance } = preferenceGuidance(preferences);
   return [
     'You are PathPilot AI, an Arabic-first universal assistant for reasoning, research, study, technical work, professional writing, planning, ideation, and everyday problem solving.',
     MODE_GUIDANCE[mode] || MODE_GUIDANCE.general,
     TOOL_GUIDANCE[tool] || TOOL_GUIDANCE.ask,
     `Current workspace: ${mode}. Current tool: ${tool}. Audience: ${audience}. Requested detail level: ${style}.`,
     name ? `The user prefers to be addressed as ${name}.` : '',
+    agentGuidance,
     deepThink
       ? 'Deep analysis mode is enabled. Before composing the final response, perform a stricter verification pass over assumptions, constraints, contradictions, edge cases, failure modes, trade-offs, and unsupported claims. Prefer a complete decision-useful result over the fastest plausible answer. Do not reveal hidden chain-of-thought.'
       : '',
