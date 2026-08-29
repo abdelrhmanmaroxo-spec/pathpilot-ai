@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { BadgeCheck } from 'lucide-react';
 import AdminDashboard from './AdminDashboard.jsx';
 import AuthDialog from './AuthDialog.jsx';
+import ChatWorkspace from './ChatWorkspace.jsx';
 import CommandPalette from './components/CommandPalette.jsx';
 import Landing from './components/Landing.jsx';
 import { Footer, Header, InstallDialog } from './components/AppChrome.jsx';
@@ -22,7 +23,7 @@ import {
 
 function routeFromHash() {
   const route = window.location.hash.replace('#/', '').replace('#', '');
-  return ['study', 'work', 'general', 'admin'].includes(route) ? route : null;
+  return ['chat', 'study', 'work', 'general', 'admin'].includes(route) ? route : null;
 }
 
 export default function App() {
@@ -146,6 +147,8 @@ export default function App() {
         <Landing onSelect={selectMode} onInstall={() => setInstallOpen(true)} />
       ) : mode === 'admin' ? (
         <AdminDashboard user={user} onBack={() => { window.location.hash = ''; }} />
+      ) : mode === 'chat' ? (
+        <ChatWorkspace preferences={preferences} notify={setToast} />
       ) : (
         <Workspace
           mode={mode}
