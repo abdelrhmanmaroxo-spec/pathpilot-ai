@@ -5,12 +5,13 @@ function isEnglish() {
   return document.body?.dataset?.language === 'en';
 }
 
-export default function ConversationThread({ turns = [], onReuse }) {
+export default function ConversationThread({ turns = [], onReuse, maxTurns = 5 }) {
   if (!turns.length) return null;
   const en = isEnglish();
+  const visibleTurns = turns.slice(-Math.max(1, Number(maxTurns || 5)));
   return (
     <section className="conversation-thread" aria-label={en ? 'Conversation context' : 'سياق المحادثة'} style={{ display: 'grid', gap: 12, marginBottom: 14 }}>
-      {turns.slice(-5).map((turn) => (
+      {visibleTurns.map((turn) => (
         <article key={turn.id} style={{ display: 'grid', gap: 10 }}>
           <div style={{ border: '1px solid rgba(148,163,184,.16)', borderRadius: 14, padding: 12, background: 'rgba(15,23,42,.24)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center', marginBottom: 6 }}>
