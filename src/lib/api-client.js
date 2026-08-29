@@ -50,6 +50,69 @@ function prepareRequest(options) {
   return { fetchOptions, requestId, timeoutMs, signal };
 }
 
+function prepareHeaders({ fetchOptions, getToken, sendClientRequestId, requestId }) {
+  const token = getToken?.() || '';
+  const headers = new Headers(fetchOptions.headers || {});
+  const hasBody = fetchOptions.body !== undefined && fetchOptions.body !== null;
+  const isFormData = typeof FormData !== 'undefined' && fetchOptions.body instanceof FormData;
+  if (hasBody && !isFormData && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
+  if (token && !headers.has('Authorization')) headers.set('Authorization', `Bearer ${token}`);
+  if (sendClientRequestId && !headers.has('X-Request-ID')) headers.set('X-Request-ID', requestId);
+  return headers;
+}
+
+function createAbortRuntime(prepared, defaultTimeoutMs, requestId) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(new Error('API_TIMEOUT')), prepared.timeoutMs || defaultTimeoutMs);
+  const externalSignal = prepared.signal;
+  const abortFromExternal = () => controller.abort(externalSignal?.reason || new Error('REQUEST_ABORTED'));
+  externalSignal?.addEventListener?.('abort', abortFromExternal, { once: true });
+  return {
+    controller,
+    externalSignal,
+    cleanup() {
+      clearTimeout(timer);
+      externalSignal?.removeEventListener?.('abort', abortFromExternal);
+    },
+    normalizeAbort(error) {
+      return new PathPilotApiError('The request timed out or was cancelled.', {
+        code: externalSignal?.aborted ? 'REQUEST_ABORTED' : 'API_TIMEOUT',
+        requestId,
+        cause: error,
+      });
+    },
+  };
+}
+
+function parseSseBlock(block) {
+  const lines = String(block || '').split(/\r?\n/);
+  const event = lines.find((line) => line.startsWith('event:'))?.slice(6).trim() || 'message';
+  const rawData = lines
+    .filter((line) => line.startsWith('data:'))
+    .map((line) => line.slice(5).trimStart())
+    .join('\n');
+  if (!rawData) return null;
+  let data = rawData;
+  try {
+    data = JSON.parse(rawData);
+  } catch {
+    // Text SSE payloads are valid and remain strings.
+  }
+  return { event, data };
+}
+
+function findSseBoundary(buffer) {
+  const lf = buffer.indexOf('\n\n');
+  const crlf = buffer.indexOf('\r\n\r\n');
+  if (lf < 0) return crlf;
+  if (crlf < 0) return lf;
+  return Math.min(lf, crlf);
+}
+
+function sseBoundaryLength(buffer, index) {
+  return buffer.startsWith('\r\n\r\n', index) ? 4 : 2;
+}
+
 export function createApiClient({
   baseUrl,
   getToken = () => '',
@@ -59,35 +122,27 @@ export function createApiClient({
 } = {}) {
   const normalizedBase = String(baseUrl || '').replace(/\/$/, '');
 
-  async function request(path, options = {}) {
+  function assertAvailable() {
     if (!normalizedBase) {
       throw new PathPilotApiError('Backend is not configured.', { code: 'BACKEND_NOT_CONFIGURED' });
     }
     if (typeof fetchImpl !== 'function') {
       throw new PathPilotApiError('Fetch is not available.', { code: 'FETCH_UNAVAILABLE' });
     }
+  }
 
+  async function request(path, options = {}) {
+    assertAvailable();
     const prepared = prepareRequest(options);
     const localRequestId = prepared.requestId || createRequestId();
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(new Error('API_TIMEOUT')), prepared.timeoutMs || timeoutMs);
-    const externalSignal = prepared.signal;
-    const abortFromExternal = () => controller.abort(externalSignal?.reason || new Error('REQUEST_ABORTED'));
-    externalSignal?.addEventListener?.('abort', abortFromExternal, { once: true });
+    const runtime = createAbortRuntime(prepared, timeoutMs, localRequestId);
 
     try {
-      const token = getToken?.() || '';
-      const headers = new Headers(prepared.fetchOptions.headers || {});
-      const hasBody = prepared.fetchOptions.body !== undefined && prepared.fetchOptions.body !== null;
-      const isFormData = typeof FormData !== 'undefined' && prepared.fetchOptions.body instanceof FormData;
-      if (hasBody && !isFormData && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
-      if (token && !headers.has('Authorization')) headers.set('Authorization', `Bearer ${token}`);
-      if (sendClientRequestId && !headers.has('X-Request-ID')) headers.set('X-Request-ID', localRequestId);
-
+      const headers = prepareHeaders({ fetchOptions: prepared.fetchOptions, getToken, sendClientRequestId, requestId: localRequestId });
       const response = await fetchImpl(`${normalizedBase}${path}`, {
         ...prepared.fetchOptions,
         headers,
-        signal: controller.signal,
+        signal: runtime.controller.signal,
       });
       const payload = await parsePayload(response);
       const serverRequestId = response.headers?.get?.('x-request-id') || localRequestId;
@@ -107,23 +162,95 @@ export function createApiClient({
       return payload;
     } catch (error) {
       if (error instanceof PathPilotApiError) throw error;
-      if (controller.signal.aborted) {
-        throw new PathPilotApiError('The request timed out or was cancelled.', {
-          code: externalSignal?.aborted ? 'REQUEST_ABORTED' : 'API_TIMEOUT',
-          requestId: localRequestId,
-          cause: error,
-        });
-      }
+      if (runtime.controller.signal.aborted) throw runtime.normalizeAbort(error);
       throw new PathPilotApiError(error?.message || 'Network request failed.', {
         code: 'NETWORK_ERROR',
         requestId: localRequestId,
         cause: error,
       });
     } finally {
-      clearTimeout(timer);
-      externalSignal?.removeEventListener?.('abort', abortFromExternal);
+      runtime.cleanup();
     }
   }
 
-  return { request };
+  async function* streamEvents(path, options = {}) {
+    assertAvailable();
+    const prepared = prepareRequest(options);
+    const localRequestId = prepared.requestId || createRequestId();
+    const runtime = createAbortRuntime(prepared, timeoutMs, localRequestId);
+    let reader = null;
+    let completed = false;
+
+    try {
+      const headers = prepareHeaders({ fetchOptions: prepared.fetchOptions, getToken, sendClientRequestId, requestId: localRequestId });
+      if (!headers.has('Accept')) headers.set('Accept', 'text/event-stream');
+      const response = await fetchImpl(`${normalizedBase}${path}`, {
+        ...prepared.fetchOptions,
+        headers,
+        signal: runtime.controller.signal,
+      });
+      const serverRequestId = response.headers?.get?.('x-request-id') || localRequestId;
+
+      if (!response.ok) {
+        const payload = await parsePayload(response);
+        throw new PathPilotApiError(
+          payload.error || payload.message || `Request failed with ${response.status}`,
+          {
+            code: payload.code || fallbackCode(response.status),
+            status: response.status,
+            requestId: serverRequestId,
+            details: payload,
+          },
+        );
+      }
+      if (!response.body?.getReader) {
+        throw new PathPilotApiError('Streaming is not available in this browser.', {
+          code: 'STREAM_UNAVAILABLE',
+          status: response.status,
+          requestId: serverRequestId,
+        });
+      }
+
+      reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) {
+          completed = true;
+          break;
+        }
+        buffer += decoder.decode(value, { stream: true });
+        let boundary = findSseBoundary(buffer);
+        while (boundary >= 0) {
+          const block = buffer.slice(0, boundary);
+          buffer = buffer.slice(boundary + sseBoundaryLength(buffer, boundary));
+          const parsed = parseSseBlock(block);
+          if (parsed) yield { ...parsed, requestId: serverRequestId };
+          boundary = findSseBoundary(buffer);
+        }
+      }
+
+      buffer += decoder.decode();
+      const parsed = parseSseBlock(buffer);
+      if (parsed) yield { ...parsed, requestId: serverRequestId };
+    } catch (error) {
+      if (error instanceof PathPilotApiError) throw error;
+      if (runtime.controller.signal.aborted) throw runtime.normalizeAbort(error);
+      throw new PathPilotApiError(error?.message || 'Streaming request failed.', {
+        code: 'NETWORK_ERROR',
+        requestId: localRequestId,
+        cause: error,
+      });
+    } finally {
+      if (reader) {
+        if (!completed) await reader.cancel().catch(() => {});
+        reader.releaseLock?.();
+      }
+      runtime.cleanup();
+    }
+  }
+
+  return { request, streamEvents };
 }
