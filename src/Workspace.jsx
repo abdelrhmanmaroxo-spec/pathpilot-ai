@@ -9,12 +9,8 @@ import {
   Sparkles,
   Square,
 } from 'lucide-react';
-import {
-  generateAssistantResponse,
-  getModeLabel,
-  hasLiveAI,
-  TOOL_LIBRARY,
-} from './lib/assistant.js';
+import { getModeLabel, hasLiveAI, TOOL_LIBRARY } from './lib/assistant.js';
+import { generateRoutedAssistantResponse } from './lib/assistant-router.js';
 import { supportsBrowserLLM } from './lib/local-llm.js';
 import { createHistoryItem } from './lib/storage.js';
 import { hasPlatformBackend, reportClientError, sendFeedback, trackUsage } from './lib/platform.js';
@@ -78,7 +74,7 @@ export default function Workspace({ mode, history, preferences, onPreferencesCha
     setLoading(true);
     setAnswer('');
     try {
-      const result = await generateAssistantResponse({
+      const result = await generateRoutedAssistantResponse({
         mode,
         tool: selectedTool,
         prompt: contextualPrompt,
@@ -106,7 +102,7 @@ export default function Workspace({ mode, history, preferences, onPreferencesCha
         eventType: replaceLast ? 'answer_regenerated' : 'tool_request',
         workspace: mode,
         tool: selectedTool,
-        metadata: { source: result.source, contextTurns: previousTurns.length },
+        metadata: { source: result.source, route: result.route, contextTurns: previousTurns.length },
       });
     } catch (error) {
       if (controller.signal.aborted || runToken !== runTokenRef.current) return;
