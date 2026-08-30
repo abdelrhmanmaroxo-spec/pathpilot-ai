@@ -16,6 +16,7 @@ function reply(prompt, options = {}) {
     storage: options.storage ?? memoryStorage(),
     random: options.random ?? (() => 0),
     language: options.language,
+    hasPriorContext: options.hasPriorContext === true,
   });
 }
 
@@ -40,6 +41,9 @@ test('covers broad lightweight conversational intents without invoking the reaso
     ['مساء الخير', 'evening_greeting'],
     ['شكرا جدا', 'thanks'],
     ['تمام كده', 'acknowledgement'],
+    ['يلا نبدأ', 'ready'],
+    ['شجعني', 'encouragement'],
+    ['انا تمام', 'positive_update'],
     ['يلا سلام', 'goodbye'],
     ['معلش', 'apology'],
     ['مش فاهم', 'confusion'],
@@ -50,6 +54,7 @@ test('covers broad lightweight conversational intents without invoking the reaso
     ['good morning', 'morning_greeting'],
     ['I am confused', 'confusion'],
     ['can you help me', 'vague_help'],
+    ['motivate me', 'encouragement'],
   ];
 
   for (const [prompt, intent] of cases) {
@@ -74,14 +79,33 @@ test('varies repeated casual replies across new chats on the same device', () =>
   assert.match(third, /تمام|الحمد لله|جاهز/);
 });
 
+test('varies new encouragement and ready responses too', () => {
+  const storage = memoryStorage();
+  const first = reply('شجعني', { storage, random: () => 0 });
+  const second = reply('شجعني', { storage, random: () => 0 });
+  assert.notEqual(first, second);
+
+  const readyOne = reply('يلا نبدأ', { storage, random: () => 0 });
+  const readyTwo = reply('يلا نبدأ', { storage, random: () => 0 });
+  assert.notEqual(readyOne, readyTwo);
+});
+
 test('answers identity and capability questions conversationally', () => {
   assert.match(reply('انت مين؟'), /PathPilot AI/);
   assert.match(reply('تقدر تعمل ايه؟'), /أشرح|أحلل|RAG|الأدوات/);
 });
 
-test('leaves substantive or scoped help requests to the reasoning pipeline', () => {
+test('leaves substantive scoped and action-bearing social requests to the reasoning pipeline', () => {
   assert.equal(reply('اشرح OAuth بالتفصيل'), null);
   assert.equal(reply('حلل architecture المشروع'), null);
   assert.equal(reply('ممكن تساعدني في تحليل OAuth؟'), null);
   assert.equal(reply('شكرا على شرح OAuth، بس وضح refresh token'), null);
+  assert.equal(reply('thanks بس كمل الشرح'), null);
+  assert.equal(reply('تمام explain the second part'), null);
+});
+
+test('can preserve contextual follow-up handling instead of returning a canned confusion response', () => {
+  assert.ok(reply('مش فاهم'));
+  assert.equal(reply('مش فاهم', { hasPriorContext: true }), null);
+  assert.equal(reply('مش شغال', { hasPriorContext: true }), null);
 });
