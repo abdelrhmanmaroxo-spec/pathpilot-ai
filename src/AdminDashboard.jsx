@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   AlertTriangle, CheckCircle2, Crown, Download, RefreshCw,
 } from 'lucide-react';
@@ -15,14 +15,12 @@ import AdminOwnerLog from './admin/AdminOwnerLog.jsx';
 import AdminSecurity from './admin/AdminSecurity.jsx';
 import AdminSystemStatus from './admin/AdminSystemStatus.jsx';
 import AdminUsers from './admin/AdminUsers.jsx';
+import {
+  getAdminTabs, getAdminUsagePercentages, getBannedUsers, getPendingAdminInvites,
+} from './admin/admin-dashboard-model.js';
 import { canModerateUser } from './admin/admin-permissions.js';
 import { downloadJson } from './admin/admin-utils.js';
 import { EmptyAdmin } from './admin/AdminShared.jsx';
-
-const BASE_TABS = [
-  ['analytics', 'Analytics'], ['users', 'Users'], ['security', 'Security & Login Log'],
-  ['api', 'API Usage'], ['errors', 'Errors'], ['feedback', 'Feedback'],
-];
 
 export default function AdminDashboard({ user, onBack }) {
   const [tab, setTab] = useState('analytics');
@@ -40,13 +38,9 @@ export default function AdminDashboard({ user, onBack }) {
   const [inviteBusy, setInviteBusy] = useState(false);
   const [backupBusy, setBackupBusy] = useState(false);
 
-  const tabs = useMemo(() => user?.isOwner ? [...BASE_TABS, ['owner-log', 'Owner Account Log']] : BASE_TABS, [user?.isOwner]);
-  const bannedUsers = useMemo(() => (data?.users || []).filter((item) => item.disabled), [data?.users]);
-  const percentages = useMemo(() => {
-    const usage = data?.summary?.usage || {};
-    const total = data?.summary?.totalUsage || 0;
-    return Object.fromEntries(['general', 'study', 'work'].map((key) => [key, total ? Math.round(((usage[key] || 0) / total) * 100) : 0]));
-  }, [data]);
+  const tabs = getAdminTabs(user?.isOwner);
+  const bannedUsers = getBannedUsers(data?.users);
+  const percentages = getAdminUsagePercentages(data?.summary);
 
   const loadEverything = async () => {
     const dashboard = await loadAdminDashboard();
@@ -156,7 +150,7 @@ export default function AdminDashboard({ user, onBack }) {
 
   if (!hasPlatformBackend) return <main className="admin-page page-shell"><EmptyAdmin>لوحة الإدارة تحتاج Backend متصل.</EmptyAdmin></main>;
   if (user?.role !== 'admin') return <main className="admin-page page-shell"><EmptyAdmin>هذه الصفحة متاحة للـAdmin والـOwner فقط.</EmptyAdmin></main>;
-  const pendingInvites = invites.filter((item) => !item.accepted_at);
+  const pendingInvites = getPendingAdminInvites(invites);
 
   return (
     <main className="admin-page page-shell">
