@@ -175,6 +175,14 @@ export async function loadAdminLoginLog() {
   return payload.logins || [];
 }
 
+export async function loadAdminVisitorLog() {
+  const payload = await request('/api/admin/visitor-log');
+  return {
+    visitors: payload.visitors || [],
+    retentionDays: Number(payload.retentionDays || 30),
+  };
+}
+
 export async function loadOwnerAccountLog() {
   const payload = await request('/api/admin/account-log');
   return payload.accounts || [];
@@ -204,7 +212,7 @@ export async function loadSecurityEvents() {
 }
 
 export async function loadAdminDashboard() {
-  const [summary, users, apiUsage, errors, feedback, status, researchStatus, loginLog] = await Promise.all([
+  const [summary, users, apiUsage, errors, feedback, status, researchStatus, loginLog, visitorLog] = await Promise.all([
     request('/api/admin/summary'),
     request('/api/admin/users'),
     request('/api/admin/api-usage'),
@@ -213,6 +221,7 @@ export async function loadAdminDashboard() {
     request('/api/status'),
     request('/api/research/status').catch(() => ({ researchAvailable: false, targetSources: 18, appliesToAllTools: true })),
     request('/api/admin/login-log'),
+    request('/api/admin/visitor-log').catch(() => ({ visitors: [], retentionDays: 30 })),
   ]);
   return {
     summary: summary.summary,
@@ -223,5 +232,7 @@ export async function loadAdminDashboard() {
     status,
     researchStatus,
     loginLog: loginLog.logins || [],
+    visitorLog: visitorLog.visitors || [],
+    visitorRetentionDays: Number(visitorLog.retentionDays || 30),
   };
 }
