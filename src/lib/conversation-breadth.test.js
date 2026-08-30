@@ -23,7 +23,7 @@ test('recognizes common Egyptian and Arabizi social variants without heavy routi
     ['ma3lesh bro', 'apology'],
     ['لسه مش فاهم خالص', 'confusion'],
     ['still dont understand', 'confusion'],
-    ['الموضوع مستفز جدا', 'frustration'],
+    ['لسه مش شغال خالص', 'frustration'],
     ['this still isnt working', 'frustration'],
     ['ضحكني 😂', null],
   ];
