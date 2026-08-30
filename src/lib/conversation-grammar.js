@@ -9,6 +9,7 @@ const FEMALE_SELF_FORMS = [
   'متوتره', 'متوترة', 'محتاره', 'محتارة', 'زهقانه', 'زهقانة', 'فرحانه', 'فرحانة', 'مشغوله', 'مشغولة',
   'متاكده', 'متاكدة', 'متأكده', 'متأكدة',
 ];
+const SELF_ADVERBS = '(?:فعلا|بجد|دلوقتي|جدا|اوي|قوي|شويه|شوية|really|very|currently|today)';
 
 function normalize(value) {
   return String(value || '')
@@ -24,8 +25,9 @@ function normalize(value) {
 }
 
 function hasSelfForm(text, forms) {
-  if (!/(?:^|\s)(?:انا|اني)(?:\s|$)/.test(text)) return false;
-  return forms.some((form) => new RegExp(`(?:^|\\s)${form}(?:\\s|$)`).test(text));
+  return forms.some((form) => new RegExp(
+    `(?:^|\\s)(?:انا|اني)(?:\\s+${SELF_ADVERBS})?\\s+${form}(?:\\s|$)`,
+  ).test(text));
 }
 
 export function detectStrongUserGrammaticalGender(value) {
@@ -117,7 +119,7 @@ const NEUTRAL_REPLACEMENTS = [
   ['إنت مش محتاج تخلص كل حاجة مرة واحدة.', 'مش لازم تخلص كل حاجة مرة واحدة.'],
   ['شد حيلك 🔥', 'يلا نتحرك 🔥'],
   ['متستناش المزاج المثالي.', 'بلاش نستنى المزاج المثالي.'],
-  ['محتاج توصل لإيه', 'الهدف اللي عايز توصله إيه'],
+  ['محتاج توصل لإيه', 'إيه الهدف المطلوب'],
   ['متقلقش،', 'ولا تشغل بالك،'],
   ['تصبح على خير لو هتقفلها النهارده 🌙', 'ليلة هادية 🌙'],
 ];
