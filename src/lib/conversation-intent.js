@@ -11,38 +11,47 @@ const ACTION_CUES = /(?:\b(?:continue|explain|why|write|rewrite|translate|compar
 const EMBEDDED_PATTERNS = [
   ['morning_greeting', /(?:^|\s)(?:good morning|صباح الخير|صباح النور|صباح الفل)(?:\s|$)/],
   ['evening_greeting', /(?:^|\s)(?:good evening|مساء الخير|مساء النور|مساء الفل)(?:\s|$)/],
-  ['how_are_you', /(?:\bhow are you\b|\bhow r u\b|\bwhats up\b|(?:^|\s)(?:ازيك|ازيكم|عامل اي|عامل ايه|عامله اي|عامله ايه|اخبارك)(?:\s|$))/],
-  ['encouragement', /(?:\bencourage me\b|\bmotivate me\b|(?:^|\s)(?:شجعني|حفزني)(?:\s|$))/],
-  ['vague_help', /(?:\bhelp me\b|\bcan you help me\b|(?:^|\s)(?:ساعدني|ممكن تساعدني|عايز مساعده|محتاج مساعده)(?:\s|$))/],
+  ['how_are_you', /(?:\bhow are you\b|\bhow r u\b|\bhows it going\b|\bwhats up\b|(?:^|\s)(?:ازيك|ازيكم|عامل اي|عامل ايه|عامله اي|عامله ايه|اخبارك|الدنيا عامله ايه)(?:\s|$))/],
+  ['encouragement', /(?:\bencourage me\b|\bmotivate me\b|\bgive me a push\b|(?:^|\s)(?:شجعني|حفزني|اديني دفعه)(?:\s|$))/],
+  ['vague_help', /(?:\bhelp me\b|\bcan you help me\b|\bi need help\b|(?:^|\s)(?:ساعدني|ممكن تساعدني|عايز مساعده|محتاج مساعده)(?:\s|$))/],
+  ['confusion', /(?:\bstill confused\b|\bstill dont understand\b|(?:^|\s)(?:لسه مش فاهم|مش فاهم خالص|مش مستوعب خالص)(?:\s|$))/],
+  ['frustration', /(?:\bstill not working\b|\bthis still isnt working\b|(?:^|\s)(?:لسه مش شغال|مش شغال خالص|مش نافع خالص)(?:\s|$))/],
+  ['positive_update', /(?:\b(?:im|i am) (?:good|fine|okay)\b|(?:^|\s)انا (?:تمام|كويس|كويسه|بخير)(?:\s|$))/],
 ];
 
 const EXACT_PATTERNS = [
   ['morning_greeting', /^(?:good morning|morning|صباح الخير|صباح النور|صباح الفل)$/],
   ['evening_greeting', /^(?:good evening|evening|مساء الخير|مساء النور|مساء الفل)$/],
   ['how_are_you', /^(?:how are you|how r u|hows it going|how is it going|whats up|what is up|you good|ازيك|ازيكم|عامل اي|عامل ايه|عامله اي|عامله ايه|اخبارك|ايه الاخبار|الدنيا ايه|الدنيا عامله ايه)$/],
-  ['greeting', /^(?:hi|hello|hey|اهلا|هاي|هلا|يا هلا|يا اهلا|سلام|السلام عليكم|وعليكم السلام)$/],
-  ['thanks', /^(?:thanks|thank you|thx|appreciate it|شكرا|شكرا جدا|تسلم|تسلمي|متشكر|متشكره|ميرسي)$/],
-  ['acknowledgement', /^(?:ok|okay|got it|cool|perfect|makes sense|all good|تمام|تمام كده|كده تمام|اوكي|اوكي تمام|ماشي|حلو|جميل|فهمت|وصلت|فل|اشطا)$/],
+  ['greeting', /^(?:hi|hello|hey|hiya|اهلا|هاي|هلا|يا هلا|يا اهلا|سلام|السلام عليكم|وعليكم السلام)$/],
+  ['thanks', /^(?:thanks|thank you|thanks a lot|thank you so much|thx|appreciate it|شكرا|شكرا جدا|شكرا اوي|تسلم|تسلمي|متشكر|متشكره|ميرسي)$/],
+  ['acknowledgement', /^(?:ok|okay|okey|got it|cool|perfect|makes sense|all good|yeah|yep|تمام|تمام كده|كده تمام|اوكي|اوكي تمام|ماشي|حلو|جميل|فهمت|فاهم|وصلت|فل|اشطا|ايوه|ايوه تمام|اها)$/],
   ['ready', /^(?:ready|im ready|i am ready|lets go|lets start|go ahead|جاهز|جاهزه|يلا|يلا بينا|يلا نبدا|ابدا)$/],
   ['encouragement', /^(?:encourage me|motivate me|give me a push|شجعني|حفزني|اديني دفعه|عايز تشجيع|محتاج تشجيع)$/],
-  ['positive_update', /^(?:im good|i am good|doing good|im fine|i am fine|all good here|انا تمام|انا كويس|انا كويسه|الحمد لله تمام|الدنيا تمام|كله تمام)$/],
-  ['goodbye', /^(?:bye|goodbye|see you|see you later|later|good night|باي|يلا سلام|سلام سلام|اشوفك بعدين|نشوفك بعدين|تصبح علي خير|تصبحي علي خير)$/],
-  ['apology', /^(?:sorry|my bad|apologies|اسف|معلش|حقك عليا|سامحني)$/],
+  ['positive_update', /^(?:im good|i am good|doing good|im fine|i am fine|im okay|i am okay|all good here|انا تمام|انا كويس|انا كويسه|انا بخير|الحمد لله تمام|الدنيا تمام|كله تمام)$/],
+  ['goodbye', /^(?:bye|goodbye|see you|see you later|later|good night|take care|باي|يلا سلام|سلام سلام|اشوفك بعدين|نشوفك بعدين|تصبح علي خير|تصبحي علي خير|في امان الله)$/],
+  ['apology', /^(?:sorry|my bad|apologies|sorry about that|اسف|معلش|حقك عليا|سامحني)$/],
   ['confusion', /^(?:im confused|i am confused|confused|i dont understand|dont understand|im lost|i am lost|مش فاهم|مش فاهمك|مش واضح|مش واضحه|اتلخبطت|انا تايه|تايه|مش مستوعب)$/],
   ['vague_help', /^(?:help me|can you help me|i need help|need help|ساعدني|محتاج مساعده|عايز مساعده|ممكن تساعدني)$/],
   ['frustration', /^(?:im frustrated|i am frustrated|this is annoying|it doesnt work|not working|زهقت|اتخنقت|الموضوع مستفز|مش شغال|مش نافع)$/],
   ['compliment', /^(?:awesome|great job|nice one|well done|love it|جامد|عاش|برافو|عظمه|حلو اوي|انت جامد)$/],
   ['identity', /^(?:who are you|what are you|انت مين|مين انت)$/],
-  ['doing', /^(?:what are you doing|what r u doing|انت بتعمل اي|انت بتعمل ايه|بتعمل اي|بتعمل ايه)$/],
+  ['doing', /^(?:what are you doing|what r u doing|whatre you doing|انت بتعمل اي|انت بتعمل ايه|بتعمل اي|بتعمل ايه)$/],
   ['capability', /^(?:what can you do|what can u do|تقدر تعمل اي|تقدر تعمل ايه|بتعرف تعمل اي|بتعرف تعمل ايه)$/],
 ];
 
+const SOCIAL_FILLERS = new Set([
+  'يا', 'معلم', 'صاحبي', 'صديقي', 'حبيبي', 'باشا', 'ريس', 'برنس', 'عم', 'برو', 'bro', 'man', 'mate', 'friend',
+  'جدا', 'اوي', 'قوي', 'بجد', 'خالص', 'شويه', 'شوي', 'really', 'very', 'so', 'much', 'a', 'lot', 'just', 'here',
+]);
+
 const TOKEN_ARCHETYPES = [
-  { intent: 'thanks', any: ['thanks', 'thank', 'thx', 'شكرا', 'تسلم', 'ميرسي', 'متشكر'], socialOnly: true },
-  { intent: 'greeting', any: ['hi', 'hello', 'hey', 'اهلا', 'هلا', 'هاي', 'سلام'], socialOnly: true },
-  { intent: 'acknowledgement', any: ['ok', 'okay', 'cool', 'تمام', 'ماشي', 'اشطا', 'وصلت', 'فهمت'], socialOnly: true },
-  { intent: 'compliment', any: ['awesome', 'great', 'nice', 'جامد', 'عاش', 'برافو', 'عظمه'], socialOnly: true },
-  { intent: 'apology', any: ['sorry', 'apologies', 'اسف', 'معلش'], socialOnly: true },
+  { intent: 'thanks', any: ['thanks', 'thank', 'thx', 'شكرا', 'تسلم', 'ميرسي', 'متشكر', 'متشكره'], maxMeaningfulFillers: 2 },
+  { intent: 'greeting', any: ['hi', 'hello', 'hey', 'hiya', 'اهلا', 'هلا', 'هاي', 'سلام'], maxMeaningfulFillers: 2 },
+  { intent: 'acknowledgement', any: ['ok', 'okay', 'okey', 'cool', 'perfect', 'yeah', 'yep', 'تمام', 'ماشي', 'اشطا', 'وصلت', 'فهمت', 'فاهم', 'ايوه', 'اها'], maxMeaningfulFillers: 2 },
+  { intent: 'compliment', any: ['awesome', 'great', 'nice', 'جامد', 'عاش', 'برافو', 'عظمه'], maxMeaningfulFillers: 2 },
+  { intent: 'apology', any: ['sorry', 'apologies', 'اسف', 'معلش'], maxMeaningfulFillers: 2 },
+  { intent: 'goodbye', any: ['bye', 'goodbye', 'later', 'باي', 'سلام'], maxMeaningfulFillers: 2 },
 ];
 
 export function normalizeConversationText(value) {
@@ -64,7 +73,12 @@ export function detectConversationLanguage(value) {
   const raw = String(value || '');
   const arabic = (raw.match(/[\u0600-\u06ff]/g) || []).length;
   const latin = (raw.match(/[a-z]/gi) || []).length;
-  return latin > arabic ? 'en' : 'ar';
+  if (!arabic) return 'en';
+  if (!latin) return 'ar';
+  // Arabic-first code switching is common in Egyptian chat. Keep Arabic when it is a
+  // meaningful part of the turn instead of flipping the whole reply because of one
+  // English product/tech word; clearly Latin-dominant messages still stay English.
+  return arabic >= latin * 0.45 ? 'ar' : 'en';
 }
 
 function isLaughter(value) {
@@ -72,8 +86,8 @@ function isLaughter(value) {
   return /^(?:[😂🤣😄😁😅]+|ههه+|خخخ+|ha(?:ha)+|lol+|lmao)$/iu.test(raw);
 }
 
-function tokenSet(text) {
-  return new Set(text.split(' ').filter(Boolean));
+function tokenList(text) {
+  return text.split(' ').filter(Boolean);
 }
 
 function hasActionBearingContent(text, intent) {
@@ -89,12 +103,13 @@ function firstMatchingIntent(text, patterns) {
 }
 
 function tokenIntent(text) {
-  const tokens = tokenSet(text);
+  const tokens = tokenList(text);
+  const tokenSet = new Set(tokens);
   for (const archetype of TOKEN_ARCHETYPES) {
-    if (!archetype.any.some((token) => tokens.has(token))) continue;
-    const matchedSocialTokens = archetype.any.filter((token) => tokens.has(token)).length;
-    const fillerBudget = tokens.size - matchedSocialTokens;
-    if (!archetype.socialOnly || fillerBudget <= 4) return archetype.intent;
+    const cueCount = archetype.any.filter((token) => tokenSet.has(token)).length;
+    if (!cueCount) continue;
+    const meaningfulOtherTokens = tokens.filter((token) => !archetype.any.includes(token) && !SOCIAL_FILLERS.has(token));
+    if (meaningfulOtherTokens.length <= archetype.maxMeaningfulFillers) return archetype.intent;
   }
   return null;
 }
@@ -106,12 +121,13 @@ export function detectConversationalArchetype(prompt, { hasPriorContext = false 
 
   const text = normalizeConversationText(raw);
   if (!text) return null;
-  const tokenCount = text.split(' ').filter(Boolean).length;
+  const tokenCount = tokenList(text).length;
   if (tokenCount > MAX_SOCIAL_TOKENS) return null;
 
   const exactIntent = firstMatchingIntent(text, EXACT_PATTERNS);
   const embeddedIntent = firstMatchingIntent(text, EMBEDDED_PATTERNS);
-  const intent = exactIntent || embeddedIntent || tokenIntent(text);
+  const tokenMatchedIntent = tokenIntent(text);
+  const intent = exactIntent || embeddedIntent || tokenMatchedIntent;
   if (!intent) return null;
 
   if (hasActionBearingContent(text, intent)) return null;
