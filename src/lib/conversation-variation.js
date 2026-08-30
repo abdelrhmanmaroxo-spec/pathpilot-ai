@@ -67,9 +67,10 @@ export function selectConversationVariant({
   const key = `${language}:${intent || 'conversation'}`;
   const resolvedStorage = resolveStorage(storage);
   const stored = readStoredHistory(resolvedStorage);
-  const recent = Array.isArray(stored?.[key])
-    ? stored[key].filter((id) => clean.some((variant) => variant.id === id))
-    : (volatileHistory.get(key) || []).filter((id) => clean.some((variant) => variant.id === id));
+  const recentSource = stored === null
+    ? (volatileHistory.get(key) || [])
+    : (Array.isArray(stored[key]) ? stored[key] : []);
+  const recent = recentSource.filter((id) => clean.some((variant) => variant.id === id));
 
   let candidates = clean.filter((variant) => !recent.includes(variant.id));
   if (!candidates.length) candidates = clean;
