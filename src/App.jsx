@@ -28,6 +28,10 @@ function routeFromHash() {
   return ['chat', 'study', 'work', 'general', 'admin'].includes(route) ? route : null;
 }
 
+function currentTimezone() {
+  try { return Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch { return ''; }
+}
+
 export default function App() {
   const [mode, setMode] = useState(routeFromHash);
   const [historyItems, setHistoryItems] = useState(loadHistory);
@@ -64,6 +68,17 @@ export default function App() {
   }, []);
 
   useEffect(() => subscribeLanguageChanges(setLanguage), []);
+
+  useEffect(() => {
+    trackUsage({
+      eventType: 'app_opened',
+      metadata: {
+        route: routeFromHash() || 'home',
+        language: getDocumentLanguage(),
+        timezone: currentTimezone(),
+      },
+    });
+  }, []);
 
   useEffect(() => {
     const refreshHistory = () => setHistoryItems(loadHistory());
