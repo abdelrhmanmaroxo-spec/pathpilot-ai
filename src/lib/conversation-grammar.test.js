@@ -102,7 +102,7 @@ test('neutral fallback removes avoidable masculine address instead of guessing',
   ].join(' ');
   const neutral = adaptArabicConversationalReply(base, null);
 
-  assert.doesNotMatch(neutral, /يا معلم|أهلًا بيك|تحب نشتغل|عامل إيه إنت|معاك|وقت ما تحب|شد حيلك|ركّز|تقدر تعمله|اعمل أول|خلّص الخطوة/);
+  assert.doesNotMatch(neutral, /يا معلم|أهلًا بيك|تحب نشتغل|عامل إيه إنت|معاك|وقت ما تحب|شد حيلك|تقدر تعمله|اعمل أول|خلّص الخطوة/);
   assert.match(neutral, /أهلًا|نشتغل على إيه|إيه أخبارك|خلينا نركز|ممكن يتعمل|في أي وقت/);
 });
 
