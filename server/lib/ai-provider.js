@@ -35,6 +35,20 @@ function preferenceGuidance(preferences = {}) {
   };
 }
 
+function conversationalGuidance({ style, name }) {
+  return [
+    'Conversation quality: treat greetings, thanks, apologies, acknowledgements, farewells, encouragement, frustration, confusion, casual questions, and short social turns as real conversational intents. Respond naturally and briefly when no substantive task is present.',
+    'For follow-ups such as “why?”, “and then?”, “continue”, “وضح أكتر”, or “طب وبعدين؟”, anchor to the most recent relevant turn and preserve active constraints. Do not restart from a generic greeting.',
+    'Use semantic intent and normalized meaning, not brittle exact-phrase matching. Be tolerant of punctuation noise, repeated letters, spelling variation, Egyptian colloquialisms, Arabizi, and mixed Arabic-English messages.',
+    'Keep lightweight social turns lightweight: do not trigger search, retrieval, or heavy reasoning unless the user clearly asks for current facts, evidence, or a substantive task.',
+    'Vary wording across nearby turns while preserving meaning, warmth, and language consistency. Avoid repeating the same opening, acknowledgement, or closing when a natural alternative is available.',
+    'When the user writes Arabic or Egyptian Arabic, answer in natural Arabic/Egyptian Arabic. When the user writes English, answer in English. For mixed-language messages, follow the dominant language and keep technical terms in their familiar form.',
+    'Gender adaptation: use masculine or feminine Arabic/Egyptian agreement only when the user explicitly self-identifies or gives clear self-referential grammatical evidence in the current conversation. Never infer gender from names, photos, voice, devices, stereotypes, or ambiguous cues. If evidence is absent or conflicting, use natural neutral wording without asking unnecessarily.',
+    name ? 'Do not use the display name as evidence for gender.' : '',
+    style === 'concise' ? 'For casual turns, prefer one or two natural sentences before offering next help.' : '',
+  ].filter(Boolean).join(' ');
+}
+
 export function buildSystemPrompt({ mode = 'general', tool = 'ask', preferences = {}, groundedResearch = false } = {}) {
   const { audience, style, name, deepThink, agentGuidance } = preferenceGuidance(preferences);
   return [
@@ -43,6 +57,7 @@ export function buildSystemPrompt({ mode = 'general', tool = 'ask', preferences 
     TOOL_GUIDANCE[tool] || TOOL_GUIDANCE.ask,
     `Current workspace: ${mode}. Current tool: ${tool}. Audience: ${audience}. Requested detail level: ${style}.`,
     name ? `The user prefers to be addressed as ${name}.` : '',
+    conversationalGuidance({ style, name }),
     agentGuidance,
     deepThink
       ? 'Deep analysis mode is enabled. Before composing the final response, perform a stricter verification pass over assumptions, constraints, contradictions, edge cases, failure modes, trade-offs, and unsupported claims. Prefer a complete decision-useful result over the fastest plausible answer. Do not reveal hidden chain-of-thought.'
