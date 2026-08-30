@@ -8,6 +8,7 @@ import Landing from './components/Landing.jsx';
 import { Footer, Header, InstallDialog } from './components/AppChrome.jsx';
 import Workspace from './Workspace.jsx';
 import { canAccessExperimentalChat } from './lib/chat-access.js';
+import { getDocumentLanguage, subscribeLanguageChanges } from './lib/language-state.js';
 import { canAccessAdminSearch, filterSearchHistory } from './lib/search-access.js';
 import {
   clearHistory,
@@ -38,6 +39,7 @@ export default function App() {
   const [toast, setToast] = useState('');
   const [user, setUser] = useState(null);
   const [authOpen, setAuthOpen] = useState(false);
+  const [language, setLanguage] = useState(getDocumentLanguage);
 
   useEffect(() => {
     const updateRoute = () => setMode(routeFromHash());
@@ -60,6 +62,8 @@ export default function App() {
       window.removeEventListener('appinstalled', markInstalled);
     };
   }, []);
+
+  useEffect(() => subscribeLanguageChanges(setLanguage), []);
 
   useEffect(() => {
     const refreshHistory = () => setHistoryItems(loadHistory());
@@ -151,8 +155,8 @@ export default function App() {
         <AdminDashboard user={user} onBack={() => { window.location.hash = ''; }} />
       ) : mode === 'chat' ? (
         canUseExperimentalChat
-          ? <ChatWorkspace preferences={preferences} notify={setToast} />
-          : <ChatDevelopmentNotice />
+          ? <ChatWorkspace preferences={preferences} notify={setToast} language={language} />
+          : <ChatDevelopmentNotice language={language} />
       ) : (
         <Workspace
           mode={mode}

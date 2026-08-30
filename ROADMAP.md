@@ -12,6 +12,7 @@ This file is the execution tracker for the two approved 50-item roadmaps. Status
 
 ## Progress notes
 
+- 2026-08-30: A11 reactive language state advanced. `App.jsx` now subscribes to the existing `pathpilot:language-changed` bridge through a small reusable language-state helper and passes the active language into privileged Chat. The open Chat workspace and development notice now switch Arabic/English immediately without navigation, reload, or component remount, so the active conversation, composer text, streaming response, and tool state are preserved. Regression tests cover normalization, subscription/unsubscription, and the no-remount Chat integration.
 - 2026-08-30: A02 architecture cleanup advanced by extracting the complete Users/admin-invitation table and owner-only account controls into `src/admin/AdminUsers.jsx`. `AdminDashboard.jsx` now acts as the orchestration shell for that feature while all existing server-side role checks, protected-owner guards, confirmations, busy states, and platform API calls remain unchanged. This reduces dashboard UI coupling without changing authentication, persistence, or admin behavior; A02 remains `IN_PROGRESS` while the remaining orchestration/actions are further modularized.
 - 2026-08-30: A09 completed at the production API boundary. All JSON `4xx/5xx` responses now pass through one backward-compatible error-envelope middleware that preserves the existing human-readable `error`, preserves valid explicit codes, replaces unsafe/arbitrary codes with stable HTTP-class codes, and guarantees the active `requestId` for correlation. SSE, HTML verification/reset pages, successful JSON responses, authentication behavior, and provider payloads are left untouched. Regression tests cover stable defaults, explicit-code preservation, arbitrary-code rejection, JSON enrichment, and non-JSON passthrough.
 - 2026-08-30: A06 production persistence guard hardened. Startup validation now rejects `DATABASE_PATH=:memory:` whenever PathPilot is running in production or Railway, preventing an accidental ephemeral SQLite database from replacing the mounted persistent database at runtime. Development/test in-memory databases remain supported, and feature reporting now exposes `persistentDatabase` as a strict boolean. Regression tests cover standard production, Railway detection, and development compatibility.
@@ -55,7 +56,7 @@ This file is the execution tracker for the two approved 50-item roadmaps. Status
 | A08 | DONE | React Error Boundary |
 | A09 | DONE | Unified production JSON error envelopes and request correlation, including stable streaming/provider failure taxonomy |
 | A10 | IN_PROGRESS | Update README and deployment docs; changelog/user guide are now current |
-| A11 | IN_PROGRESS | Key-based i18n architecture |
+| A11 | IN_PROGRESS | Key-based i18n architecture; app-owned reactive language state now updates open Chat immediately without navigation/remount |
 | A12 | IN_PROGRESS | Merge legacy i18n runtime layers |
 | A13 | IN_PROGRESS | Translation coverage CI validates combined catalogs plus core app, workspace, voice, privileged Chat, conversation-thread, account-experience, and authentication surfaces; broader component coverage remains |
 | A14 | TODO | Automated LTR/RTL UI checks |
@@ -92,7 +93,7 @@ This file is the execution tracker for the two approved 50-item roadmaps. Status
 | A45 | DONE | Conversation/history search foundation |
 | A46 | TODO | Session management and logout-all |
 | A47 | TODO | Versioned database migrations and restore tests |
-| A48 | IN_PROGRESS | Advanced admin analytics |
+| A48 | IN_PROGRESS | Advanced admin analytics; next security pass is privacy-scoped server-derived visitor IP/User-Agent/last-seen/session telemetry plus Admin/Owner moderation of regular users, with owner/admin protections and retention disclosure |
 | A49 | TODO | Production E2E test suite |
 | A50 | BLOCKED | Final Google Sign-In rollout. Requires final Google OAuth Client ID/origin configuration when implementation reaches this stage. |
 
