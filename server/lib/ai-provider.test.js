@@ -48,6 +48,20 @@ test('language and follow-up guidance preserves dominant language and latest-tur
   assert.match(prompt, /dominant language/i);
 });
 
+test('response diversity guidance changes surface form without forcing novelty on constrained outputs', () => {
+  const prompt = buildSystemPrompt();
+  assert.match(prompt, /rotate the opening/i);
+  assert.match(prompt, /Do not force novelty into high-stakes/i);
+  assert.match(prompt, /acknowledge the continuity briefly/i);
+});
+
+test('lightweight context guidance distinguishes stale topics from relevant ellipsis', () => {
+  const prompt = buildSystemPrompt();
+  assert.match(prompt, /last few relevant turns/i);
+  assert.match(prompt, /Ignore stale context/i);
+  assert.match(prompt, /Do not mention internal variation rules/i);
+});
+
 test('provider request supports optional reasoning without requiring it', () => {
   const chat = buildProviderRequest({ apiMode: 'chat-completions', model: 'model-a', prompt: 'مرحبا', reasoningEffort: '' });
   const responses = buildProviderRequest({ apiMode: 'responses', model: 'model-b', prompt: 'مرحبا', reasoningEffort: 'medium' });
