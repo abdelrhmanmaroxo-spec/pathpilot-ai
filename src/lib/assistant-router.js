@@ -353,6 +353,10 @@ export async function streamRoutedAssistantResponse(args, { onDelta, onActivity,
       signal: args.signal,
       timeoutMs: deepThink ? 110_000 : 90_000,
     })) {
+      if (event.event === 'meta') {
+        activity.emit('analyze');
+        continue;
+      }
       if (event.event === 'delta') {
         const delta = typeof event.data?.text === 'string' ? event.data.text : '';
         if (!delta) continue;

@@ -1,4 +1,4 @@
-import { buildProviderRequest } from './lib/ai-provider.js';
+import { buildProviderRequest, extractProviderText } from './lib/ai-provider.js';
 import { trackAiRequest, trackEvent } from './lib/database.js';
 import { iterateProviderTextDeltas } from './lib/provider-stream.js';
 
@@ -29,6 +29,34 @@ function writeEvent(response, event, data) {
   return response.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
 }
 
+export function usesBufferedProgressiveDelivery({ provider = '', baseUrl = '', streamMode = '' } = {}) {
+  const requestedMode = String(streamMode || '').trim().toLowerCase();
+  if (requestedMode === 'native') return false;
+  if (requestedMode === 'buffered') return true;
+  return /gemini/i.test(String(provider || '')) || /generativelanguage\.googleapis\.com/i.test(String(baseUrl || ''));
+}
+
+export function chunkVisibleAnswer(value, maxChars = 28) {
+  const text = String(value || '');
+  const limit = Math.max(8, Number(maxChars) || 28);
+  const chunks = [];
+  let index = 0;
+  while (index < text.length) {
+    let end = Math.min(text.length, index + limit);
+    if (end < text.length) {
+      const whitespace = Math.max(text.lastIndexOf(' ', end), text.lastIndexOf('\n', end));
+      if (whitespace > index + Math.floor(limit / 2)) end = whitespace + 1;
+    }
+    chunks.push(text.slice(index, end));
+    index = end;
+  }
+  return chunks;
+}
+
+function wait(ms) {
+  return ms > 0 ? new Promise((resolve) => setTimeout(resolve, ms)) : Promise.resolve();
+}
+
 export function classifyAssistantStreamError(error, { aborted = false, abortReason = null } = {}) {
   const reason = String(abortReason?.message || abortReason || '');
   if (aborted) {
@@ -57,8 +85,11 @@ export function createAssistantStreamHandler({ env = process.env, database, fetc
   const apiMode = env.AI_API_MODE === 'responses' ? 'responses' : 'chat-completions';
   const baseUrl = String(env.AI_BASE_URL || 'https://api.openai.com/v1').replace(/\/$/, '');
   const endpoint = String(env.AI_ENDPOINT || `${baseUrl}/${apiMode === 'responses' ? 'responses' : 'chat/completions'}`);
+  const provider = String(env.AI_PROVIDER || '');
   const reasoningEffort = String(env.AI_REASONING_EFFORT || '');
   const aiConfigured = Boolean(apiKey && model);
+  const bufferedDelivery = usesBufferedProgressiveDelivery({ provider, baseUrl, streamMode: env.AI_STREAM_MODE });
+  const progressiveDelayMs = Math.max(0, Math.min(80, Number(env.AI_BUFFERED_CHUNK_DELAY_MS ?? 18)));
 
   return async function handleAssistantStream({ request, response, user = null, cors = {}, requestId = '' } = {}) {
     const startedAt = Date.now();
@@ -77,8 +108,13 @@ export function createAssistantStreamHandler({ env = process.env, database, fetc
     }
 
     const controller = new AbortController();
-    const timeoutMs = Math.max(20_000, Math.min(120_000, Number(env.AI_STREAM_TIMEOUT_MS || 90_000)));
+    const timeoutMs = Math.max(20_000, Math.min(120_000, Number(
+      bufferedDelivery
+        ? env.AI_RESPONSE_TIMEOUT_MS || 60_000
+        : env.AI_STREAM_TIMEOUT_MS || 90_000,
+    )));
     const timeout = setTimeout(() => controller.abort(new Error('PROVIDER_STREAM_TIMEOUT')), timeoutMs);
+    let heartbeat = null;
     const abortOnDisconnect = () => {
       if (!response.writableEnded && !controller.signal.aborted) controller.abort(new Error('CLIENT_DISCONNECTED'));
     };
@@ -94,32 +130,16 @@ export function createAssistantStreamHandler({ env = process.env, database, fetc
         return;
       }
 
-      const providerRequest = {
-        ...buildProviderRequest({
-          apiMode,
-          model,
-          prompt,
-          mode,
-          tool,
-          preferences: body.preferences || {},
-          reasoningEffort,
-        }),
-        stream: true,
-      };
-
-      const providerResponse = await fetchImpl(endpoint, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-          Accept: 'text/event-stream',
-        },
-        body: JSON.stringify(providerRequest),
-        signal: controller.signal,
+      const providerRequest = buildProviderRequest({
+        apiMode,
+        model,
+        prompt,
+        mode,
+        tool,
+        preferences: body.preferences || {},
+        reasoningEffort,
       });
-
-      if (!providerResponse.ok) throw new Error(`PROVIDER_${providerResponse.status}`);
-      if (!providerResponse.body) throw new Error('PROVIDER_STREAM_EMPTY');
+      if (!bufferedDelivery) providerRequest.stream = true;
 
       providerStarted = true;
       response.writeHead(200, {
@@ -131,12 +151,45 @@ export function createAssistantStreamHandler({ env = process.env, database, fetc
         ...cors,
       });
       response.flushHeaders?.();
-      writeEvent(response, 'meta', { requestId, source: 'live', route: 'direct-ai-stream' });
+      writeEvent(response, 'meta', {
+        requestId,
+        source: 'live',
+        route: bufferedDelivery ? 'direct-ai-progressive' : 'direct-ai-stream',
+        delivery: bufferedDelivery ? 'progressive' : 'native',
+      });
+      heartbeat = setInterval(() => {
+        if (!response.destroyed && !response.writableEnded) response.write(': provider-working\n\n');
+      }, 10_000);
 
-      for await (const delta of iterateProviderTextDeltas(providerResponse.body, { apiMode })) {
-        if (controller.signal.aborted) throw controller.signal.reason || new Error('STREAM_ABORTED');
-        answer += delta;
-        writeEvent(response, 'delta', { text: delta });
+      const providerResponse = await fetchImpl(endpoint, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+          Accept: bufferedDelivery ? 'application/json' : 'text/event-stream',
+        },
+        body: JSON.stringify(providerRequest),
+        signal: controller.signal,
+      });
+
+      if (!providerResponse.ok) throw new Error(`PROVIDER_${providerResponse.status}`);
+
+      if (bufferedDelivery) {
+        const providerPayload = await providerResponse.json();
+        answer = extractProviderText(providerPayload, apiMode);
+        if (!answer.trim()) throw new Error('EMPTY_STREAM_RESPONSE');
+        for (const delta of chunkVisibleAnswer(answer)) {
+          if (controller.signal.aborted) throw controller.signal.reason || new Error('STREAM_ABORTED');
+          writeEvent(response, 'delta', { text: delta });
+          await wait(progressiveDelayMs);
+        }
+      } else {
+        if (!providerResponse.body) throw new Error('PROVIDER_STREAM_EMPTY');
+        for await (const delta of iterateProviderTextDeltas(providerResponse.body, { apiMode })) {
+          if (controller.signal.aborted) throw controller.signal.reason || new Error('STREAM_ABORTED');
+          answer += delta;
+          writeEvent(response, 'delta', { text: delta });
+        }
       }
 
       if (!answer.trim()) throw new Error('EMPTY_STREAM_RESPONSE');
@@ -155,12 +208,12 @@ export function createAssistantStreamHandler({ env = process.env, database, fetc
         eventType: 'tool_request',
         workspace: mode,
         tool,
-        metadata: { source: 'live-stream' },
+        metadata: { source: bufferedDelivery ? 'live-progressive' : 'live-stream' },
       });
       writeEvent(response, 'done', {
         requestId,
         source: 'live',
-        route: 'direct-ai-stream',
+        route: bufferedDelivery ? 'direct-ai-progressive' : 'direct-ai-stream',
         latencyMs,
         characterCount: answer.length,
       });
@@ -202,6 +255,7 @@ export function createAssistantStreamHandler({ env = process.env, database, fetc
       }, cors);
     } finally {
       clearTimeout(timeout);
+      clearInterval(heartbeat);
       response.off?.('close', abortOnDisconnect);
     }
   };
