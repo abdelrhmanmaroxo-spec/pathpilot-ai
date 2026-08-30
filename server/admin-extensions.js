@@ -86,6 +86,14 @@ function currentUser(database, request) {
   return token ? getSessionUser(database, hashToken(token)) : null;
 }
 
+export function canModerateUserAccount({ actor, target, ownerEmail }) {
+  if (!actor || actor.role !== 'admin' || !target) return false;
+  const targetIsOwner = Boolean(ownerEmail && normalizeEmail(target.email) === ownerEmail);
+  if (targetIsOwner) return false;
+  const actorIsOwner = Boolean(ownerEmail && normalizeEmail(actor.email) === ownerEmail);
+  return actorIsOwner || target.role === 'user';
+}
+
 function requireAdmin({ database, request, response, origin, allowedOrigins, sendJson }) {
   const user = currentUser(database, request);
   if (!user || user.role !== 'admin') {
@@ -223,8 +231,8 @@ export function createAdminExtensions({ database, env = process.env, sendJson, a
     }
 
     if (request.method === 'POST' && path === '/api/admin/users/ban') {
-      const owner = requireOwner({ database, request, response, origin, allowedOrigins, sendJson, ownerEmail });
-      if (!owner) return true;
+      const actor = requireAdmin({ database, request, response, origin, allowedOrigins, sendJson });
+      if (!actor) return true;
       const body = await readJson(request);
       const target = findUserById(database, String(body.userId || ''));
       if (!target) {
@@ -235,12 +243,19 @@ export function createAdminExtensions({ database, env = process.env, sendJson, a
         sendJson(response, 400, { error: 'The protected owner account cannot be banned.' }, origin, allowedOrigins);
         return true;
       }
+      if (!canModerateUserAccount({ actor, target, ownerEmail })) {
+        sendJson(response, 403, { error: 'Admins can only ban or unban regular user accounts.' }, origin, allowedOrigins);
+        return true;
+      }
       const banned = Boolean(body.banned);
       database.prepare('UPDATE users SET disabled = ? WHERE id = ?').run(banned ? 1 : 0, target.id);
       if (banned) deleteSessionsForUser(database, target.id);
+      const actorIsOwner = Boolean(ownerEmail && normalizeEmail(actor.email) === ownerEmail);
       trackEvent(database, {
-        userId: owner.id,
-        eventType: banned ? 'user_banned_by_owner' : 'user_unbanned_by_owner',
+        userId: actor.id,
+        eventType: banned
+          ? (actorIsOwner ? 'user_banned_by_owner' : 'user_banned_by_admin')
+          : (actorIsOwner ? 'user_unbanned_by_owner' : 'user_unbanned_by_admin'),
         metadata: { targetUserId: target.id, targetEmail: target.email },
       });
       sendJson(response, 200, { user: decorateUser(findUserById(database, target.id), ownerEmail) }, origin, allowedOrigins);
