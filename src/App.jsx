@@ -20,6 +20,7 @@ import {
 import {
   getCurrentUser,
   logoutAccount,
+  reportSecurityVisit,
   trackUsage,
 } from './lib/platform.js';
 
@@ -73,9 +74,11 @@ export default function App() {
 
   useEffect(() => {
     let active = true;
-    getCurrentUser().then((currentUser) => {
-      if (active) setUser(currentUser);
-    });
+    getCurrentUser()
+      .then((currentUser) => {
+        if (active) setUser(currentUser);
+      })
+      .finally(() => reportSecurityVisit().catch(() => undefined));
     return () => { active = false; };
   }, []);
 

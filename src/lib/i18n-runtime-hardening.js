@@ -18,6 +18,7 @@ const AR_TO_EN = {
   'مسودة مخصصة تربط خبرتك بمتطلبات الوظيفة.': 'Creates a tailored draft connecting your experience to the role.',
   'حوّل المشكلة إلى تقرير QA واضح وقابل للتنفيذ.': 'Turns an issue into a clear, actionable QA report.',
   'مساعد عربي عام للدراسة والعمل والحياة اليومية، بطبقات AI حي ومحلي وموسوعة معرفية.': 'A general AI assistant for study, work, and daily life, powered by live and local intelligence plus a knowledge encyclopedia.',
+  'للأمان ومنع إساءة الاستخدام: قد يُسجّل عنوان IP وبيانات الجهاز الأساسية لمدة محدودة. لا يتم جمع GPS أو كلمات السر.': 'For security and abuse prevention, IP addresses and basic device data may be retained temporarily. GPS and passwords are never collected.',
   '🧪 PathPilot Beta: يستخدم بحث ويب وذكاء AI حي عندما تكون الخدمات متاحة، مع وضع احتياطي عند التعطل.': '🧪 PathPilot Beta: uses web research and live AI when available, with resilient local fallback when services are unavailable.',
   'جاهز نبدأ؟': 'Ready to start?',
   'اشرح التعلّم العميق ببساطة': 'Explain deep learning simply',

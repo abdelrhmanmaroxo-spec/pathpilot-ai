@@ -98,6 +98,9 @@ export function initializeDatabase(filename = ':memory:') {
   ensureColumn(database, 'users', 'email_verified', 'INTEGER NOT NULL DEFAULT 1');
   ensureColumn(database, 'users', 'verified_at', 'TEXT');
   ensureColumn(database, 'users', 'auth_provider', "TEXT NOT NULL DEFAULT 'password'");
+  ensureColumn(database, 'users', 'disabled_at', 'TEXT');
+  ensureColumn(database, 'users', 'disabled_reason', 'TEXT');
+  ensureColumn(database, 'users', 'disabled_by', 'TEXT');
   return database;
 }
 
@@ -280,8 +283,12 @@ export function getAdminSummary(database, aiConfigured) {
 
 export function listUsers(database, limit = 50) {
   return database.prepare(`
-    SELECT id,name,email,role,disabled,email_verified,verified_at,auth_provider,created_at,last_seen_at
-    FROM users ORDER BY created_at DESC LIMIT ?
+    SELECT u.id,u.name,u.email,u.role,u.disabled,u.email_verified,u.verified_at,u.auth_provider,
+           u.created_at,u.last_seen_at,u.disabled_at,u.disabled_reason,u.disabled_by,
+           actor.name AS disabled_by_name,actor.email AS disabled_by_email
+    FROM users u
+    LEFT JOIN users actor ON actor.id = u.disabled_by
+    ORDER BY u.created_at DESC LIMIT ?
   `).all(limit);
 }
 

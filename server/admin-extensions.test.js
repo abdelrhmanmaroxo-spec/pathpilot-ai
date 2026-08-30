@@ -36,6 +36,29 @@ function authenticatedRequest(database, actor, body) {
   };
 }
 
+function authenticatedGetRequest(database, actor) {
+  tokenCounter += 1;
+  const token = `admin-get-token-${tokenCounter}`;
+  createSession(database, { tokenHash: hashToken(token), userId: actor.id });
+  return {
+    method: 'GET',
+    headers: { authorization: `Bearer ${token}` },
+    socket: { remoteAddress: '127.0.0.1' },
+  };
+}
+
+function anonymousVisitRequest(body, headers = {}) {
+  const payload = Buffer.from(JSON.stringify(body));
+  return {
+    method: 'POST',
+    headers,
+    socket: { remoteAddress: '10.0.0.2' },
+    async *[Symbol.asyncIterator]() {
+      yield payload;
+    },
+  };
+}
+
 function createHandler(database, ownerEmail = 'owner@example.com') {
   const state = { status: null, body: null };
   const sendJson = (_response, status, body) => {
@@ -78,7 +101,7 @@ test('admin ban endpoint revokes a regular user sessions and records the admin a
   const { state, handle } = createHandler(database);
 
   const handled = await handle(
-    authenticatedRequest(database, admin, { userId: target.id, banned: true }),
+    authenticatedRequest(database, admin, { userId: target.id, banned: true, reason: 'Repeated abuse' }),
     {},
     '',
     '/api/admin/users/ban',
@@ -88,12 +111,16 @@ test('admin ban endpoint revokes a regular user sessions and records the admin a
   assert.equal(state.status, 200);
   assert.equal(state.body.user.disabled, true);
   assert.equal(findUserById(database, target.id).disabled, 1);
+  assert.equal(findUserById(database, target.id).disabled_reason, 'Repeated abuse');
+  assert.equal(findUserById(database, target.id).disabled_by, admin.id);
+  assert.ok(findUserById(database, target.id).disabled_at);
   assert.equal(database.prepare('SELECT COUNT(*) AS count FROM sessions WHERE user_id = ?').get(target.id).count, 0);
 
   const audit = database.prepare('SELECT user_id,event_type,metadata_json FROM events ORDER BY id DESC LIMIT 1').get();
   assert.equal(audit.user_id, admin.id);
   assert.equal(audit.event_type, 'user_banned_by_admin');
   assert.equal(JSON.parse(audit.metadata_json).targetUserId, target.id);
+  assert.equal(JSON.parse(audit.metadata_json).reason, 'Repeated abuse');
 });
 
 test('admin ban endpoint rejects another admin and protected owner, while owner may moderate a non-owner admin', async () => {
@@ -132,4 +159,46 @@ test('admin ban endpoint rejects another admin and protected owner, while owner 
   const audit = database.prepare('SELECT user_id,event_type FROM events ORDER BY id DESC LIMIT 1').get();
   assert.equal(audit.user_id, owner.id);
   assert.equal(audit.event_type, 'user_banned_by_owner');
+});
+
+test('visit endpoint records server-observed guest network context for admin review', async () => {
+  const database = initializeDatabase();
+  const admin = createUserRecord(database, { email: 'admin@example.com', role: 'admin' });
+  const { state, handle } = createHandler(database);
+
+  await handle(
+    anonymousVisitRequest({
+      visitorId: 'visitor-browser-1234',
+      ipAddress: '1.1.1.1',
+      platform: 'Win32',
+      language: 'ar-EG',
+      timezone: 'Africa/Cairo',
+      screen: '1920x1080',
+      path: '/chat',
+      referrerHost: 'example.com',
+    }, {
+      'x-forwarded-for': '203.0.113.44, 10.0.0.2',
+      'user-agent': 'Mozilla/5.0 (Windows NT 10.0) Chrome/140.0 Safari/537.36',
+    }),
+    {},
+    '',
+    '/api/security/visit',
+  );
+  assert.equal(state.status, 202);
+
+  await handle(authenticatedGetRequest(database, admin), {}, '', '/api/admin/security-visits');
+  assert.equal(state.status, 200);
+  assert.equal(state.body.visits.length, 1);
+  assert.equal(state.body.visits[0].ip_address, '203.0.113.44');
+  assert.equal(state.body.visits[0].timezone, 'Africa/Cairo');
+  assert.match(state.body.visits[0].device, /Chrome/);
+  assert.equal(state.body.summary.guestVisitors, 1);
+  assert.equal(state.body.summary.retentionDays, 30);
+});
+
+test('security visit log requires an admin account', async () => {
+  const database = initializeDatabase();
+  const { state, handle } = createHandler(database);
+  await handle({ method: 'GET', headers: {}, socket: { remoteAddress: '127.0.0.1' } }, {}, '', '/api/admin/security-visits');
+  assert.equal(state.status, 403);
 });

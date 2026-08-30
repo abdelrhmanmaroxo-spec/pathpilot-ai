@@ -7,6 +7,7 @@ This file tracks product changes that matter to users. Internal refactors are in
 ### What users get
 - **Production live-AI connection fixed:** browser requests can now carry PathPilot's request-correlation header through CORS, so the live provider POST and streaming routes are no longer stopped after preflight and silently replaced by the local fallback.
 - **Fast reliable Gemini delivery:** Gemini compatibility deployments now use the provider's reliable response mode and deliver the verified answer progressively over the existing live SSE channel, avoiding a 90-second failed stream attempt before fallback.
+- **Cleaner degraded decisions:** temporary provider limits no longer trigger a second wasteful AI request, and common local comparisons such as React versus Vue or JavaScript versus TypeScript now return a direct, constraint-aware decision instead of a long knowledge dump.
 - **Live local-model streaming:** the browser Local LLM can now display the answer incrementally instead of waiting for the whole generation to finish.
 - **A smarter bilingual request matcher:** Arabic, Egyptian Arabic, English, and mixed prompts are matched to the closest task archetype before execution, including diagnosis, explanation, research, comparison, decision, planning, writing, coding, summarization, translation, calculation, and ideation.
 - **Automatic cognitive routing:** the agent selects a safe high-level pipeline for understanding, retrieval, analysis, planning, comparison, verification, answer synthesis, and live delivery without exposing private chain-of-thought.
@@ -18,6 +19,7 @@ This file tracks product changes that matter to users. Internal refactors are in
 ### Quality and safety
 - A production-style CORS regression test protects the live assistant request header contract.
 - Provider-aware delivery tests cover Gemini progressive responses, native-stream overrides, and lossless Arabic/Markdown chunking.
+- Decision fallback tests protect requested reason counts, deadline/career trade-offs, and honest clarification for unknown options.
 - Hidden model reasoning tags are filtered from both complete and partial local-model output.
 - Local generation cancellation interrupts the active WebLLM generation when supported.
 - New regression tests cover Arabic intent matching, mixed technical requests, live cumulative deltas, hidden-reasoning filtering, and cancellation.

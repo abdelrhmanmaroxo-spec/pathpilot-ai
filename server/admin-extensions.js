@@ -7,6 +7,12 @@ import {
   trackEvent,
 } from './lib/database.js';
 import { sendPasswordResetEmail } from './lib/email.js';
+import {
+  getSecurityVisitSummary,
+  listSecurityVisits,
+  recordSecurityVisit,
+  securityVisitRetentionDays,
+} from './lib/visitor-security.js';
 
 function bearerToken(request) {
   const header = String(request.headers.authorization || '');
@@ -77,6 +83,11 @@ function decorateUser(user, ownerEmail) {
     auth_provider: user.auth_provider,
     created_at: user.created_at,
     last_seen_at: user.last_seen_at,
+    disabled_at: user.disabled_at || null,
+    disabled_reason: user.disabled_reason || null,
+    disabled_by: user.disabled_by || null,
+    disabled_by_name: user.disabled_by_name || null,
+    disabled_by_email: user.disabled_by_email || null,
     isOwner: Boolean(ownerEmail && normalizeEmail(user.email) === ownerEmail),
   };
 }
@@ -126,8 +137,37 @@ export function createAdminExtensions({ database, env = process.env, sendJson, a
   const resendApiKey = String(env.RESEND_API_KEY || '').trim();
   const emailFrom = String(env.EMAIL_FROM || '').trim();
   const emailReady = Boolean(resendApiKey && emailFrom);
+  const visitRetentionDays = securityVisitRetentionDays(env.SECURITY_LOG_RETENTION_DAYS);
 
   return async function handleAdminExtension(request, response, origin, path) {
+    if (request.method === 'POST' && path === '/api/security/visit') {
+      const body = await readJson(request);
+      const user = currentUser(database, request);
+      const userAgent = String(request.headers['user-agent'] || '').slice(0, 500);
+      try {
+        recordSecurityVisit(database, {
+          visitorId: body.visitorId,
+          userId: user?.id || null,
+          ipAddress: clientIp(request),
+          userAgent,
+          device: describeDevice(userAgent, body.platform),
+          language: body.language,
+          timezone: body.timezone,
+          screen: body.screen,
+          path: body.path,
+          referrerHost: body.referrerHost,
+        }, visitRetentionDays);
+      } catch (error) {
+        if (error?.message === 'INVALID_VISITOR_ID') {
+          sendJson(response, 400, { error: 'Visitor identifier is invalid.' }, origin, allowedOrigins);
+          return true;
+        }
+        throw error;
+      }
+      sendJson(response, 202, { ok: true, retentionDays: visitRetentionDays }, origin, allowedOrigins);
+      return true;
+    }
+
     if (request.method === 'POST' && path === '/api/security/login-device') {
       const user = currentUser(database, request);
       if (!user) {
@@ -203,6 +243,14 @@ export function createAdminExtensions({ database, env = process.env, sendJson, a
       return true;
     }
 
+    if (request.method === 'GET' && path === '/api/admin/security-visits') {
+      if (!requireAdmin({ database, request, response, origin, allowedOrigins, sendJson })) return true;
+      const visits = listSecurityVisits(database, { limit: 250, retentionDays: visitRetentionDays });
+      const summary = getSecurityVisitSummary(database, visitRetentionDays);
+      sendJson(response, 200, { visits, summary }, origin, allowedOrigins);
+      return true;
+    }
+
     if (request.method === 'GET' && path === '/api/admin/account-log') {
       if (!requireOwner({ database, request, response, origin, allowedOrigins, sendJson, ownerEmail })) return true;
       const accounts = database.prepare(`
@@ -248,7 +296,10 @@ export function createAdminExtensions({ database, env = process.env, sendJson, a
         return true;
       }
       const banned = Boolean(body.banned);
-      database.prepare('UPDATE users SET disabled = ? WHERE id = ?').run(banned ? 1 : 0, target.id);
+      const reason = String(body.reason || '').trim().slice(0, 300);
+      const disabledAt = banned ? new Date().toISOString() : null;
+      database.prepare('UPDATE users SET disabled = ?, disabled_at = ?, disabled_reason = ?, disabled_by = ? WHERE id = ?')
+        .run(banned ? 1 : 0, disabledAt, banned ? (reason || 'Policy or security review') : null, banned ? actor.id : null, target.id);
       if (banned) deleteSessionsForUser(database, target.id);
       const actorIsOwner = Boolean(ownerEmail && normalizeEmail(actor.email) === ownerEmail);
       trackEvent(database, {
@@ -256,7 +307,7 @@ export function createAdminExtensions({ database, env = process.env, sendJson, a
         eventType: banned
           ? (actorIsOwner ? 'user_banned_by_owner' : 'user_banned_by_admin')
           : (actorIsOwner ? 'user_unbanned_by_owner' : 'user_unbanned_by_admin'),
-        metadata: { targetUserId: target.id, targetEmail: target.email },
+        metadata: { targetUserId: target.id, targetEmail: target.email, reason: banned ? (reason || 'Policy or security review') : null },
       });
       sendJson(response, 200, { user: decorateUser(findUserById(database, target.id), ownerEmail) }, origin, allowedOrigins);
       return true;
@@ -311,7 +362,8 @@ export function createAdminExtensions({ database, env = process.env, sendJson, a
       const owner = requireOwner({ database, request, response, origin, allowedOrigins, sendJson, ownerEmail });
       if (!owner) return true;
       const users = database.prepare(`
-        SELECT id,name,email,role,disabled,email_verified,verified_at,auth_provider,created_at,last_seen_at
+        SELECT id,name,email,role,disabled,email_verified,verified_at,auth_provider,created_at,last_seen_at,
+               disabled_at,disabled_reason,disabled_by
         FROM users ORDER BY created_at DESC
       `).all().map((item) => decorateUser(item, ownerEmail));
       const snapshot = {
@@ -325,6 +377,8 @@ export function createAdminExtensions({ database, env = process.env, sendJson, a
         aiRequests: database.prepare('SELECT id,user_id,workspace,tool,model,status,latency_ms,error_code,created_at FROM ai_requests ORDER BY id DESC LIMIT 5000').all(),
         clientErrors: database.prepare('SELECT id,user_id,message,context,created_at FROM client_errors ORDER BY id DESC LIMIT 5000').all(),
         adminInvites: database.prepare('SELECT email,invited_by,created_at,accepted_at FROM admin_invites ORDER BY created_at DESC').all(),
+        securityVisits: listSecurityVisits(database, { limit: 500, retentionDays: visitRetentionDays }),
+        securityVisitSummary: getSecurityVisitSummary(database, visitRetentionDays),
       };
       trackEvent(database, { userId: owner.id, eventType: 'owner_data_exported' });
       sendJson(response, 200, { snapshot }, origin, allowedOrigins);

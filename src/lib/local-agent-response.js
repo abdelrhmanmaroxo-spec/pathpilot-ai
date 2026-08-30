@@ -1,5 +1,6 @@
 import { localConversationalReply } from './local-conversation.js';
 import { generateBrowserLLMResponse, isBrowserLLMReady } from './local-llm.js';
+import { naturalLocalResponse } from './natural-local-response.js';
 import { superLocalResponse } from './local-super-reasoner.js';
 
 function freshnessBoundary(answer, freshnessNeeded) {
@@ -56,6 +57,18 @@ export async function generateLocalAgentResponse({
       answer: conversational,
       source: 'local-conversation',
       degraded: false,
+      route: 'local-agent',
+      sources: [],
+      sourceCount: 0,
+    };
+  }
+
+  const natural = naturalLocalResponse({ prompt, tool });
+  if (natural) {
+    return {
+      answer: freshnessBoundary(natural, freshnessNeeded),
+      source: 'local-reasoner',
+      degraded: true,
       route: 'local-agent',
       sources: [],
       sourceCount: 0,

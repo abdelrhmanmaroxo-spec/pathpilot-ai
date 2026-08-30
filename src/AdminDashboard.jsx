@@ -90,11 +90,15 @@ export default function AdminDashboard({ user, onBack }) {
   const changeBan = async (item) => {
     if (!canModerateUser(user, item)) return;
     const nextBanned = !item.disabled;
-    const message = nextBanned ? `Ban ${item.email}?\n\nThe account will be signed out immediately and cannot sign in until you unban it.` : `Unban ${item.email}?`;
-    if (!globalThis.confirm?.(message)) return;
+    let reason = '';
+    if (nextBanned) {
+      const enteredReason = globalThis.prompt?.(`Ban ${item.email}?\n\nEnter the reason for the audit log. The account will be signed out immediately.`, 'Policy or security review');
+      if (enteredReason === null) return;
+      reason = String(enteredReason || '').trim();
+    } else if (!globalThis.confirm?.(`Unban ${item.email}?`)) return;
     setBanBusy(item.id); setError(''); setNotice('');
     try {
-      const updated = await setUserBan(item.id, nextBanned); patchUser(item.id, updated);
+      const updated = await setUserBan(item.id, nextBanned, reason); patchUser(item.id, updated);
       setNotice(nextBanned ? `${item.email} is now banned and all sessions were revoked.` : `${item.email} is active again.`);
     } catch (requestError) { setError(requestError.message); } finally { setBanBusy(''); }
   };
@@ -192,7 +196,7 @@ export default function AdminDashboard({ user, onBack }) {
         />
       )}
 
-      {tab === 'security' && <AdminSecurity bannedUsers={bannedUsers} loginLog={data?.loginLog} />}
+      {tab === 'security' && <AdminSecurity bannedUsers={bannedUsers} loginLog={data?.loginLog} visits={data?.securityVisits} visitSummary={data?.securityVisitSummary} securityEvents={data?.securityEvents} />}
       {tab === 'owner-log' && user?.isOwner && <AdminOwnerLog accounts={accountLog} />}
       {tab === 'api' && <AdminApiUsage requests={data?.apiUsage} />}
       {tab === 'errors' && <AdminErrors errors={data?.errors} />}

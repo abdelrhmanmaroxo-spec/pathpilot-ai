@@ -189,6 +189,22 @@ function shouldRethrow(error, signal) {
   );
 }
 
+const STREAM_ERRORS_WITHOUT_IMMEDIATE_RETRY = new Set([
+  'AI_NOT_CONFIGURED',
+  'PROVIDER_AUTH_FAILED',
+  'PROVIDER_RATE_LIMITED',
+  'PROVIDER_UNAVAILABLE',
+  'PROVIDER_REQUEST_REJECTED',
+  'PROVIDER_TIMEOUT',
+  'EMPTY_PROVIDER_RESPONSE',
+  'EMPTY_STREAM_RESPONSE',
+  'STREAM_FAILED',
+]);
+
+export function shouldAvoidDuplicateProviderAttempt(error) {
+  return STREAM_ERRORS_WITHOUT_IMMEDIATE_RETRY.has(String(error?.code || ''));
+}
+
 async function tryPreferredLocalAgent({ args, contextualPrompt, effectivePreferences, plan }) {
   if (plan?.mode !== 'auto' || !args.routeOptions?.preferLocalModel || !effectivePreferences.localLlmEnabled || plan.freshnessNeeded) return null;
   const local = await generateLocalAgentResponse({
@@ -400,15 +416,26 @@ export async function streamRoutedAssistantResponse(args, { onDelta, onActivity,
     if (shouldRethrow(error, args.signal) || emitted) throw error;
     console.warn('PathPilot live stream could not start; falling back to the existing answer pipeline.', error);
     let fallbackEmitted = false;
-    const fallback = await generateRoutedAssistantResponse({
-      ...args,
+    const callbacks = {
       onProgress: (progress) => activity.emit(localProgressStep(progress?.phase), progress?.text || ''),
       onDelta: (delta, fullAnswer) => {
         fallbackEmitted = true;
         activity.emit('stream');
         onDelta?.(delta, fullAnswer);
       },
-    });
+    };
+    const fallback = agentEnabled && shouldAvoidDuplicateProviderAttempt(error)
+      ? withAgentMetadata(await generateLocalAgentResponse({
+        mode: args.mode,
+        tool: args.tool,
+        prompt: contextualPrompt,
+        preferences: effectivePreferences,
+        signal: args.signal,
+        freshnessNeeded: plan.freshnessNeeded,
+        allowColdStart: false,
+        ...callbacks,
+      }), plan)
+      : await generateRoutedAssistantResponse({ ...args, ...callbacks });
     if (!fallbackEmitted) {
       activity.emit('stream');
       onDelta?.(fallback.answer, fallback.answer);

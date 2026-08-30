@@ -99,6 +99,7 @@ export default function AdminUsers({
                         <Ban size={14} /> Banned
                       </span>
                     ) : <span style={{ color: '#86efac' }}>Active</span>}
+                    {item.disabled && <small className="admin-cell-note" title={item.disabled_reason || ''}>{item.disabled_reason || 'Policy or security review'}</small>}
                   </td>
                   <td>
                     {item.isOwner ? (

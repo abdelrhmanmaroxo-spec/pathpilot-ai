@@ -119,6 +119,7 @@ export function Footer() {
           <Brand />
           <p>مساعد عربي عام للدراسة والعمل والحياة اليومية، بطبقات AI حي ومحلي وموسوعة معرفية.</p>
           <small className="built-by">Built by Abdelrhman Essam</small>
+          <small className="security-privacy-notice">للأمان ومنع إساءة الاستخدام: قد يُسجّل عنوان IP وبيانات الجهاز الأساسية لمدة محدودة. لا يتم جمع GPS أو كلمات السر.</small>
         </div>
         <div className="footer-meta">
           <span>PathPilot BETA</span>

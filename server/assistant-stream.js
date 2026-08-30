@@ -225,6 +225,7 @@ export function createAssistantStreamHandler({ env = process.env, database, fetc
         abortReason: controller.signal.reason,
       });
       const code = classified.code;
+      console.warn(`[PathPilot assistant stream ${requestId || 'unknown'}] ${code}${classified.providerStatus ? ` status=${classified.providerStatus}` : ''}`);
 
       trackAiRequest(database, {
         userId: user?.id || null,

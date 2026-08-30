@@ -7,6 +7,8 @@ export const hasPlatformBackend = Boolean(PLATFORM_API_URL);
 
 const TOKEN_KEY = 'pathpilot.session.v1';
 const ANONYMOUS_KEY = 'pathpilot.anonymous.v1';
+const VISIT_REPORTED_KEY = 'pathpilot.security_visit.v1';
+const VISIT_REPORT_INTERVAL_MS = 30 * 60 * 1000;
 
 function storage() {
   return globalThis.localStorage;
@@ -54,11 +56,45 @@ function loginDeviceDetails() {
   };
 }
 
+function visitDetails() {
+  const locationInfo = globalThis.location;
+  let referrerHost;
+  try { referrerHost = globalThis.document?.referrer ? new URL(globalThis.document.referrer).hostname : ''; } catch { referrerHost = ''; }
+  const route = String(locationInfo?.hash || '').replace(/[^a-z0-9/_-]/gi, '').slice(0, 80);
+  return {
+    ...loginDeviceDetails(),
+    visitorId: anonymousId(),
+    path: `${locationInfo?.pathname || '/'}${route}`.slice(0, 160),
+    referrerHost,
+  };
+}
+
+function visitMarker() {
+  try { return JSON.parse(globalThis.sessionStorage?.getItem(VISIT_REPORTED_KEY) || 'null'); } catch { return null; }
+}
+
+function setVisitMarker(value) {
+  try { globalThis.sessionStorage?.setItem(VISIT_REPORTED_KEY, JSON.stringify(value)); } catch { /* storage can be unavailable */ }
+}
+
 async function reportLoginDevice() {
   return request('/api/security/login-device', {
     method: 'POST',
     body: JSON.stringify(loginDeviceDetails()),
   });
+}
+
+export async function reportSecurityVisit({ force = false } = {}) {
+  if (!hasPlatformBackend) return undefined;
+  const identity = getSessionToken() ? 'signed-in' : 'guest';
+  const marker = visitMarker();
+  if (!force && marker?.identity === identity && Date.now() - Number(marker.recordedAt || 0) < VISIT_REPORT_INTERVAL_MS) return undefined;
+  const payload = await request('/api/security/visit', {
+    method: 'POST',
+    body: JSON.stringify(visitDetails()),
+  });
+  setVisitMarker({ identity, recordedAt: Date.now() });
+  return payload;
 }
 
 export async function registerAccount(details) {
@@ -76,14 +112,20 @@ export async function requestPasswordReset(email) {
 export async function loginAccount(details) {
   const payload = await request('/api/auth/login', { method: 'POST', body: JSON.stringify(details) });
   setSessionToken(payload.token);
-  await reportLoginDevice().catch(() => undefined);
+  await Promise.all([
+    reportLoginDevice().catch(() => undefined),
+    reportSecurityVisit({ force: true }).catch(() => undefined),
+  ]);
   return payload.user;
 }
 
 export async function loginWithGoogleCredential(credential) {
   const payload = await request('/api/auth/google', { method: 'POST', body: JSON.stringify({ credential }) });
   setSessionToken(payload.token);
-  await reportLoginDevice().catch(() => undefined);
+  await Promise.all([
+    reportLoginDevice().catch(() => undefined),
+    reportSecurityVisit({ force: true }).catch(() => undefined),
+  ]);
   return payload.user;
 }
 
@@ -148,8 +190,8 @@ export async function deleteUserAccount(userId) {
   return request('/api/admin/users/delete', { method: 'POST', body: JSON.stringify({ userId }) });
 }
 
-export async function setUserBan(userId, banned) {
-  const payload = await request('/api/admin/users/ban', { method: 'POST', body: JSON.stringify({ userId, banned }) });
+export async function setUserBan(userId, banned, reason = '') {
+  const payload = await request('/api/admin/users/ban', { method: 'POST', body: JSON.stringify({ userId, banned, reason }) });
   return payload.user;
 }
 
@@ -204,7 +246,7 @@ export async function loadSecurityEvents() {
 }
 
 export async function loadAdminDashboard() {
-  const [summary, users, apiUsage, errors, feedback, status, researchStatus, loginLog] = await Promise.all([
+  const [summary, users, apiUsage, errors, feedback, status, researchStatus, loginLog, securityVisits, securityEvents] = await Promise.all([
     request('/api/admin/summary'),
     request('/api/admin/users'),
     request('/api/admin/api-usage'),
@@ -213,6 +255,8 @@ export async function loadAdminDashboard() {
     request('/api/status'),
     request('/api/research/status').catch(() => ({ researchAvailable: false, targetSources: 18, appliesToAllTools: true })),
     request('/api/admin/login-log'),
+    request('/api/admin/security-visits'),
+    request('/api/admin/security-events').catch(() => ({ events: [] })),
   ]);
   return {
     summary: summary.summary,
@@ -223,5 +267,8 @@ export async function loadAdminDashboard() {
     status,
     researchStatus,
     loginLog: loginLog.logins || [],
+    securityVisits: securityVisits.visits || [],
+    securityVisitSummary: securityVisits.summary || null,
+    securityEvents: securityEvents.events || [],
   };
 }
