@@ -102,8 +102,10 @@ test('neutral fallback removes avoidable masculine address instead of guessing',
   ].join(' ');
   const neutral = adaptArabicConversationalReply(base, null);
 
-  assert.doesNotMatch(neutral, /يا معلم|أهلًا بيك|تحب نشتغل|عامل إيه إنت|معاك|وقت ما تحب|شد حيلك|تقدر تعمله|اعمل أول|خلّص الخطوة/);
-  assert.match(neutral, /أهلًا|نشتغل على إيه|إيه أخبارك|خلينا نركز|ممكن يتعمل|في أي وقت/);
+  assert.equal(
+    neutral,
+    'أهلًا. نشتغل على إيه؟ تمام 🙌 موجود هنا. إيه أخبارك؟ يلا نتحرك 🔥 خلينا نركز على اللي ممكن يتعمل دلوقتي. نبدأ بأول خطوة، ونخلّص الخطوة اللي بعدها. نكمل في أي وقت، والمهم إن الموضوع ظبط.',
+  );
 });
 
 test('male adaptation preserves natural masculine wording when strongly supported', () => {
