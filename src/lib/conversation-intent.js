@@ -3,7 +3,7 @@ const MAX_SOCIAL_TOKENS = 18;
 
 const ARABIC_DIACRITICS = /[\u0610-\u061a\u064b-\u065f\u0670\u06d6-\u06ed]/g;
 
-const ACTION_CUES = /(?:\b(?:continue|explain|why|write|rewrite|translate|compare|search|find|fix|debug|analy[sz]e|summari[sz]e|calculate|solve|show|build|create|edit)\b|(?:^|\s)(?:كمل|كمّل|تابع|وضح|وضّح|ليه|اكتب|اعد|أعد|ترجم|قارن|دور|ابحث|اصلح|أصلح|حلل|لخص|احسب|حل|وريني|اعمل|ابني|عدل|عدّل)(?:\s|$))/i;
+const ACTION_CUES = /(?:\b(?:continue|explain|why|write|rewrite|translate|compare|search|find|fix|debug|analy[sz]e|analysis|summari[sz]e|summary|calculate|solve|show|build|create|edit)\b|(?:^|\s)(?:كمل|كمّل|تابع|وضح|وضّح|ليه|اكتب|اعد|أعد|ترجم|قارن|دور|ابحث|اصلح|أصلح|حلل|لخص|احسب|حل|وريني|اعمل|ابني|عدل|عدّل|تحليل|شرح|ترجمه|مقارنه|تلخيص)(?:\s|$))/i;
 
 const EMBEDDED_PATTERNS = [
   ['morning_greeting', /(?:^|\s)(?:good morning|صباح الخير|صباح النور|صباح الفل)(?:\s|$)/],
