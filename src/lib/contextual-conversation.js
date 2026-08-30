@@ -22,7 +22,7 @@ export function contextualConversationalReply(prompt, options = {}) {
   });
   if (!answer || language !== 'ar') return answer;
 
-  const gender = parseGrammarGenderHint(options.contextPrompt)
-    || detectStrongUserGrammaticalGender(prompt);
+  const gender = detectStrongUserGrammaticalGender(prompt)
+    || parseGrammarGenderHint(options.contextPrompt);
   return adaptArabicConversationalReply(answer, gender);
 }
