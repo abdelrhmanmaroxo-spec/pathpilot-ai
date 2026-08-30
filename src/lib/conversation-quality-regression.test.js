@@ -7,14 +7,14 @@ import {
 } from './conversation-intent.js';
 
 test('normalizes noisy short turns before intent matching', () => {
-  assert.equal(normalizeConversationText('هلووو!!!'), 'هلو');
+  assert.equal(normalizeConversationText('hellooo!!!'), 'hello');
   assert.equal(normalizeConversationText('تــمــام؟؟'), 'تمام');
   assert.equal(normalizeConversationText('msh   fahm!!!'), 'مش فاهم');
 });
 
 test('recognizes punctuation and spelling variants without changing intent', () => {
   const cases = [
-    ['هلووو!!!', 'greeting'],
+    ['hellooo!!!', 'greeting'],
     ['صباح الخيررر يا صاحبي!!!', 'morning_greeting'],
     ['تــمــام؟؟', 'acknowledgement'],
     ['msh   fahm!!!', 'confusion'],
