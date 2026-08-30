@@ -15,6 +15,13 @@ import { installProviderResilience } from './lib/provider-resilience.js';
 import { createRoleRateLimiter } from './lib/rate-limit.js';
 import { attachRequestContext } from './lib/request-context.js';
 import { recordSecurityEvent } from './lib/system-control.js';
+import {
+  enrichVisitorEventPayload,
+  listVisitorSecurityEvents,
+  pruneVisitorSecurityEvents,
+  VISITOR_EVENT_TYPE,
+  VISITOR_RETENTION_DAYS,
+} from './lib/visitor-security.js';
 
 const MAX_DIRECT_BODY_BYTES = 128_000;
 
@@ -159,6 +166,68 @@ export function startPathPilotServer({ env = process.env, logger = console } = {
         ...cors,
       });
       response.end(JSON.stringify({ error: 'Too many requests. Try again shortly.', code: 'RATE_LIMITED', requestId }));
+      return;
+    }
+
+    if (url.pathname === '/api/events' && request.method === 'POST') {
+      (async () => {
+        let raw;
+        let payload;
+        try {
+          raw = await bufferRequest(request);
+          payload = JSON.parse(raw.toString('utf8') || '{}');
+        } catch (error) {
+          const tooLarge = error?.code === 'BODY_TOO_LARGE';
+          response.writeHead(tooLarge ? 413 : 400, {
+            'Content-Type': 'application/json; charset=utf-8',
+            'Cache-Control': 'no-store',
+            ...cors,
+          });
+          response.end(JSON.stringify({
+            error: tooLarge ? 'Request body is too large.' : 'Invalid JSON request.',
+            code: tooLarge ? 'BODY_TOO_LARGE' : 'INVALID_REQUEST',
+            requestId,
+          }));
+          return;
+        }
+
+        const enriched = enrichVisitorEventPayload(payload, request);
+        if (enriched.eventType === VISITOR_EVENT_TYPE) {
+          pruneVisitorSecurityEvents(database);
+        }
+        const replay = replayRequest(request, Buffer.from(JSON.stringify(enriched)));
+        await appHandler(replay, response);
+      })().catch((error) => {
+        logger.error?.(`[PathPilot telemetry ${requestId}]`, error);
+        if (response.headersSent) {
+          if (!response.writableEnded) response.end();
+          return;
+        }
+        response.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...cors });
+        response.end(JSON.stringify({ error: 'Internal server error.', code: 'INTERNAL_ERROR', requestId }));
+      });
+      return;
+    }
+
+    if (url.pathname === '/api/admin/visitor-log') {
+      if (request.method === 'OPTIONS') {
+        response.writeHead(204, cors);
+        response.end();
+        return;
+      }
+      if (request.method !== 'GET') {
+        response.writeHead(405, { 'Content-Type': 'application/json; charset=utf-8', ...cors });
+        response.end(JSON.stringify({ error: 'Method not allowed.', code: 'METHOD_NOT_ALLOWED', requestId }));
+        return;
+      }
+      if (!user || user.role !== 'admin' || user.disabled) {
+        response.writeHead(403, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...cors });
+        response.end(JSON.stringify({ error: 'Admin access required.', code: 'ADMIN_REQUIRED', requestId }));
+        return;
+      }
+      const visitors = listVisitorSecurityEvents(database, 200);
+      response.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...cors });
+      response.end(JSON.stringify({ visitors, retentionDays: VISITOR_RETENTION_DAYS, requestId }));
       return;
     }
 
