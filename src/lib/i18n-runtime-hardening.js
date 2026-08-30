@@ -106,15 +106,21 @@ function escapePattern(value) {
 }
 
 function replaceCatalogEntry(value, from, to) {
-  if (from.length > 3) return value.includes(from) ? value.split(from).join(to) : value;
-  const boundary = '[\\s.,،;:!?؟·()\\[\\]{}<>/\\\\|"\']';
-  const pattern = new RegExp(`(^|${boundary})${escapePattern(from)}(?=$|${boundary})`, 'g');
+  const boundary = '[^\\p{L}\\p{N}_]';
+  const pattern = new RegExp(`(^|${boundary})${escapePattern(from)}(?=$|${boundary})`, 'gu');
   return value.replace(pattern, (_match, prefix) => `${prefix}${to}`);
 }
 
 export function translateRuntimeText(value, targetLanguage) {
   if (!value) return value;
-  const entries = Object.entries(targetLanguage === 'en' ? AR_TO_EN : EN_TO_AR)
+  const table = targetLanguage === 'en' ? AR_TO_EN : EN_TO_AR;
+  const trimmed = value.trim();
+  const exact = table[trimmed];
+  if (exact) {
+    const start = value.indexOf(trimmed);
+    return `${value.slice(0, start)}${exact}${value.slice(start + trimmed.length)}`;
+  }
+  const entries = Object.entries(table)
     .sort((a, b) => b[0].length - a[0].length);
   let result = value;
   for (const [from, to] of entries) {
