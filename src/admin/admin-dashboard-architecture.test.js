@@ -4,6 +4,8 @@ import test from 'node:test';
 
 const entryUrl = new URL('../AdminDashboard.jsx', import.meta.url);
 const viewUrl = new URL('./AdminDashboardView.jsx', import.meta.url);
+const controllerUrl = new URL('./useAdminDashboardController.js', import.meta.url);
+const userActionsUrl = new URL('./useAdminUserActions.js', import.meta.url);
 
 test('admin dashboard entry stays focused on access gating and composition', async () => {
   const [entrySource, viewSource] = await Promise.all([
@@ -19,4 +21,20 @@ test('admin dashboard entry stays focused on access gating and composition', asy
   assert.match(viewSource, /AdminSecurity/);
   assert.match(viewSource, /AdminAnalytics/);
   assert.match(viewSource, /AdminOwnerLog/);
+});
+
+test('admin dashboard controller delegates user mutations to a focused feature hook', async () => {
+  const [controllerSource, userActionsSource] = await Promise.all([
+    readFile(controllerUrl, 'utf8'),
+    readFile(userActionsUrl, 'utf8'),
+  ]);
+
+  assert.match(controllerSource, /useAdminUserActions/);
+  assert.doesNotMatch(controllerSource, /updateUserRole|setUserBan|sendOwnerPasswordReset|deleteUserAccount/);
+
+  assert.match(userActionsSource, /canModerateUser/);
+  assert.match(userActionsSource, /updateUserRole/);
+  assert.match(userActionsSource, /setUserBan/);
+  assert.match(userActionsSource, /sendOwnerPasswordReset/);
+  assert.match(userActionsSource, /deleteUserAccount/);
 });
