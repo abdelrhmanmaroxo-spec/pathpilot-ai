@@ -66,6 +66,23 @@ const AR_TO_EN = {
   'محفوظ بالفعل، لكن مزود البريد لم يسلّم رسالة التفعيل في المحاولة الحالية.': 'is already saved, but the email provider did not deliver the verification message on this attempt.',
   '. افتح الرسالة واضغط Verify email، وبعدها ارجع وسجل دخولك.': '. Open the message, select Verify email, then return here and sign in.',
   'أو': 'or',
+  'تم حذف المحادثة المحددة فقط.': 'The selected conversation was deleted.',
+  'إدارة المحادثات': 'Manage conversations',
+  'ابحث، ثبّت المهم، ونظّم المحادثات في مجلدات وTags بدون لمس باقي السجل.': 'Search, favorite important items, and organize conversations into folders and tags without changing the rest of your history.',
+  'ابحث في السؤال، الإجابة، المجلد أو Tag…': 'Search the question, answer, folder, or tag…',
+  'مفيش نتائج مطابقة للبحث.': 'No conversations match your search.',
+  'مفيش محادثات محفوظة حاليًا.': 'No saved conversations yet.',
+  'مجلد المحادثة': 'Conversation folder',
+  'بدون مجلد': 'No folder',
+  'وسوم المحادثة': 'Conversation tags',
+  'إزالة من المفضلة': 'Remove from favorites',
+  'إضافة للمفضلة': 'Add to favorites',
+  'حذف هذه المحادثة فقط': 'Delete this conversation only',
+  'أنشئ نتيجة الأول عشان تشارك المحادثة.': 'Generate a result first before sharing the conversation.',
+  'تم نسخ هذه المحادثة فقط للمشاركة.': 'This conversation was copied for sharing.',
+  'مشاركة هذه المحادثة فقط': 'Share this conversation only',
+  'إدارة وتنظيم المحادثات': 'Manage and organize conversations',
+  'إدارة': 'Manage',
 };
 
 const EN_TO_AR = Object.fromEntries(Object.entries(AR_TO_EN).map(([ar, en]) => [en, ar]));
