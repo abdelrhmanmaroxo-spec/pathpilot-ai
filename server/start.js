@@ -6,6 +6,7 @@ import { createAssistantStreamHandler } from './assistant-stream.js';
 import { createPathPilotServer } from './index.js';
 import { createIntelligenceV3Handler } from './intelligence-v3-server.js';
 import { hashToken } from './lib/auth.js';
+import { installApiErrorEnvelope } from './lib/api-error-envelope.js';
 import { assertRuntimeConfig, logRuntimeConfig } from './lib/config.js';
 import { getSessionUser, initializeDatabase } from './lib/database.js';
 import { createCachedHealthProbe } from './lib/health.js';
@@ -138,6 +139,7 @@ export function startPathPilotServer({ env = process.env, logger = console } = {
 
   const server = createServer((request, response) => {
     const requestId = attachRequestContext(request, response);
+    installApiErrorEnvelope(response, requestId);
     const url = new URL(request.url || '/', 'http://localhost');
     const cors = responseCors(request, env);
     const user = sessionUser(request, database);
