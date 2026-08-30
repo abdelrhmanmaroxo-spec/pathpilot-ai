@@ -104,7 +104,7 @@ export function isFollowUpPrompt(prompt) {
   const explicitContinuation = /^(?:كمل|كملها|كملي|كمليها|تابع|تابعها|التاني|الثاني|نفسه|نفسها|نفسهم|continue|go on|keep going|the second|second one|same one|same thing|kml|kmel|kamel)$/i.test(text);
   const directReference = /(?:^|\s)(?:وده|ودي|وده|دي|ده|دول|هو ده|هي دي|نفس الكلام|نفس الموضوع|اللي فات|الي فات|السابق|فوق|اخر رد|آخر رد|w da|w de|w dah|w di|nafs el kalam|nafs elly fat|nafs eli fat|previous|above|last answer|same one|that answer|this answer|that one|this one|those|them)(?:\s|$)/i.test(text)
     || /\b(?:what about|and that|and this|what about it|what about that|what about this)\b/i.test(text);
-  const ellipticalAction = short && /^(?:عدله|عدلها|عدلي|عدليها|غيره|غيرها|غيريها|خليه|خليها|خليهم|اعمله|اعملها|اعملهم|وضح|وضحها|وضحلي|طب|تمام|ليه|edit it|change it|make it|make that|do that|use it|why|explain|okay then|and then)(?:\s|$)/i.test(text);
+  const ellipticalAction = short && /^(?:عدله|عدلها|عدلي|عدليها|غيره|غيرها|غيريها|خليه|خليها|خليهم|اعمله|اعملها|اعملهم|edit it|change it|make it|make that|do that|use it|explain it|okay then|and then)(?:\s|$)/i.test(text);
   const tinyQuestion = tokenCount <= 2 && /^(?:ليه|لماذا|why|وضح|explain|طب|تمام|وده|ودي|ده|دي|and why|what about)$/i.test(text);
 
   return explicitContinuation || directReference || ellipticalAction || tinyQuestion;
