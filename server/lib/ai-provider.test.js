@@ -31,6 +31,23 @@ test('automatic chat agent guidance reaches the provider system prompt', () => {
   assert.match(prompt, /final_quality_gate/);
 });
 
+test('conversational guidance covers normalization, lightweight turns, variation, and safe gender adaptation', () => {
+  const prompt = buildSystemPrompt({ preferences: { displayName: 'Ahmed', responseStyle: 'concise' } });
+  assert.match(prompt, /semantic intent and normalized meaning/i);
+  assert.match(prompt, /Keep lightweight social turns lightweight/i);
+  assert.match(prompt, /Vary wording across nearby turns/i);
+  assert.match(prompt, /Never infer gender from names/i);
+  assert.match(prompt, /Do not use the display name as evidence for gender/i);
+  assert.match(prompt, /one or two natural sentences/i);
+});
+
+test('language and follow-up guidance preserves dominant language and latest-turn context', () => {
+  const prompt = buildSystemPrompt();
+  assert.match(prompt, /follow-ups such as/i);
+  assert.match(prompt, /most recent relevant turn/i);
+  assert.match(prompt, /dominant language/i);
+});
+
 test('provider request supports optional reasoning without requiring it', () => {
   const chat = buildProviderRequest({ apiMode: 'chat-completions', model: 'model-a', prompt: 'مرحبا', reasoningEffort: '' });
   const responses = buildProviderRequest({ apiMode: 'responses', model: 'model-b', prompt: 'مرحبا', reasoningEffort: 'medium' });
