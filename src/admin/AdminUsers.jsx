@@ -1,6 +1,7 @@
 import {
   Ban, CheckCircle2, Crown, KeyRound, MailPlus, ShieldCheck, Trash2, XCircle,
 } from 'lucide-react';
+import { canModerateUser } from './admin-permissions.js';
 import { dateTime } from './admin-utils.js';
 import { EmptyAdmin } from './AdminShared.jsx';
 
@@ -109,47 +110,56 @@ export default function AdminUsers({
                   <td>{new Date(item.created_at).toLocaleDateString()}</td>
                   <td>{dateTime(item.last_seen_at)}</td>
                   <td>
-                    {item.isOwner ? <strong>Protected owner</strong> : user?.isOwner ? (
+                    {item.isOwner ? <strong>Protected owner</strong> : (
                       <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
-                        <button
-                          type="button"
-                          className="button button-ghost"
-                          disabled={roleBusy === item.id || deleteBusy === item.id || banBusy === item.id}
-                          onClick={() => onChangeRole(item)}
-                        >
-                          <ShieldCheck size={15} /> {roleBusy === item.id ? '...' : item.role === 'admin' ? 'Remove Admin' : 'Make Admin'}
-                        </button>
-                        <button
-                          type="button"
-                          className="button button-ghost"
-                          disabled={resetBusy === item.id}
-                          onClick={() => onResetPassword(item)}
-                        >
-                          <KeyRound size={15} /> {resetBusy === item.id ? 'Sending…' : 'Reset Password'}
-                        </button>
-                        <button
-                          type="button"
-                          className="button button-ghost"
-                          style={{
-                            borderColor: item.disabled ? 'rgba(34,197,94,.45)' : 'rgba(245,158,11,.45)',
-                            color: item.disabled ? '#86efac' : '#fbbf24',
-                          }}
-                          disabled={banBusy === item.id || deleteBusy === item.id}
-                          onClick={() => onChangeBan(item)}
-                        >
-                          <Ban size={15} /> {banBusy === item.id ? '...' : item.disabled ? 'Unban' : 'Ban'}
-                        </button>
-                        <button
-                          type="button"
-                          className="button button-ghost"
-                          style={{ borderColor: 'rgba(239,68,68,.45)', color: '#f87171' }}
-                          disabled={deleteBusy === item.id || roleBusy === item.id || banBusy === item.id}
-                          onClick={() => onRemoveUser(item)}
-                        >
-                          <Trash2 size={15} /> {deleteBusy === item.id ? 'Deleting…' : 'Delete Account'}
-                        </button>
+                        {user?.isOwner && (
+                          <>
+                            <button
+                              type="button"
+                              className="button button-ghost"
+                              disabled={roleBusy === item.id || deleteBusy === item.id || banBusy === item.id}
+                              onClick={() => onChangeRole(item)}
+                            >
+                              <ShieldCheck size={15} /> {roleBusy === item.id ? '...' : item.role === 'admin' ? 'Remove Admin' : 'Make Admin'}
+                            </button>
+                            <button
+                              type="button"
+                              className="button button-ghost"
+                              disabled={resetBusy === item.id}
+                              onClick={() => onResetPassword(item)}
+                            >
+                              <KeyRound size={15} /> {resetBusy === item.id ? 'Sending…' : 'Reset Password'}
+                            </button>
+                          </>
+                        )}
+                        {canModerateUser(user, item) && (
+                          <button
+                            type="button"
+                            className="button button-ghost"
+                            style={{
+                              borderColor: item.disabled ? 'rgba(34,197,94,.45)' : 'rgba(245,158,11,.45)',
+                              color: item.disabled ? '#86efac' : '#fbbf24',
+                            }}
+                            disabled={banBusy === item.id || deleteBusy === item.id}
+                            onClick={() => onChangeBan(item)}
+                          >
+                            <Ban size={15} /> {banBusy === item.id ? '...' : item.disabled ? 'Unban' : 'Ban'}
+                          </button>
+                        )}
+                        {user?.isOwner && (
+                          <button
+                            type="button"
+                            className="button button-ghost"
+                            style={{ borderColor: 'rgba(239,68,68,.45)', color: '#f87171' }}
+                            disabled={deleteBusy === item.id || roleBusy === item.id || banBusy === item.id}
+                            onClick={() => onRemoveUser(item)}
+                          >
+                            <Trash2 size={15} /> {deleteBusy === item.id ? 'Deleting…' : 'Delete Account'}
+                          </button>
+                        )}
+                        {!user?.isOwner && !canModerateUser(user, item) && <span>Owner only</span>}
                       </div>
-                    ) : <span>Owner only</span>}
+                    )}
                   </td>
                 </tr>
               ))}
