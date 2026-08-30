@@ -24,7 +24,7 @@ function detectLanguage(value) {
 
 function isLaughter(value) {
   const raw = String(value || '').trim().replace(/[.!؟?،,\s]+/g, '');
-  return /^(?:[😂🤣😄😁😅]+|ههه+|خخخ+|ha(?:ha)+|lol+|lmao)$/i.test(raw);
+  return /^(?:[😂🤣😄😁😅]+|ههه+|خخخ+|ha(?:ha)+|lol+|lmao)$/iu.test(raw);
 }
 
 const INTENT_PATTERNS = [
