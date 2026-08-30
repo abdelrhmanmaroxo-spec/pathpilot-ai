@@ -12,6 +12,7 @@ This file is the execution tracker for the two approved 50-item roadmaps. Status
 
 ## Progress notes
 
+- 2026-08-30: A09 streaming error correlation hardened. The live assistant stream now maps raw provider failures into a stable public taxonomy (`PROVIDER_AUTH_FAILED`, `PROVIDER_RATE_LIMITED`, `PROVIDER_UNAVAILABLE`, `PROVIDER_REQUEST_REJECTED`, `EMPTY_PROVIDER_RESPONSE`, `PROVIDER_TIMEOUT`, `REQUEST_ABORTED`, `STREAM_FAILED`) instead of reusing arbitrary internal/provider messages as error codes. Request IDs remain attached to client-visible failures and stable codes are recorded for analytics; regression tests cover provider statuses, arbitrary internal messages, empty streams, disconnects, and timeouts. Core API error-envelope consolidation remains in progress.
 - 2026-08-30: A13 i18n coverage expanded to `AuthDialog.jsx`. The guard exposed four untranslated authentication text nodes split around inline JSX elements; those nodes now have explicit runtime English mappings so sign-in, registration, verification, resend, and password-reset surfaces stay translatable without changing authentication behavior or email delivery.
 - 2026-08-30: A13 i18n coverage expanded to `AccountExperience.jsx`. Account settings, feedback, Google account status, and account-menu Arabic-only UI copy are now guarded by the combined catalog check; the previously uncovered Google server-configuration status was added to the runtime catalog. Authentication behavior and backend contracts are unchanged.
 - 2026-08-30: A13 i18n coverage expanded to the privileged Chat workspace and shared ConversationThread. New Arabic-only literals introduced in those conversational surfaces must now be backed by the combined translation catalogs, while intentional inline English/Arabic ternaries remain supported. This extends CI protection into the main live-chat path without changing runtime behavior or persistence.
@@ -45,7 +46,7 @@ This file is the execution tracker for the two approved 50-item roadmaps. Status
 | A06 | DONE | Startup configuration validator |
 | A07 | DONE | Deep health checks for DB, Gemini, Tavily, Gmail API |
 | A08 | DONE | React Error Boundary |
-| A09 | IN_PROGRESS | Unified error codes and request correlation |
+| A09 | IN_PROGRESS | Unified error codes and request correlation; streaming provider failures now use a stable public taxonomy, while core API envelope consolidation remains |
 | A10 | IN_PROGRESS | Update README and deployment docs; changelog/user guide are now current |
 | A11 | IN_PROGRESS | Key-based i18n architecture |
 | A12 | IN_PROGRESS | Merge legacy i18n runtime layers |
