@@ -16,11 +16,17 @@ test('detects explicit self-identification without using names or second-person 
   assert.equal(detectStrongUserGrammaticalGender('انتي بنت؟'), null);
 });
 
-test('detects strong first-person Arabic grammatical forms', () => {
+test('detects strong direct first-person Arabic grammatical forms', () => {
   assert.equal(detectStrongUserGrammaticalGender('انا محتاجة مساعدة'), 'female');
-  assert.equal(detectStrongUserGrammaticalGender('أنا جاهزة'), 'female');
+  assert.equal(detectStrongUserGrammaticalGender('أنا بجد جاهزة'), 'female');
   assert.equal(detectStrongUserGrammaticalGender('انا محتاج مساعدة'), 'male');
   assert.equal(detectStrongUserGrammaticalGender('أنا تعبان'), 'male');
+});
+
+test('does not attribute another person grammatical wording to the user', () => {
+  assert.equal(detectStrongUserGrammaticalGender('انا قلت هي محتاجة مساعدة'), null);
+  assert.equal(detectStrongUserGrammaticalGender('انا شايف إن صاحبي تعبان'), null);
+  assert.equal(detectStrongUserGrammaticalGender('هي محتاجة مساعدة وانا هساعدها'), null);
 });
 
 test('newest strong prior signal wins when no current signal exists', () => {
