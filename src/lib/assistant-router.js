@@ -2,9 +2,9 @@ import { createApiClient, PathPilotApiError } from './api-client.js';
 import { answerCache } from './answer-cache.js';
 import { generateAssistantResponse } from './assistant.js';
 import { agentPlanGuidance, planChatAgent, publicAgentActivity, publicAgentToolSummary } from './chat-agent-orchestrator.js';
+import { contextualConversationalReply } from './contextual-conversation.js';
 import { hasExploitLikePayload } from './input-security.js';
 import { generateLocalAgentResponse } from './local-agent-response.js';
-import { localConversationalReply } from './local-conversation.js';
 import { routeAssistantRequest } from './smart-router.js';
 
 const platformBase = String(import.meta.env?.VITE_PLATFORM_API_URL || '').trim();
@@ -111,9 +111,9 @@ function legacyPlan(routeOptions = {}) {
   };
 }
 
-function conversationalFastPath(prompt, enabled) {
+function conversationalFastPath(prompt, enabled, contextualPrompt = prompt) {
   if (!enabled) return null;
-  const answer = localConversationalReply(prompt);
+  const answer = contextualConversationalReply(prompt, { contextPrompt: contextualPrompt });
   if (!answer) return null;
   return {
     answer,
@@ -226,7 +226,7 @@ export async function generateRoutedAssistantResponse(args) {
   const { contextualPrompt, latestPrompt, agentEnabled, plan, deepThink, effectivePreferences } = runtime;
 
   assertSafePrompt(latestPrompt);
-  const conversational = conversationalFastPath(latestPrompt, agentEnabled);
+  const conversational = conversationalFastPath(latestPrompt, agentEnabled, contextualPrompt);
   if (conversational) return withAgentMetadata(conversational, plan);
 
   await assertSystemAvailable(args.signal);
@@ -317,7 +317,7 @@ export async function streamRoutedAssistantResponse(args, { onDelta, onActivity,
   activity.emit('understand');
 
   assertSafePrompt(latestPrompt);
-  const conversational = conversationalFastPath(latestPrompt, agentEnabled);
+  const conversational = conversationalFastPath(latestPrompt, agentEnabled, contextualPrompt);
   if (conversational) {
     activity.emit('stream');
     onDelta?.(conversational.answer, conversational.answer);
