@@ -48,7 +48,7 @@ test('uses explicit or strong first-person gender evidence only', () => {
   assert.equal(detectStrongUserGrammaticalGender('هي محتاجة مساعدة'), null);
 });
 
-test('latest strong self-reference overrides older context while ambiguity stays unknown', () => {
+test('latest strong self-reference overrides older context while ambiguity preserves the newest strong hint', () => {
   assert.equal(inferUserGrammaticalGender({ latestPrompt: 'انا كويسة', priorUserPrompts: ['انا كويس'] }), 'female');
   assert.equal(inferUserGrammaticalGender({ latestPrompt: 'انا كويس', priorUserPrompts: ['انا كويسة'] }), 'male');
   assert.equal(inferUserGrammaticalGender({ latestPrompt: 'تمام', priorUserPrompts: ['انا كويسة'] }), 'female');
