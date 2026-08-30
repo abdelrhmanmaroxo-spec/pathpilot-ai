@@ -15,6 +15,7 @@ import AdminOwnerLog from './admin/AdminOwnerLog.jsx';
 import AdminSecurity from './admin/AdminSecurity.jsx';
 import AdminSystemStatus from './admin/AdminSystemStatus.jsx';
 import AdminUsers from './admin/AdminUsers.jsx';
+import { canModerateUser } from './admin/admin-permissions.js';
 import { downloadJson } from './admin/admin-utils.js';
 import { EmptyAdmin } from './admin/AdminShared.jsx';
 
@@ -93,7 +94,7 @@ export default function AdminDashboard({ user, onBack }) {
   };
 
   const changeBan = async (item) => {
-    if (!user?.isOwner || item.isOwner) return;
+    if (!canModerateUser(user, item)) return;
     const nextBanned = !item.disabled;
     const message = nextBanned ? `Ban ${item.email}?\n\nThe account will be signed out immediately and cannot sign in until you unban it.` : `Unban ${item.email}?`;
     if (!globalThis.confirm?.(message)) return;
@@ -168,7 +169,7 @@ export default function AdminDashboard({ user, onBack }) {
         </div>
       </header>
 
-      {user?.isOwner && <div className="admin-error" style={{ borderColor: 'rgba(255,215,64,.35)', color: 'inherit' }}><Crown /> أنت مالك المنصة. الحظر، Reset Password، إدارة المديرين، حذف الحسابات وOwner Account Log متاحة لك فقط. كلمة المرور الأصلية لا تُخزن كنص قابل للعرض، لذلك الإدارة الآمنة تتم عبر Reset.</div>}
+      {user?.isOwner && <div className="admin-error" style={{ borderColor: 'rgba(255,215,64,.35)', color: 'inherit' }}><Crown /> أنت مالك المنصة. إدارة المديرين، Reset Password، حذف الحسابات وOwner Account Log متاحة لك فقط. الـAdmin يقدر يعمل Ban/Unban للمستخدمين العاديين فقط، ولا يقدر يوقف Owner أو Admin آخر.</div>}
       {notice && <div className="admin-error" style={{ borderColor: 'rgba(34,197,94,.35)', color: 'inherit' }}><CheckCircle2 /> {notice}</div>}
       {error && <div className="admin-error"><AlertTriangle /> {error}</div>}
 
