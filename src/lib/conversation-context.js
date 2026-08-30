@@ -98,8 +98,8 @@ export function normalizeConversationTurns(turns, maxTurns = MAX_TURNS) {
 export function isFollowUpPrompt(prompt) {
   const text = clean(prompt).toLowerCase();
   if (!text) return false;
-  return /^(كمل|كمّل|تابع|التاني|الثاني|عدله|عدّلها|عدّل|غيره|غيّره|وضح|وضّح|ليه|طب|تمام|وده|ودي|وده|دي|ده|نفسه|نفسها|continue|go on|the second|second one|edit it|change it|why|explain|what about|and that|and this|make it|same one)/i.test(text)
-    || /\b(السابق|اللي فات|فوق|اخر رد|آخر رد|نفس الكلام|نفس الموضوع|previous|above|last answer|same one|that answer|this answer)\b/i.test(text);
+  return /^(كمل|كمّل|تابع|التاني|الثاني|عدله|عدّلها|عدّل|غيره|غيّره|وضح|وضّح|ليه|طب|تمام|وده|ودي|ده|دي|نفسه|نفسها|continue|go on|the second|second one|edit it|change it|why|explain|what about|and that|and this|make it|same one)/i.test(text)
+    || /(?:^|\s)(?:السابق|اللي فات|فوق|اخر رد|آخر رد|نفس الكلام|نفس الموضوع|previous|above|last answer|same one|that answer|this answer)(?:\s|$)/i.test(text);
 }
 
 function scoreTurn(turn, latestTokens, index, count, currentTool, followUp) {
@@ -210,6 +210,7 @@ export function analyzeConversationContext({ prompt, turns = [], currentTool = '
     ? unique(selection.selected.flatMap((turn) => extractConstraintSnippets(turn.prompt)))
     : [];
   const grammarGender = inferUserGrammaticalGender({
+    currentPrompt: latestPrompt,
     priorUserPrompts: normalized.map((turn) => turn.prompt),
   });
   const contextPrompt = buildContextPrompt({
