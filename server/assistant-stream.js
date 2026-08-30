@@ -29,6 +29,28 @@ function writeEvent(response, event, data) {
   return response.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
 }
 
+export function classifyAssistantStreamError(error, { aborted = false, abortReason = null } = {}) {
+  const reason = String(abortReason?.message || abortReason || '');
+  if (aborted) {
+    return {
+      code: reason.includes('CLIENT_DISCONNECTED') ? 'REQUEST_ABORTED' : 'PROVIDER_TIMEOUT',
+      providerStatus: 0,
+    };
+  }
+
+  const message = String(error?.message || '');
+  const providerStatus = Number(message.match(/^PROVIDER_(\d{3})$/)?.[1] || 0);
+  if (providerStatus === 401 || providerStatus === 403) return { code: 'PROVIDER_AUTH_FAILED', providerStatus };
+  if (providerStatus === 429) return { code: 'PROVIDER_RATE_LIMITED', providerStatus };
+  if (providerStatus >= 500) return { code: 'PROVIDER_UNAVAILABLE', providerStatus };
+  if (providerStatus >= 400) return { code: 'PROVIDER_REQUEST_REJECTED', providerStatus };
+  if (message === 'PROVIDER_STREAM_EMPTY' || message === 'EMPTY_STREAM_RESPONSE') {
+    return { code: 'EMPTY_PROVIDER_RESPONSE', providerStatus: 0 };
+  }
+  if (message === 'REQUEST_TOO_LARGE') return { code: 'BODY_TOO_LARGE', providerStatus: 0 };
+  return { code: 'STREAM_FAILED', providerStatus: 0 };
+}
+
 export function createAssistantStreamHandler({ env = process.env, database, fetchImpl = globalThis.fetch } = {}) {
   const apiKey = String(env.AI_API_KEY || '');
   const model = String(env.AI_MODEL || '');
@@ -145,9 +167,11 @@ export function createAssistantStreamHandler({ env = process.env, database, fetc
       response.end();
     } catch (error) {
       const aborted = controller.signal.aborted;
-      const code = aborted
-        ? (String(controller.signal.reason?.message || '').includes('CLIENT_DISCONNECTED') ? 'REQUEST_ABORTED' : 'PROVIDER_TIMEOUT')
-        : String(error?.message || 'STREAM_FAILED').slice(0, 80);
+      const classified = classifyAssistantStreamError(error, {
+        aborted,
+        abortReason: controller.signal.reason,
+      });
+      const code = classified.code;
 
       trackAiRequest(database, {
         userId: user?.id || null,
