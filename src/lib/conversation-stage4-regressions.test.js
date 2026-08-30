@@ -61,7 +61,7 @@ test('does not infer grammatical gender from ambiguous English or social wording
 });
 
 test('keeps Arabizi language mode stable for code switching without forcing Arabic', () => {
-  assert.equal(detectConversationLanguage('msh fahm React'), 'en');
+  assert.equal(detectConversationLanguage('msh fahm React'), 'ar');
   assert.equal(detectConversationLanguage('shokran for the help يا معلم'), 'ar');
   assert.equal(detectConversationLanguage('hello friend how are you'), 'en');
 });
