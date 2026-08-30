@@ -28,10 +28,6 @@ import {
 } from './lib/chat-memory.js';
 import { buildConversationPrompt, createConversationTurn } from './lib/conversation-context.js';
 
-function isEnglish() {
-  return document.body?.dataset?.language === 'en';
-}
-
 function initialChatState() {
   const stored = loadChatSessions();
   if (stored.length) return stored;
@@ -39,8 +35,8 @@ function initialChatState() {
   return upsertChatSession([], first);
 }
 
-export function ChatDevelopmentNotice() {
-  const en = isEnglish();
+export function ChatDevelopmentNotice({ language }) {
+  const en = language === 'en';
   return (
     <main className="chat-page">
       <div className="page-shell chat-development-notice">
@@ -54,7 +50,7 @@ export function ChatDevelopmentNotice() {
   );
 }
 
-export default function ChatWorkspace({ preferences, notify }) {
+export default function ChatWorkspace({ preferences, notify, language }) {
   const [sessions, setSessions] = useState(initialChatState);
   const [activeId, setActiveId] = useState(() => initialChatState()[0]?.id || '');
   const [prompt, setPrompt] = useState('');
@@ -70,7 +66,7 @@ export default function ChatWorkspace({ preferences, notify }) {
   const abortRef = useRef(null);
   const runTokenRef = useRef(0);
   const threadEndRef = useRef(null);
-  const en = isEnglish();
+  const en = language === 'en';
 
   const activeSession = useMemo(
     () => sessions.find((session) => session.id === activeId) || sessions[0] || null,
