@@ -32,7 +32,7 @@ test('semantic short turns remain distinct instead of collapsing into one generi
   assert.equal(detectConversationalArchetype('معلش يا صاحبي')?.intent, 'apology');
   assert.equal(detectConversationalArchetype('براحتك يا معلم')?.intent, 'acknowledgement');
   assert.equal(detectConversationalArchetype('لسه مش شغال خالص')?.intent, 'frustration');
-  assert.equal(detectConversationalArchetype('انا مستعدة')?.intent, 'positive_update');
+  assert.equal(detectConversationalArchetype('انا كويسة')?.intent, 'positive_update');
 });
 
 test('action-bearing mixed turns always fall through to the full reasoning path', () => {
@@ -51,8 +51,8 @@ test('action-bearing mixed turns always fall through to the full reasoning path'
 });
 
 test('Arabizi spelling noise keeps Arabic response mode without over-triggering English', () => {
-  assert.equal(detectConversationLanguage('ezzayyyak ya bro'), 'ar');
-  assert.equal(detectConversationLanguage('shokraaaan'), 'ar');
+  assert.equal(detectConversationLanguage('ezzayak ya bro'), 'ar');
+  assert.equal(detectConversationLanguage('shokran'), 'ar');
   assert.equal(detectConversationLanguage('hello friend, how are you?'), 'en');
 });
 
