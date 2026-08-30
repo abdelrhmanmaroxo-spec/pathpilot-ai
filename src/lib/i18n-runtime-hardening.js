@@ -101,13 +101,24 @@ function shouldSkip(node) {
   return ['SCRIPT', 'STYLE', 'PRE', 'CODE'].includes(parent.tagName);
 }
 
-function translateText(value, targetLanguage) {
+function escapePattern(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function replaceCatalogEntry(value, from, to) {
+  if (from.length > 3) return value.includes(from) ? value.split(from).join(to) : value;
+  const boundary = '[\\s.,،;:!?؟·()\\[\\]{}<>/\\\\|"\']';
+  const pattern = new RegExp(`(^|${boundary})${escapePattern(from)}(?=$|${boundary})`, 'g');
+  return value.replace(pattern, (_match, prefix) => `${prefix}${to}`);
+}
+
+export function translateRuntimeText(value, targetLanguage) {
   if (!value) return value;
   const entries = Object.entries(targetLanguage === 'en' ? AR_TO_EN : EN_TO_AR)
     .sort((a, b) => b[0].length - a[0].length);
   let result = value;
   for (const [from, to] of entries) {
-    if (result.includes(from)) result = result.split(from).join(to);
+    result = replaceCatalogEntry(result, from, to);
   }
   return result;
 }
@@ -122,7 +133,7 @@ function applyRuntimeTranslations() {
     while (walker.nextNode()) nodes.push(walker.currentNode);
     for (const node of nodes) {
       if (shouldSkip(node)) continue;
-      const next = translateText(node.nodeValue, targetLanguage);
+      const next = translateRuntimeText(node.nodeValue, targetLanguage);
       if (next !== node.nodeValue) node.nodeValue = next;
     }
     document.body.querySelectorAll('[placeholder], [title], [aria-label]').forEach((element) => {
@@ -130,7 +141,7 @@ function applyRuntimeTranslations() {
       for (const attribute of ['placeholder', 'title', 'aria-label']) {
         if (!element.hasAttribute(attribute)) continue;
         const current = element.getAttribute(attribute);
-        const next = translateText(current, targetLanguage);
+        const next = translateRuntimeText(current, targetLanguage);
         if (next !== current) element.setAttribute(attribute, next);
       }
     });
