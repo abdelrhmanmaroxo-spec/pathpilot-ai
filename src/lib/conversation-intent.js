@@ -30,7 +30,7 @@ const EMBEDDED_PATTERNS = [
   ['evening_greeting', /(?:^|\s)(?:good evening|مساء الخير|مساء النور|مساء الفل)(?:\s|$)/],
   ['how_are_you', /(?:\bhow are you\b|\bhow r u\b|\bhows it going\b|\bwhats up\b|\b(?:ezayak|ezayek|ezzayak|ezzayek|akhbarak)\b|\b(?:3amel|amel)\s+(?:eh|eih)\b|(?:^|\s)(?:ازيك|ازيكم|عامل اي|عامل ايه|عامله اي|عامله ايه|اخبارك|الدنيا عامله ايه)(?:\s|$))/],
   ['encouragement', /(?:\bencourage me\b|\bmotivate me\b|\bgive me a push\b|(?:^|\s)(?:شجعني|حفزني|اديني دفعه)(?:\s|$))/],
-  ['vague_help', /(?:\bhelp me\b|\bcan you help me\b|\bi need help\b|(?:^|\s)(?:ساعدني|ممكن تساعدني|عايز مساعده|عايز مساعده|محتاج مساعده)(?:\s|$))/],
+  ['vague_help', /(?:\bhelp me\b|\bcan you help me\b|\bi need help\b|(?:^|\s)(?:ساعدني|ممكن تساعدني|عايز مساعده|محتاج مساعده)(?:\s|$))/],
   ['confusion', /(?:\bstill confused\b|\bstill dont understand\b|(?:^|\s)(?:لسه مش فاهم|مش فاهم خالص|مش مستوعب خالص)(?:\s|$))/],
   ['frustration', /(?:\bstill not working\b|\bthis still isnt working\b|(?:^|\s)(?:لسه مش شغال|مش شغال خالص|مش نافع خالص)(?:\s|$))/],
   ['positive_update', /(?:\b(?:im|i am) (?:good|fine|okay)\b|(?:^|\s)انا (?:تمام|كويس|كويسه|بخير)(?:\s|$))/],
@@ -78,8 +78,8 @@ function normalizeArabiziTokens(text) {
   const mapped = tokens.map((token) => ARABIZI_TOKEN_MAP.get(token) || token);
   const joined = mapped.join(' ');
   return joined
-    .replace(/\bana\s+(تمام|كويس|كويسه|تعبان|تعبانه|زعلان|زعلانه)\b/gi, 'انا $1')
-    .replace(/\b(?:momken|mmkn)\s+(مساعده)\b/gi, 'ممكن $1');
+    .replace(/(^|\s)ana\s+(تمام|كويس|كويسه|تعبان|تعبانه|زعلان|زعلانه)(?=\s|$)/gi, '$1انا $2')
+    .replace(/(^|\s)(?:momken|mmkn)\s+(مساعده)(?=\s|$)/gi, '$1ممكن $2');
 }
 
 export function normalizeConversationText(value) {
