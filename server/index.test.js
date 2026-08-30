@@ -68,6 +68,24 @@ test('platform exposes honest offline AI status with a live database', async (co
   assert.equal(response.body.provider, 'OpenAI');
 });
 
+test('CORS preflight allows the client request correlation header', async (context) => {
+  const platform = await startPlatform();
+  context.after(async () => { await platform.close(); platform.database.close(); });
+
+  const response = await fetch(`${platform.url}/api/assistant/stream`, {
+    method: 'OPTIONS',
+    headers: {
+      Origin: 'http://localhost:5173',
+      'Access-Control-Request-Method': 'POST',
+      'Access-Control-Request-Headers': 'content-type,x-request-id',
+    },
+  });
+
+  assert.equal(response.status, 204);
+  assert.equal(response.headers.get('access-control-allow-origin'), 'http://localhost:5173');
+  assert.match(response.headers.get('access-control-allow-headers') || '', /X-Request-ID/i);
+});
+
 test('email/password registration cannot sign in before email verification', async (context) => {
   const platform = await startPlatform();
   context.after(async () => { await platform.close(); platform.database.close(); });

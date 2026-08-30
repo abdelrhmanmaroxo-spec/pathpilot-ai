@@ -27,7 +27,7 @@ function responseCors(request, env) {
   const allowed = new Set(String(env.ALLOWED_ORIGINS || '').split(',').map((item) => item.trim()).filter(Boolean));
   return {
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Request-ID',
     'Access-Control-Expose-Headers': 'X-Request-ID, X-RateLimit-Limit, X-RateLimit-Remaining',
     ...(origin && allowed.has(origin) ? { 'Access-Control-Allow-Origin': origin } : {}),
     Vary: 'Origin',

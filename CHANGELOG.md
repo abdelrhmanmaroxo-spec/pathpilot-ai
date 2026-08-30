@@ -5,6 +5,7 @@ This file tracks product changes that matter to users. Internal refactors are in
 ## 2026-08-30 — Live Cognitive Chat
 
 ### What users get
+- **Production live-AI connection fixed:** browser requests can now carry PathPilot's request-correlation header through CORS, so the live provider POST and streaming routes are no longer stopped after preflight and silently replaced by the local fallback.
 - **Live local-model streaming:** the browser Local LLM can now display the answer incrementally instead of waiting for the whole generation to finish.
 - **A smarter bilingual request matcher:** Arabic, Egyptian Arabic, English, and mixed prompts are matched to the closest task archetype before execution, including diagnosis, explanation, research, comparison, decision, planning, writing, coding, summarization, translation, calculation, and ideation.
 - **Automatic cognitive routing:** the agent selects a safe high-level pipeline for understanding, retrieval, analysis, planning, comparison, verification, answer synthesis, and live delivery without exposing private chain-of-thought.
@@ -14,6 +15,7 @@ This file tracks product changes that matter to users. Internal refactors are in
 - **Live-follow UX:** the conversation follows new streamed content automatically while preserving manual cancellation and saved local chat history.
 
 ### Quality and safety
+- A production-style CORS regression test protects the live assistant request header contract.
 - Hidden model reasoning tags are filtered from both complete and partial local-model output.
 - Local generation cancellation interrupts the active WebLLM generation when supported.
 - New regression tests cover Arabic intent matching, mixed technical requests, live cumulative deltas, hidden-reasoning filtering, and cancellation.

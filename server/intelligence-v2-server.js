@@ -49,7 +49,7 @@ function normalizeOrigins(value) {
 function cors(origin, allowed) {
   return {
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Request-ID',
     ...(origin && allowed.has(origin) ? { 'Access-Control-Allow-Origin': origin } : {}),
     Vary: 'Origin',
   };

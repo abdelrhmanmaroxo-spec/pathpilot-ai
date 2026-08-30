@@ -52,7 +52,7 @@ function corsHeaders(origin, allowedOrigins) {
   const allowed = origin && allowedOrigins.has(origin) ? origin : '';
   return {
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Request-ID',
     ...(allowed ? { 'Access-Control-Allow-Origin': allowed } : {}),
     Vary: 'Origin',
   };

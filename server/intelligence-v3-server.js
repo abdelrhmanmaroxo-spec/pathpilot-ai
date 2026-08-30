@@ -34,7 +34,7 @@ const PENALIZED = ['facebook.com','instagram.com','tiktok.com','quora.com','pint
 const AUTHORITY = ['.gov','.edu','.ac.','docs.','developer.','support.','help.','github.com','mozilla.org','w3.org','microsoft.com','google.com','openai.com','apple.com','coursera.org','edx.org','freecodecamp.org','codecademy.com','theodinproject.com','khanacademy.org','code.org'];
 
 function origins(value) { return new Set(String(value || 'http://localhost:5173').split(',').map((v) => v.trim()).filter(Boolean)); }
-function cors(origin, allowed) { return { 'Access-Control-Allow-Methods':'GET, POST, OPTIONS', 'Access-Control-Allow-Headers':'Content-Type, Authorization', ...(origin && allowed.has(origin) ? { 'Access-Control-Allow-Origin': origin } : {}), Vary:'Origin' }; }
+function cors(origin, allowed) { return { 'Access-Control-Allow-Methods':'GET, POST, OPTIONS', 'Access-Control-Allow-Headers':'Content-Type, Authorization, X-Request-ID', ...(origin && allowed.has(origin) ? { 'Access-Control-Allow-Origin': origin } : {}), Vary:'Origin' }; }
 function sendJson(res, status, body, origin, allowed, extra={}) { res.writeHead(status, { 'Content-Type':'application/json; charset=utf-8', 'Cache-Control':'no-store', 'X-Content-Type-Options':'nosniff', 'Referrer-Policy':'no-referrer', ...cors(origin, allowed), ...extra }); res.end(JSON.stringify(body)); }
 async function readJson(req) { let body=''; for await (const chunk of req) { body += chunk; if (body.length > 128000) throw new Error('REQUEST_TOO_LARGE'); } return JSON.parse(body || '{}'); }
 function safeHttpUrl(value) { try { const parsed = new URL(String(value || '')); return ['http:','https:'].includes(parsed.protocol) ? parsed.href : ''; } catch { return ''; } }
