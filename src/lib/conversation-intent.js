@@ -49,7 +49,7 @@ const SOCIAL_FILLERS = new Set([
 
 const TOKEN_ARCHETYPES = [
   { intent: 'thanks', any: ['thanks', 'thank', 'thx', 'shokran', 'shukran', 'merci', 'شكرا', 'تسلم', 'ميرسي', 'متشكر', 'متشكره'], maxMeaningfulFillers: 2 },
-  { intent: 'greeting', any: ['hi', 'hello', 'hey', 'hiya', 'ahlan', 'اهلا', 'هلا', 'هاي', 'سلام'], maxMeaningfulFillers: 2 },
+  { intent: 'greeting', any: ['hi', 'hello', 'hey', 'hiya', 'ahlan', 'hala', 'اهلا', 'هلا', 'هاي', 'سلام'], maxMeaningfulFillers: 2 },
   { intent: 'acknowledgement', any: ['ok', 'okay', 'okey', 'cool', 'perfect', 'yeah', 'yep', 'alright', 'tmam', 'tamam', 'mashy', 'mashi', 'eshta', 'تمام', 'ماشي', 'اشطا', 'وصلت', 'فهمت', 'فاهم', 'ايوه', 'اها', 'براحتك'], maxMeaningfulFillers: 2 },
   { intent: 'ready', any: ['ready', 'yalla', 'yala', 'جاهز', 'جاهزه', 'يلا'], maxMeaningfulFillers: 2 },
   { intent: 'compliment', any: ['awesome', 'great', 'nice', 'جامد', 'عاش', 'برافو', 'عظمه'], maxMeaningfulFillers: 2 },
