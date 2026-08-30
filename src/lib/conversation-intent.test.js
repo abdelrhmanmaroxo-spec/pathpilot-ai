@@ -9,6 +9,7 @@ import {
 test('normalizes Arabic noise without destroying Latin words in mixed messages', () => {
   assert.equal(normalizeConversationText('  عـــاش!!! Thanks يا معلم 😄 '), 'عاش thanks يا معلم');
   assert.equal(normalizeConversationText('إزّيــك؟؟'), 'ازيك');
+  assert.equal(normalizeConversationText('Hiiiii ya bro!!!'), 'hi ya bro');
 });
 
 test('detects lightweight archetypes across Arabic Egyptian and English', () => {
@@ -24,6 +25,9 @@ test('detects lightweight archetypes across Arabic Egyptian and English', () => 
     ['I am confused', 'confusion'],
     ['good night', 'goodbye'],
     ['take care', 'goodbye'],
+    ['are you a bot?', 'identity'],
+    ['are you there?', 'doing'],
+    ['لسه معايا؟', 'doing'],
   ];
 
   for (const [prompt, intent] of cases) {
@@ -42,6 +46,32 @@ test('recognizes embedded social states instead of requiring exact whole-message
   assert.equal(detectConversationalArchetype('انا كويس يا معلم')?.intent, 'positive_update');
 });
 
+test('understands common Egyptian Arabizi and responds in Arabic mode', () => {
+  const cases = [
+    ['ezayak', 'how_are_you'],
+    ['3amel eh?', 'how_are_you'],
+    ['akhbarak ya bro', 'how_are_you'],
+    ['shokran ya bro', 'thanks'],
+    ['tmam ya m3lm', 'acknowledgement'],
+    ['mashy bro', 'acknowledgement'],
+    ['yalla bina', 'ready'],
+    ['ma3lesh', 'apology'],
+    ['salam ya bro', 'goodbye'],
+  ];
+
+  for (const [prompt, intent] of cases) {
+    const result = detectConversationalArchetype(prompt);
+    assert.equal(result?.intent, intent, prompt);
+    assert.equal(result?.language, 'ar', prompt);
+  }
+});
+
+test('handles reciprocal status checks naturally in Arabic and English', () => {
+  for (const prompt of ['وانت؟', 'وانتي؟', 'وانتو؟', 'and you?', 'what about you?']) {
+    assert.equal(detectConversationalArchetype(prompt)?.intent, 'how_are_you', prompt);
+  }
+});
+
 test('handles natural mixed-language social turns while ignoring harmless fillers', () => {
   const cases = [
     ['thanks يا معلم', 'thanks'],
@@ -51,6 +81,8 @@ test('handles natural mixed-language social turns while ignoring harmless filler
     ['hello يا صاحبي', 'greeting'],
     ['عاش great', 'compliment'],
     ['bye يا معلم', 'goodbye'],
+    ['طيب تمام يا bro', 'acknowledgement'],
+    ['براحتك يا معلم', 'acknowledgement'],
   ];
 
   for (const [prompt, intent] of cases) {
@@ -68,6 +100,10 @@ test('does not swallow action-bearing messages just because they contain social 
     'ممكن تساعدني في تحليل OAuth؟',
     'can you help me analyze this API?',
     'ايوه تمام كمل اللي بعده',
+    'thanks now draft an email',
+    'تمام راجع الكود ده',
+    'shokran explain OAuth',
+    'tmam debug this',
   ]) {
     assert.equal(detectConversationalArchetype(prompt), null, prompt);
   }
@@ -91,4 +127,8 @@ test('language detection keeps Arabic-first code switching natural without hijac
   assert.equal(detectConversationLanguage('تمام React'), 'ar');
   assert.equal(detectConversationLanguage('thanks friend يا'), 'en');
   assert.equal(detectConversationLanguage('hello friend how are you يا'), 'en');
+  assert.equal(detectConversationLanguage('ezayak ya bro'), 'ar');
+  assert.equal(detectConversationLanguage('3amel eh'), 'ar');
+  assert.equal(detectConversationLanguage('shokran'), 'ar');
+  assert.equal(detectConversationLanguage('hello friend'), 'en');
 });
