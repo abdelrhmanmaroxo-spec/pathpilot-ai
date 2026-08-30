@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { buildConversationPrompt } from './conversation-context.js';
 import { contextualConversationalReply } from './contextual-conversation.js';
 
 function memoryStorage() {
@@ -68,6 +69,26 @@ test('relevant prior context preserves reasoning follow-ups instead of canned co
     storage: memoryStorage(),
     random: () => 0,
   }), null);
+});
+
+test('context builder carries prior self-reference into a later casual turn without old text leakage', () => {
+  const contextPrompt = buildConversationPrompt({
+    prompt: 'عامل ايه؟',
+    turns: [
+      { prompt: 'انا بنت ومحتاجة مساعدة في تنظيم يومي', answer: 'أكيد، نرتب اليوم.', tool: 'ask' },
+      { prompt: 'اشرح DNS', answer: 'DNS maps names to addresses.', tool: 'ask' },
+    ],
+    historyLimit: 30,
+  });
+  assert.match(contextPrompt, /User grammatical form for Arabic address: feminine/);
+  assert.doesNotMatch(contextPrompt, /تنظيم يومي|DNS maps/);
+
+  const answer = contextualConversationalReply('عامل ايه؟', {
+    contextPrompt,
+    storage: memoryStorage(),
+    random: () => 0.2,
+  });
+  assert.match(answer, /معاكي|عاملة|إنتِ|أخبارك/);
 });
 
 test('English casual replies remain unchanged by Arabic grammar metadata', () => {
