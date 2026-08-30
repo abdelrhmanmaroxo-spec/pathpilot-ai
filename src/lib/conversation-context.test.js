@@ -71,6 +71,35 @@ test('new unrelated topic does not drag old conversation into the LLM prompt', (
   assert.equal(result.prompt, 'اشرح لي DNS من البداية');
 });
 
+test('carries only a safe grammatical-form hint across unrelated turns when strongly self-declared', () => {
+  const result = analyzeConversationContext({
+    prompt: 'عامل ايه؟',
+    turns: [
+      { prompt: 'انا بنت ومحتاجة أرتب يومي', answer: 'تمام، نرتب الأولويات.', tool: 'ask' },
+      { prompt: 'اشرح DNS', answer: 'DNS يحول أسماء النطاقات...', tool: 'ask' },
+    ],
+    historyLimit: 30,
+  });
+
+  assert.equal(result.relationship, 'new_topic');
+  assert.equal(result.relevantTurns.length, 0);
+  assert.equal(result.grammarGender, 'female');
+  assert.match(result.prompt, /User grammatical form for Arabic address: feminine/);
+  assert.doesNotMatch(result.prompt, /DNS يحول|أرتب يومي/);
+});
+
+test('uses the newest strong prior grammatical signal', () => {
+  const result = analyzeConversationContext({
+    prompt: 'صباح الخير',
+    turns: [
+      { prompt: 'انا بنت', answer: 'أهلًا بيكي.', tool: 'ask' },
+      { prompt: 'انا ولد', answer: 'أهلًا بيك.', tool: 'ask' },
+    ],
+  });
+  assert.equal(result.grammarGender, 'male');
+  assert.match(result.prompt, /User grammatical form for Arabic address: masculine/);
+});
+
 test('continuation inherits explicit constraints from relevant prior user turns', () => {
   const result = analyzeConversationContext({
     prompt: 'طور خطة React دي وحسن الأداء',
