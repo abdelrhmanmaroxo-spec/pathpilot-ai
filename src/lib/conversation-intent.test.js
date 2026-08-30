@@ -12,6 +12,16 @@ test('normalizes Arabic noise without destroying Latin words in mixed messages',
   assert.equal(normalizeConversationText('Hiiiii ya bro!!!'), 'hi ya bro');
 });
 
+test('normalizes common Egyptian Arabizi semantic tokens into shared Arabic forms', () => {
+  assert.equal(normalizeConversationText('msh fahm'), 'مش فاهم');
+  assert.equal(normalizeConversationText('msh sh8al'), 'مش شغال');
+  assert.equal(normalizeConversationText('mhtag msa3da'), 'محتاج مساعده');
+  assert.equal(normalizeConversationText('ana kwayes'), 'انا كويس');
+  assert.equal(normalizeConversationText('ana ta3bana'), 'انا تعبانه');
+  assert.equal(normalizeConversationText('3ayza msa3da'), 'عايزه مساعده');
+  assert.equal(normalizeConversationText('React msh sh8al'), 'react مش شغال');
+});
+
 test('detects lightweight archetypes across Arabic Egyptian and English', () => {
   const cases = [
     ['صباح الخير', 'morning_greeting'],
@@ -66,6 +76,23 @@ test('understands common Egyptian Arabizi and responds in Arabic mode', () => {
   }
 });
 
+test('routes semantic Arabizi states through the same lightweight Egyptian intents', () => {
+  const cases = [
+    ['msh fahm', 'confusion'],
+    ['mesh fahm خالص', 'confusion'],
+    ['msh sh8al', 'frustration'],
+    ['mosh nafe3', 'frustration'],
+    ['mhtag msa3da', 'vague_help'],
+    ['ana kwayes', 'positive_update'],
+  ];
+
+  for (const [prompt, intent] of cases) {
+    const result = detectConversationalArchetype(prompt);
+    assert.equal(result?.intent, intent, prompt);
+    assert.equal(result?.language, 'ar', prompt);
+  }
+});
+
 test('handles reciprocal status checks naturally in Arabic and English', () => {
   for (const prompt of ['وانت؟', 'وانتي؟', 'وانتو؟', 'and you?', 'what about you?']) {
     assert.equal(detectConversationalArchetype(prompt)?.intent, 'how_are_you', prompt);
@@ -104,6 +131,8 @@ test('does not swallow action-bearing messages just because they contain social 
     'تمام راجع الكود ده',
     'shokran explain OAuth',
     'tmam debug this',
+    'mhtag msa3da debug this API',
+    'msh fahm explain OAuth',
   ]) {
     assert.equal(detectConversationalArchetype(prompt), null, prompt);
   }
@@ -115,6 +144,8 @@ test('lets context-sensitive confusion and frustration fall through when prior c
   assert.equal(detectConversationalArchetype('لسه مش فاهم خالص', { hasPriorContext: true }), null);
   assert.equal(detectConversationalArchetype('مش شغال')?.intent, 'frustration');
   assert.equal(detectConversationalArchetype('لسه مش شغال', { hasPriorContext: true }), null);
+  assert.equal(detectConversationalArchetype('msh fahm', { hasPriorContext: true }), null);
+  assert.equal(detectConversationalArchetype('msh sh8al', { hasPriorContext: true }), null);
 });
 
 test('rejects long or substantive text from the lightweight social path', () => {
@@ -130,5 +161,7 @@ test('language detection keeps Arabic-first code switching natural without hijac
   assert.equal(detectConversationLanguage('ezayak ya bro'), 'ar');
   assert.equal(detectConversationLanguage('3amel eh'), 'ar');
   assert.equal(detectConversationLanguage('shokran'), 'ar');
+  assert.equal(detectConversationLanguage('msh fahm'), 'ar');
+  assert.equal(detectConversationLanguage('msh sh8al React'), 'ar');
   assert.equal(detectConversationLanguage('hello friend'), 'en');
 });
