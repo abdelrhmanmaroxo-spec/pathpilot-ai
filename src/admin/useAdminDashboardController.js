@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   deleteUserAccount,
   exportOwnerData,
+  hasPlatformBackend,
   inviteAdminByEmail,
   loadAdminDashboard,
   loadAdminInvites,
@@ -67,7 +68,7 @@ export function useAdminDashboardController(user) {
   const [backupBusy, setBackupBusy] = useState(false);
 
   const isOwner = Boolean(user?.isOwner);
-  const isAdmin = user?.role === 'admin';
+  const isAdmin = hasPlatformBackend && user?.role === 'admin';
 
   const tabs = useMemo(() => getAdminTabs(isOwner), [isOwner]);
   const bannedUsers = useMemo(() => getBannedUsers(data?.users), [data?.users]);
