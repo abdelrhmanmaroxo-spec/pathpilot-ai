@@ -124,12 +124,72 @@ async function buildKnowledge(args, profile, onProgress) {
 
 function stripHiddenReasoning(value) {
   return String(value || '')
-    .replace(/<think>[\s\S]*?<\/think>\s*/gi, '')
-    .replace(/<analysis>[\s\S]*?<\/analysis>\s*/gi, '')
+    .replace(/<(think|analysis)>[\s\S]*?(?:<\/\1>|$)\s*/gi, '')
     .trim();
 }
 
-async function complete(engine, { messages, temperature, maxTokens }) {
+function stripStreamingReasoning(value) {
+  return String(value || '')
+    .replace(/<(think|analysis)>[\s\S]*?(?:<\/\1>|$)/gi, '')
+    .replace(/<[^>]*$/g, '')
+    .trimStart();
+}
+
+function abortError(signal) {
+  if (signal?.reason instanceof Error) return signal.reason;
+  return new DOMException('The operation was aborted.', 'AbortError');
+}
+
+function throwIfAborted(signal) {
+  if (signal?.aborted) throw abortError(signal);
+}
+
+async function interruptEngine(engine) {
+  try {
+    await engine?.interruptGenerate?.();
+  } catch {
+    // The engine may already have completed or disposed the generation task.
+  }
+}
+
+export async function consumeLocalCompletionStream(response, { onDelta, signal } = {}) {
+  let raw = '';
+  let emitted = '';
+  for await (const chunk of response) {
+    throwIfAborted(signal);
+    raw += String(chunk?.choices?.[0]?.delta?.content || '');
+    const safe = stripStreamingReasoning(raw);
+    if (!safe || safe === emitted) continue;
+    const delta = safe.startsWith(emitted) ? safe.slice(emitted.length) : safe;
+    emitted = safe;
+    onDelta?.(delta, safe);
+  }
+  const answer = stripHiddenReasoning(raw);
+  if (!answer) throw new Error('LOCAL_LLM_EMPTY_RESPONSE');
+  if (answer !== emitted) onDelta?.(answer.startsWith(emitted) ? answer.slice(emitted.length) : answer, answer);
+  return answer;
+}
+
+async function complete(engine, { messages, temperature, maxTokens, onDelta, signal }) {
+  throwIfAborted(signal);
+  if (onDelta) {
+    const response = await engine.chat.completions.create({
+      messages,
+      temperature,
+      top_p: 0.9,
+      max_tokens: maxTokens,
+      stream: true,
+      stream_options: { include_usage: true },
+      extra_body: { enable_thinking: false },
+    });
+    try {
+      return await consumeLocalCompletionStream(response, { onDelta, signal });
+    } catch (error) {
+      if (signal?.aborted) await interruptEngine(engine);
+      throw error;
+    }
+  }
+
   const response = await engine.chat.completions.create({
     messages,
     temperature,
@@ -142,18 +202,22 @@ async function complete(engine, { messages, temperature, maxTokens }) {
   return answer;
 }
 
-function withTimeout(promise, timeoutMs) {
+function withTimeout(promise, timeoutMs, onTimeout) {
   let timer;
   return Promise.race([
     promise,
     new Promise((_, reject) => {
-      timer = setTimeout(() => reject(new Error('LOCAL_LLM_TIMEOUT')), timeoutMs);
+      timer = setTimeout(() => {
+        onTimeout?.();
+        reject(new Error('LOCAL_LLM_TIMEOUT'));
+      }, timeoutMs);
     }),
   ]).finally(() => clearTimeout(timer));
 }
 
-export async function generateBrowserLLMResponse({ prompt, tool = 'ask', mode = 'general', preferences = {}, onProgress, timeoutMs = DEFAULT_TIMEOUT_MS }) {
+export async function generateBrowserLLMResponse({ prompt, tool = 'ask', mode = 'general', preferences = {}, onProgress, onDelta, signal, timeoutMs = DEFAULT_TIMEOUT_MS }) {
   if (!preferences.localLlmEnabled || !supportsBrowserLLM()) return null;
+  throwIfAborted(signal);
 
   const wasReady = isBrowserLLMReady();
   const run = (async () => {
@@ -181,6 +245,8 @@ export async function generateBrowserLLMResponse({ prompt, tool = 'ask', mode = 
       ],
       temperature: preliminaryConfidence.level === 'low' ? 0.14 : 0.22,
       maxTokens: localMaxTokensFor(style, profile),
+      onDelta,
+      signal,
     });
 
     let reviewCandidate = '';
@@ -200,8 +266,10 @@ export async function generateBrowserLLMResponse({ prompt, tool = 'ask', mode = 
           ],
           temperature: 0.1,
           maxTokens: Math.min(localMaxTokensFor(style, profile) + 300, 2450),
+          signal,
         });
       } catch (error) {
+        if (signal?.aborted) throw error;
         console.warn('PathPilot local critic pass skipped; using validated draft.', error);
         reviewCandidate = '';
       }
@@ -215,6 +283,7 @@ export async function generateBrowserLLMResponse({ prompt, tool = 'ask', mode = 
       style,
     });
     const answer = quality.answer;
+    if (onDelta && answer !== draft) onDelta(answer, answer);
     const reviewed = quality.selected === 'reviewed';
     lastQualityInfo = {
       selected: quality.selected,
@@ -248,11 +317,12 @@ export async function generateBrowserLLMResponse({ prompt, tool = 'ask', mode = 
       reviewed,
       confidence,
       quality: lastQualityInfo,
+      streamed: Boolean(onDelta),
     };
   })();
 
   const minimumTimeout = wasReady ? 90_000 : 180_000;
-  return withTimeout(run, Math.max(Number(timeoutMs || 0), minimumTimeout));
+  return withTimeout(run, Math.max(Number(timeoutMs || 0), minimumTimeout), () => interruptEngine(activeEngine));
 }
 
 export function getBrowserLLMInfo() {

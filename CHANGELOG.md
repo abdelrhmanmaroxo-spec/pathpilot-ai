@@ -2,6 +2,22 @@
 
 This file tracks product changes that matter to users. Internal refactors are included only when they improve reliability, speed, safety, or future maintainability.
 
+## 2026-08-30 — Live Cognitive Chat
+
+### What users get
+- **Live local-model streaming:** the browser Local LLM can now display the answer incrementally instead of waiting for the whole generation to finish.
+- **A smarter bilingual request matcher:** Arabic, Egyptian Arabic, English, and mixed prompts are matched to the closest task archetype before execution, including diagnosis, explanation, research, comparison, decision, planning, writing, coding, summarization, translation, calculation, and ideation.
+- **Automatic cognitive routing:** the agent selects a safe high-level pipeline for understanding, retrieval, analysis, planning, comparison, verification, answer synthesis, and live delivery without exposing private chain-of-thought.
+- **Visible live activity:** Chat shows compact, user-facing response stages so the user can see whether PathPilot is understanding context, matching the task, retrieving knowledge, researching, analyzing, reviewing, or streaming.
+- **Reliable Stop behavior:** stopping or interrupting a streamed answer keeps the visible partial response in the conversation so the next message can continue from it.
+- **Chat-style keyboard flow:** Enter sends and Shift+Enter inserts a new line in the dedicated Chat workspace.
+- **Live-follow UX:** the conversation follows new streamed content automatically while preserving manual cancellation and saved local chat history.
+
+### Quality and safety
+- Hidden model reasoning tags are filtered from both complete and partial local-model output.
+- Local generation cancellation interrupts the active WebLLM generation when supported.
+- New regression tests cover Arabic intent matching, mixed technical requests, live cumulative deltas, hidden-reasoning filtering, and cancellation.
+
 ## 2026-08-29 — Premium Intelligence & Workspace Upgrade
 
 ### What users get

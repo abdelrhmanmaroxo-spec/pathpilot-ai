@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   BrainCircuit,
   ChevronDown,
@@ -66,8 +66,10 @@ export default function ChatWorkspace({ preferences, notify }) {
   const [loading, setLoading] = useState(false);
   const [sources, setSources] = useState([]);
   const [streamingTurn, setStreamingTurn] = useState(null);
+  const [liveActivity, setLiveActivity] = useState(null);
   const abortRef = useRef(null);
   const runTokenRef = useRef(0);
+  const threadEndRef = useRef(null);
   const en = isEnglish();
 
   const activeSession = useMemo(
@@ -85,10 +87,16 @@ export default function ChatWorkspace({ preferences, notify }) {
   const searchDisabled = agentSettings.disabledGroups.includes('search');
   const deepDisabled = agentSettings.disabledGroups.includes('deep');
 
+  useEffect(() => {
+    if (!loading && !streamingTurn?.answer) return;
+    threadEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }, [loading, streamingTurn?.answer, visibleTurns.length]);
+
   const clearTransientResponse = () => {
     setStreamingTurn(null);
     setSources([]);
     setLoading(false);
+    setLiveActivity(null);
   };
 
   const selectSession = (sessionId) => {
@@ -145,6 +153,11 @@ export default function ChatWorkspace({ preferences, notify }) {
     let streamedAnswer = '';
     runTokenRef.current = runToken;
     setLoading(true);
+    setLiveActivity({
+      steps: [{ id: 'understand', label: en ? 'Understanding message and context' : 'فهم الرسالة والسياق' }],
+      activeIndex: 0,
+      activeStep: { id: 'understand', label: en ? 'Understanding message and context' : 'فهم الرسالة والسياق' },
+    });
     setSources([]);
     setPrompt('');
     setStreamingTurn({
@@ -180,6 +193,11 @@ export default function ChatWorkspace({ preferences, notify }) {
         },
         signal: controller.signal,
       }, {
+        language: en ? 'en' : 'ar',
+        onActivity: (activity) => {
+          if (controller.signal.aborted || runToken !== runTokenRef.current) return;
+          setLiveActivity(activity);
+        },
         onDelta: (_delta, fullAnswer) => {
           if (controller.signal.aborted || runToken !== runTokenRef.current) return;
           streamedAnswer = fullAnswer;
@@ -206,8 +224,18 @@ export default function ChatWorkspace({ preferences, notify }) {
       setSources(Array.isArray(result.sources) ? result.sources : []);
     } catch (error) {
       if (controller.signal.aborted || runToken !== runTokenRef.current) return;
-      if (!streamedAnswer) setStreamingTurn(null);
-      else setStreamingTurn((turn) => (turn?.id === streamId ? { ...turn, streaming: false } : turn));
+      if (!streamedAnswer) {
+        setStreamingTurn(null);
+      } else {
+        const interruptedTurn = createConversationTurn({
+          prompt: text,
+          answer: streamedAnswer,
+          source: 'interrupted-stream',
+          tool: 'ask',
+        });
+        setSessions((current) => appendChatTurn(current, activeSession.id, interruptedTurn));
+        setStreamingTurn(null);
+      }
       notify(error?.message || (en ? 'Chat request failed.' : 'تعذر إكمال طلب الشات.'));
     } finally {
       if (runToken === runTokenRef.current) setLoading(false);
@@ -218,7 +246,17 @@ export default function ChatWorkspace({ preferences, notify }) {
     abortRef.current?.abort();
     runTokenRef.current += 1;
     setLoading(false);
-    setStreamingTurn((turn) => (turn?.answer ? { ...turn, streaming: false } : null));
+    setLiveActivity(null);
+    if (streamingTurn?.answer && streamingTurn?.sessionId) {
+      const partialTurn = createConversationTurn({
+        prompt: streamingTurn.prompt,
+        answer: streamingTurn.answer,
+        source: 'stopped-stream',
+        tool: 'ask',
+      });
+      setSessions((current) => appendChatTurn(current, streamingTurn.sessionId, partialTurn));
+    }
+    setStreamingTurn(null);
     notify(en ? 'Generation stopped.' : 'تم إيقاف إنشاء الإجابة.');
   };
 
@@ -273,13 +311,29 @@ export default function ChatWorkspace({ preferences, notify }) {
             )}
 
             {loading && (
-              <div className="chat-live-status" role="status" aria-live="polite">
-                <LoaderCircle className="spin" size={15} />
-                {streamingTurn?.answer
-                  ? (en ? 'PathPilot is responding…' : 'PathPilot بيرد…')
-                  : (en ? 'PathPilot is thinking…' : 'PathPilot بيفكر…')}
-              </div>
+              <>
+                {liveActivity?.steps?.length > 0 && (
+                  <div className="chat-activity-flow" aria-label={en ? 'Live response stages' : 'مراحل الرد الحي'}>
+                    {liveActivity.steps.map((step, index) => (
+                      <span
+                        key={step.id}
+                        className={index < liveActivity.activeIndex ? 'completed' : index === liveActivity.activeIndex ? 'active' : ''}
+                      >
+                        {step.label}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                <div className="chat-live-status" role="status" aria-live="polite">
+                  <LoaderCircle className="spin" size={15} />
+                  {streamingTurn?.answer
+                    ? (en ? 'PathPilot is responding live…' : 'PathPilot بيرد قدامك مباشرة…')
+                    : (liveActivity?.activeStep?.label || (en ? 'PathPilot is preparing the answer…' : 'PathPilot بيجهز الإجابة…'))}
+                </div>
+              </>
             )}
+
+            <div ref={threadEndRef} aria-hidden="true" />
 
             {sources.length > 0 && (
               <div className="chat-source-strip" aria-label={en ? 'Latest answer sources' : 'مصادر آخر إجابة'}>
@@ -357,7 +411,7 @@ export default function ChatWorkspace({ preferences, notify }) {
               maxLength={12000}
               rows={5}
               onKeyDown={(event) => {
-                if ((event.ctrlKey || event.metaKey) && event.key === 'Enter' && !loading) {
+                if (event.key === 'Enter' && !event.shiftKey && !loading) {
                   event.preventDefault();
                   runPrompt();
                 }

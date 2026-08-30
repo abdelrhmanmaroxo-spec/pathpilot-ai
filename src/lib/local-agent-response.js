@@ -15,6 +15,8 @@ export async function generateLocalAgentResponse({
   prompt = '',
   preferences = {},
   signal,
+  onDelta,
+  onProgress,
   freshnessNeeded = false,
   allowColdStart = true,
 } = {}) {
@@ -27,6 +29,9 @@ export async function generateLocalAgentResponse({
         tool,
         prompt,
         preferences,
+        signal,
+        onDelta,
+        onProgress,
         timeoutMs: allowColdStart ? 180_000 : 90_000,
       });
       if (signal?.aborted) throw signal.reason || new DOMException('The operation was aborted.', 'AbortError');

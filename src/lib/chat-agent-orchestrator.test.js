@@ -6,6 +6,7 @@ import {
   agentPlanGuidance,
   disabledToolsForGroups,
   planChatAgent,
+  publicAgentActivity,
   publicAgentToolSummary,
   sanitizeDisabledChatTools,
 } from './chat-agent-orchestrator.js';
@@ -77,4 +78,23 @@ test('voice input and public tool summary expose useful non-sensitive state', ()
   const summary = publicAgentToolSummary(plan);
   assert.ok(summary.length > 0 && summary.length <= 8);
   assert.ok(summary.every((item) => item.id && item.label && item.stage));
+});
+
+test('decision requests select matching, ranking and decision capabilities', () => {
+  const plan = planChatAgent({ prompt: 'اختارلي انهي حل أنسب وقارن المخاطر' });
+  assert.equal(plan.intent, 'decide');
+  assert.equal(plan.matchedTask.id, 'decide');
+  assert.ok(plan.toolIds.includes('question_matcher'));
+  assert.ok(plan.toolIds.includes('decision_engine'));
+  assert.ok(plan.toolIds.includes('option_ranker'));
+  assert.ok(plan.toolIds.includes('response_streamer'));
+});
+
+test('public activity describes live high-level stages without private reasoning', () => {
+  const plan = planChatAgent({ prompt: 'ليه API تسجيل الدخول بيفشل؟' });
+  const activity = publicAgentActivity(plan, 'ar');
+  assert.equal(activity[0].id, 'understand');
+  assert.equal(activity.at(-1).id, 'stream');
+  assert.ok(activity.some((step) => step.id === 'reason'));
+  assert.ok(activity.every((step) => !/chain.of.thought|hidden reasoning/i.test(step.label)));
 });

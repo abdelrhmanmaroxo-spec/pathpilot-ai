@@ -1,7 +1,7 @@
 import { createApiClient, PathPilotApiError } from './api-client.js';
 import { answerCache } from './answer-cache.js';
 import { generateAssistantResponse } from './assistant.js';
-import { agentPlanGuidance, planChatAgent, publicAgentToolSummary } from './chat-agent-orchestrator.js';
+import { agentPlanGuidance, planChatAgent, publicAgentActivity, publicAgentToolSummary } from './chat-agent-orchestrator.js';
 import { hasExploitLikePayload } from './input-security.js';
 import { generateLocalAgentResponse } from './local-agent-response.js';
 import { localConversationalReply } from './local-conversation.js';
@@ -72,6 +72,10 @@ function compactAgentPlan(plan) {
     version: plan.version,
     mode: plan.mode,
     intent: plan.intent,
+    matchedTask: plan.matchedTask,
+    alternativeTasks: plan.alternativeTasks,
+    complexity: plan.complexity,
+    stages: plan.stages,
     domain: plan.domain,
     risk: plan.risk,
     freshnessNeeded: plan.freshnessNeeded,
@@ -193,6 +197,8 @@ async function tryPreferredLocalAgent({ args, contextualPrompt, effectivePrefere
     prompt: contextualPrompt,
     preferences: effectivePreferences,
     signal: args.signal,
+    onProgress: args.onProgress,
+    onDelta: args.onDelta,
     freshnessNeeded: false,
     allowColdStart: true,
   });
@@ -248,6 +254,8 @@ export async function generateRoutedAssistantResponse(args) {
       prompt: contextualPrompt,
       preferences: effectivePreferences,
       signal: args.signal,
+      onProgress: args.onProgress,
+      onDelta: args.onDelta,
       freshnessNeeded: plan.freshnessNeeded,
       allowColdStart: true,
     });
@@ -267,28 +275,64 @@ export async function generateRoutedAssistantResponse(args) {
   return withAgentMetadata(routed, plan);
 }
 
-export async function streamRoutedAssistantResponse(args, { onDelta } = {}) {
+function activityReporter(plan, onActivity, language) {
+  const steps = publicAgentActivity(plan, language);
+  let activeIndex = 0;
+  const emit = (stepId, detail = '') => {
+    const found = steps.findIndex((step) => step.id === stepId);
+    if (found >= 0) activeIndex = Math.max(activeIndex, found);
+    onActivity?.({ steps, activeIndex, activeStep: steps[activeIndex], detail });
+  };
+  return { emit };
+}
+
+function localProgressStep(phase) {
+  if (phase === 'knowledge') return 'knowledge';
+  if (phase === 'draft') return 'reason';
+  if (phase === 'review') return 'review';
+  if (phase === 'done') return 'stream';
+  return 'match';
+}
+
+export async function streamRoutedAssistantResponse(args, { onDelta, onActivity, language = 'ar' } = {}) {
   const runtime = buildRoutingContext(args);
   const { contextualPrompt, latestPrompt, agentEnabled, plan, deepThink, effectivePreferences } = runtime;
+  const activity = activityReporter(plan, onActivity, language);
+  activity.emit('understand');
 
   assertSafePrompt(latestPrompt);
   const conversational = conversationalFastPath(latestPrompt, agentEnabled);
   if (conversational) {
+    activity.emit('stream');
     onDelta?.(conversational.answer, conversational.answer);
     return withAgentMetadata(conversational, plan);
   }
 
   await assertSystemAvailable(args.signal);
   const decision = routingDecision(args, latestPrompt, plan);
+  activity.emit(decision.route === 'research' ? 'research' : 'match');
 
   if (decision.route !== 'direct-ai' || !directClient) {
-    const result = await generateRoutedAssistantResponse(args);
-    onDelta?.(result.answer, result.answer);
+    let emitted = false;
+    const result = await generateRoutedAssistantResponse({
+      ...args,
+      onProgress: (progress) => activity.emit(localProgressStep(progress?.phase), progress?.text || ''),
+      onDelta: (delta, fullAnswer) => {
+        emitted = true;
+        activity.emit('stream');
+        onDelta?.(delta, fullAnswer);
+      },
+    });
+    if (!emitted) {
+      activity.emit('stream');
+      onDelta?.(result.answer, result.answer);
+    }
     return result;
   }
 
   const cached = cacheLookup(args, contextualPrompt, effectivePreferences);
   if (cached) {
+    activity.emit('stream');
     onDelta?.(cached.answer, cached.answer);
     return withAgentMetadata(cached, plan);
   }
@@ -314,6 +358,7 @@ export async function streamRoutedAssistantResponse(args, { onDelta } = {}) {
         if (!delta) continue;
         emitted = true;
         answer += delta;
+        activity.emit('stream');
         onDelta?.(delta, answer);
         continue;
       }
@@ -350,8 +395,20 @@ export async function streamRoutedAssistantResponse(args, { onDelta } = {}) {
   } catch (error) {
     if (shouldRethrow(error, args.signal) || emitted) throw error;
     console.warn('PathPilot live stream could not start; falling back to the existing answer pipeline.', error);
-    const fallback = await generateRoutedAssistantResponse(args);
-    onDelta?.(fallback.answer, fallback.answer);
+    let fallbackEmitted = false;
+    const fallback = await generateRoutedAssistantResponse({
+      ...args,
+      onProgress: (progress) => activity.emit(localProgressStep(progress?.phase), progress?.text || ''),
+      onDelta: (delta, fullAnswer) => {
+        fallbackEmitted = true;
+        activity.emit('stream');
+        onDelta?.(delta, fullAnswer);
+      },
+    });
+    if (!fallbackEmitted) {
+      activity.emit('stream');
+      onDelta?.(fallback.answer, fallback.answer);
+    }
     return fallback;
   }
 }

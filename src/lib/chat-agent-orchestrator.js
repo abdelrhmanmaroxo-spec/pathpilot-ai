@@ -1,10 +1,13 @@
 import { needsFreshResearch } from './smart-router.js';
+import { matchCognitiveRequest } from './cognitive-router.js';
 
-export const CHAT_AGENT_ORCHESTRATOR_VERSION = 'agent-v1';
+export const CHAT_AGENT_ORCHESTRATOR_VERSION = 'agent-v2';
 
 export const CHAT_AGENT_TOOLS = Object.freeze([
   { id: 'context_memory', label: 'Context memory', stage: 'understand', userToggleable: false },
+  { id: 'followup_resolver', label: 'Follow-up resolver', stage: 'understand', userToggleable: false },
   { id: 'intent_classifier', label: 'Intent analysis', stage: 'understand', userToggleable: false },
+  { id: 'question_matcher', label: 'Closest-task matcher', stage: 'understand', userToggleable: false },
   { id: 'constraint_extractor', label: 'Constraint check', stage: 'understand', userToggleable: false },
   { id: 'topic_linker', label: 'Topic linking', stage: 'understand', userToggleable: false },
   { id: 'language_detector', label: 'Language detection', stage: 'understand', userToggleable: false },
@@ -20,6 +23,8 @@ export const CHAT_AGENT_TOOLS = Object.freeze([
   { id: 'knowledge_deduplicator', label: 'Knowledge deduplication', stage: 'knowledge', userToggleable: true },
   { id: 'context_budgeter', label: 'Context budget', stage: 'knowledge', userToggleable: false },
   { id: 'domain_router', label: 'Domain routing', stage: 'knowledge', userToggleable: false },
+  { id: 'evidence_mapper', label: 'Evidence mapping', stage: 'knowledge', userToggleable: false },
+  { id: 'request_decomposer', label: 'Request decomposition', stage: 'reason', userToggleable: true },
   { id: 'deep_analyzer', label: 'Deep analysis', stage: 'reason', userToggleable: true },
   { id: 'assumption_checker', label: 'Assumption check', stage: 'reason', userToggleable: true },
   { id: 'contradiction_checker', label: 'Contradiction check', stage: 'reason', userToggleable: true },
@@ -28,6 +33,8 @@ export const CHAT_AGENT_TOOLS = Object.freeze([
   { id: 'claim_verifier', label: 'Claim verification', stage: 'reason', userToggleable: true },
   { id: 'risk_analyzer', label: 'Risk analysis', stage: 'reason', userToggleable: true },
   { id: 'comparison_engine', label: 'Comparison engine', stage: 'reason', userToggleable: true },
+  { id: 'decision_engine', label: 'Decision engine', stage: 'reason', userToggleable: true },
+  { id: 'option_ranker', label: 'Option ranking', stage: 'reason', userToggleable: true },
   { id: 'planner', label: 'Planning engine', stage: 'reason', userToggleable: true },
   { id: 'dependency_mapper', label: 'Dependency mapping', stage: 'reason', userToggleable: true },
   { id: 'code_analyzer', label: 'Code analysis', stage: 'specialist', userToggleable: true },
@@ -36,12 +43,15 @@ export const CHAT_AGENT_TOOLS = Object.freeze([
   { id: 'qa_reviewer', label: 'QA review', stage: 'specialist', userToggleable: true },
   { id: 'numeric_sanity_check', label: 'Numeric sanity check', stage: 'specialist', userToggleable: true },
   { id: 'answer_editor', label: 'Answer editor', stage: 'finalize', userToggleable: true },
+  { id: 'answer_synthesizer', label: 'Answer synthesis', stage: 'finalize', userToggleable: false },
   { id: 'confidence_estimator', label: 'Confidence estimate', stage: 'finalize', userToggleable: false },
   { id: 'answer_reviewer', label: 'Answer review', stage: 'finalize', userToggleable: true },
+  { id: 'self_correction', label: 'Self-correction', stage: 'finalize', userToggleable: false },
   { id: 'final_quality_gate', label: 'Final quality gate', stage: 'finalize', userToggleable: false },
   { id: 'model_router', label: 'Model routing', stage: 'runtime', userToggleable: false },
   { id: 'local_llm', label: 'Local LLM', stage: 'runtime', userToggleable: false },
   { id: 'provider_fallback', label: 'Provider fallback', stage: 'runtime', userToggleable: false },
+  { id: 'response_streamer', label: 'Live response stream', stage: 'runtime', userToggleable: false },
   { id: 'voice_dictation', label: 'Voice dictation', stage: 'input', userToggleable: true },
 ]);
 
@@ -51,16 +61,15 @@ const USER_TOGGLEABLE_IDS = new Set(CHAT_AGENT_TOOLS.filter((tool) => tool.userT
 export const CHAT_AGENT_OPTION_GROUPS = Object.freeze([
   { id: 'search', label: 'Web research', toolIds: ['query_expander', 'web_search', 'source_ranker', 'source_crosscheck', 'citation_guard'] },
   { id: 'rag', label: 'Expert RAG', toolIds: ['rag_retriever', 'rag_reranker', 'knowledge_deduplicator'] },
-  { id: 'deep', label: 'Deep analysis', toolIds: ['deep_analyzer', 'assumption_checker', 'contradiction_checker', 'tradeoff_analyzer', 'failure_mode_analyzer', 'claim_verifier', 'risk_analyzer', 'answer_reviewer'] },
+  { id: 'deep', label: 'Deep analysis', toolIds: ['request_decomposer', 'deep_analyzer', 'assumption_checker', 'contradiction_checker', 'tradeoff_analyzer', 'failure_mode_analyzer', 'claim_verifier', 'risk_analyzer', 'answer_reviewer'] },
   { id: 'planning', label: 'Planning', toolIds: ['planner', 'dependency_mapper'] },
-  { id: 'comparison', label: 'Comparison', toolIds: ['comparison_engine'] },
+  { id: 'comparison', label: 'Comparison & decisions', toolIds: ['comparison_engine', 'decision_engine', 'option_ranker'] },
   { id: 'code', label: 'Code & QA', toolIds: ['code_analyzer', 'test_planner', 'qa_reviewer'] },
   { id: 'numbers', label: 'Numeric checks', toolIds: ['numeric_sanity_check'] },
   { id: 'writing', label: 'Answer editing', toolIds: ['answer_editor'] },
   { id: 'voice', label: 'Voice dictation', toolIds: ['voice_dictation'] },
 ]);
 
-const CASUAL_PATTERN = /^(?:اهلا|أهلا|هاي|هلا|سلام|ازيك|عامل ايه|عامل إيه|اخبارك|أخبارك|انت مين|إنت مين|انت بتعمل اي|انت بتعمل إيه|إنت بتعمل اي|إنت بتعمل إيه|بتعمل اي|بتعمل إيه|تقدر تعمل ايه|تقدر تعمل إيه|شكرا|شكرًا|thanks|thank you|hi|hello|hey|how are you|who are you|what are you doing|what can you do)[؟?!.,\s]*$/i;
 const CODE_PATTERN = /\b(code|bug|debug|javascript|typescript|react|node|python|api|sql|database|css|html|oauth|jwt|backend|frontend|server|deploy|docker|linux|windows|macos)\b|(?:كود|برمج|باك.?اند|فرونت.?اند|قاعدة بيانات|داتا.?بيس|سيرفر|نشر|لينكس|ويندوز|ماك)/i;
 const SECURITY_PATTERN = /\b(security|secure|auth|oauth|jwt|token|password|permission|access control|xss|csrf|sql injection|vulnerability)\b|(?:أمان|امن|تأمين|صلاحيات|تسجيل دخول|كلمة مرور|توكن|ثغرة)/i;
 const PLANNING_PATTERN = /\b(plan|roadmap|steps|schedule|milestone|dependency|launch|project)\b|(?:خطة|خطوات|جدول|مراحل|اعتماديات|مشروع|اطلاق|إطلاق)/i;
@@ -71,16 +80,6 @@ const WRITING_PATTERN = /\b(write|rewrite|email|message|cv|resume|cover letter|p
 
 function add(set, ...ids) {
   for (const id of ids) if (TOOL_BY_ID.has(id)) set.add(id);
-}
-
-function detectIntent(text) {
-  if (CASUAL_PATTERN.test(text.trim())) return 'conversation';
-  if (COMPARISON_PATTERN.test(text)) return 'compare';
-  if (PLANNING_PATTERN.test(text)) return 'plan';
-  if (CODE_PATTERN.test(text)) return 'technical';
-  if (WRITING_PATTERN.test(text)) return 'write';
-  if (ANALYSIS_PATTERN.test(text)) return 'analyze';
-  return 'answer';
 }
 
 function detectDomain(text) {
@@ -119,28 +118,31 @@ export function planChatAgent({ prompt = '', forceResearch = false, deepThink = 
   const text = String(prompt || '').trim();
   const selected = new Set();
   const freshnessNeeded = forceResearch || needsFreshResearch(text, 'ask');
-  const intent = detectIntent(text);
+  const cognitive = matchCognitiveRequest(text);
+  const intent = cognitive.intent;
   const domain = detectDomain(text);
   const risk = riskLevel(text);
 
   add(selected,
-    'context_memory', 'intent_classifier', 'constraint_extractor', 'topic_linker',
+    'context_memory', 'followup_resolver', 'intent_classifier', 'question_matcher', 'constraint_extractor', 'topic_linker',
     'language_detector', 'safety_guard', 'freshness_detector',
     'context_budgeter', 'domain_router',
-    'confidence_estimator', 'final_quality_gate', 'model_router', 'local_llm', 'provider_fallback',
+    'answer_synthesizer', 'self_correction', 'confidence_estimator', 'final_quality_gate',
+    'model_router', 'local_llm', 'provider_fallback', 'response_streamer',
   );
 
-  if (intent !== 'conversation') add(selected, 'rag_retriever', 'rag_reranker', 'knowledge_deduplicator');
+  if (intent !== 'conversation') add(selected, 'rag_retriever', 'rag_reranker', 'knowledge_deduplicator', 'evidence_mapper');
   if (freshnessNeeded) add(selected, 'query_expander', 'web_search', 'source_ranker', 'source_crosscheck', 'citation_guard', 'claim_verifier');
-  if (deepThink || ANALYSIS_PATTERN.test(text) || risk === 'high' || text.length >= 450) {
-    add(selected, 'deep_analyzer', 'assumption_checker', 'contradiction_checker', 'tradeoff_analyzer', 'failure_mode_analyzer', 'claim_verifier', 'risk_analyzer', 'answer_reviewer');
+  if (deepThink || ['analyze', 'diagnose'].includes(intent) || ANALYSIS_PATTERN.test(text) || risk === 'high' || cognitive.complexity === 'deep') {
+    add(selected, 'request_decomposer', 'deep_analyzer', 'assumption_checker', 'contradiction_checker', 'tradeoff_analyzer', 'failure_mode_analyzer', 'claim_verifier', 'risk_analyzer', 'answer_reviewer');
   }
   if (CODE_PATTERN.test(text)) add(selected, 'code_analyzer', 'test_planner', 'qa_reviewer');
   if (SECURITY_PATTERN.test(text)) add(selected, 'security_reviewer', 'failure_mode_analyzer', 'risk_analyzer');
-  if (PLANNING_PATTERN.test(text)) add(selected, 'planner', 'dependency_mapper', 'risk_analyzer', 'deep_analyzer', 'answer_reviewer');
-  if (COMPARISON_PATTERN.test(text)) add(selected, 'comparison_engine', 'tradeoff_analyzer', 'assumption_checker', 'deep_analyzer', 'answer_reviewer');
+  if (intent === 'plan' || PLANNING_PATTERN.test(text)) add(selected, 'request_decomposer', 'planner', 'dependency_mapper', 'risk_analyzer', 'deep_analyzer', 'answer_reviewer');
+  if (intent === 'compare' || COMPARISON_PATTERN.test(text)) add(selected, 'comparison_engine', 'option_ranker', 'tradeoff_analyzer', 'assumption_checker', 'deep_analyzer', 'answer_reviewer');
+  if (intent === 'decide') add(selected, 'comparison_engine', 'decision_engine', 'option_ranker', 'tradeoff_analyzer', 'assumption_checker', 'risk_analyzer', 'answer_reviewer');
   if (NUMERIC_PATTERN.test(text)) add(selected, 'numeric_sanity_check');
-  if (WRITING_PATTERN.test(text)) add(selected, 'answer_editor');
+  if (['write', 'summarize', 'translate', 'brainstorm'].includes(intent) || WRITING_PATTERN.test(text)) add(selected, 'answer_editor');
   if (voiceInput) add(selected, 'voice_dictation');
 
   removeDisabled(selected, disabledToolIds);
@@ -148,13 +150,17 @@ export function planChatAgent({ prompt = '', forceResearch = false, deepThink = 
   const toolIds = [...selected];
   const allowResearch = toolIds.includes('web_search');
   const deepReview = toolIds.includes('deep_analyzer') && (
-    deepThink || risk === 'high' || ['analyze', 'compare', 'plan', 'technical'].includes(intent) || text.length >= 450
+    deepThink || risk === 'high' || ['analyze', 'diagnose', 'compare', 'decide', 'plan', 'code'].includes(intent) || cognitive.complexity === 'deep'
   );
 
   return {
     version: CHAT_AGENT_ORCHESTRATOR_VERSION,
     mode: 'auto',
     intent,
+    matchedTask: cognitive.matchedTask,
+    alternativeTasks: cognitive.alternatives,
+    complexity: cognitive.complexity,
+    stages: cognitive.stages,
     domain,
     risk,
     freshnessNeeded,
@@ -173,6 +179,8 @@ export function agentPlanGuidance(plan) {
   return [
     `Chat agent orchestration: ${plan.version || CHAT_AGENT_ORCHESTRATOR_VERSION}; selection mode: auto.`,
     `Detected intent: ${plan.intent || 'answer'}. Domain: ${plan.domain || 'general'}. Risk: ${plan.risk || 'normal'}.`,
+    plan.matchedTask?.label ? `Closest task archetype: ${plan.matchedTask.label} (confidence ${plan.matchedTask.confidence}).` : '',
+    plan.stages?.length ? `Apply these high-level processing stages as relevant: ${plan.stages.join(', ')}.` : '',
     `Selected helper capabilities: ${ids}.`,
     plan.intent === 'conversation'
       ? 'This is casual conversation. Answer naturally and directly; do not force a report, RAG summary, or step-by-step framework.'
@@ -194,4 +202,24 @@ export function publicAgentToolSummary(plan, limit = 8) {
     .sort((a, b) => (rank.get(a.id) ?? 99) - (rank.get(b.id) ?? 99))
     .slice(0, Math.max(1, limit))
     .map((tool) => ({ id: tool.id, label: tool.label, stage: tool.stage }));
+}
+
+export function publicAgentActivity(plan, language = 'ar') {
+  const en = language === 'en';
+  const available = new Set(plan?.toolIds || []);
+  const steps = [
+    { id: 'understand', label: en ? 'Understanding message and context' : 'فهم الرسالة والسياق' },
+    { id: 'match', label: en ? `Matching task: ${plan?.matchedTask?.label || 'question'}` : 'مطابقة أقرب نوع للمهمة' },
+  ];
+  if (available.has('web_search')) steps.push({ id: 'research', label: en ? 'Researching and checking sources' : 'البحث والتحقق من المصادر' });
+  else if (available.has('rag_retriever')) steps.push({ id: 'knowledge', label: en ? 'Retrieving relevant knowledge' : 'استرجاع المعرفة المرتبطة' });
+  if (available.has('decision_engine')) steps.push({ id: 'reason', label: en ? 'Comparing and ranking options' : 'مقارنة وترتيب الخيارات' });
+  else if (available.has('planner')) steps.push({ id: 'reason', label: en ? 'Building an actionable plan' : 'بناء خطة قابلة للتنفيذ' });
+  else if (available.has('code_analyzer')) steps.push({ id: 'reason', label: en ? 'Analyzing code and failure modes' : 'تحليل الكود ونقاط الفشل' });
+  else if (available.has('deep_analyzer')) steps.push({ id: 'reason', label: en ? 'Analyzing constraints and trade-offs' : 'تحليل القيود والمفاضلات' });
+  steps.push(
+    { id: 'review', label: en ? 'Reviewing answer quality' : 'مراجعة جودة الإجابة' },
+    { id: 'stream', label: en ? 'Streaming the response live' : 'بث الإجابة مباشرة' },
+  );
+  return steps;
 }

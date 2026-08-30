@@ -170,8 +170,8 @@ async function llmAwareFallback(args, reason, allowColdStart, signal) {
   return fallbackResponse(args, reason);
 }
 
-export async function generateAssistantResponse({ mode, tool, prompt, preferences = {}, signal }) {
-  const args = { mode, tool, prompt, preferences };
+export async function generateAssistantResponse({ mode, tool, prompt, preferences = {}, signal, onProgress, onDelta }) {
+  const args = { mode, tool, prompt, preferences, signal, onProgress, onDelta };
   throwIfAborted(signal);
   if (!hasLiveAI) return llmAwareFallback(args, 'offline', true, signal);
 
