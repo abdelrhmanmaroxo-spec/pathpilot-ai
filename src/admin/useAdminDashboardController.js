@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  deleteUserAccount,
   exportOwnerData,
   hasPlatformBackend,
   inviteAdminByEmail,
@@ -8,9 +7,6 @@ import {
   loadAdminInvites,
   loadOwnerAccountLog,
   revokeAdminInvite,
-  sendOwnerPasswordReset,
-  setUserBan,
-  updateUserRole,
 } from '../lib/platform.js';
 import {
   getAdminTabs,
@@ -18,8 +14,8 @@ import {
   getBannedUsers,
   getPendingAdminInvites,
 } from './admin-dashboard-model.js';
-import { canModerateUser } from './admin-permissions.js';
 import { downloadJson } from './admin-utils.js';
+import { useAdminUserActions } from './useAdminUserActions.js';
 
 export function patchAdminUserCollection(current, userId, updated) {
   if (!current) return current;
@@ -60,10 +56,6 @@ export function useAdminDashboardController(user) {
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
-  const [roleBusy, setRoleBusy] = useState('');
-  const [deleteBusy, setDeleteBusy] = useState('');
-  const [banBusy, setBanBusy] = useState('');
-  const [resetBusy, setResetBusy] = useState('');
   const [inviteBusy, setInviteBusy] = useState(false);
   const [backupBusy, setBackupBusy] = useState(false);
 
@@ -109,71 +101,28 @@ export function useAdminDashboardController(user) {
     setAccountLog((current) => current.map((entry) => entry.id === userId ? { ...entry, ...updated } : entry));
   }, []);
 
-  const changeRole = useCallback(async (item) => {
-    if (!isOwner || item.isOwner) return;
-    const nextRole = item.role === 'admin' ? 'user' : 'admin';
-    setRoleBusy(item.id); setError(''); setNotice('');
-    try {
-      const updated = await updateUserRole(item.id, nextRole);
-      patchUser(item.id, updated);
-      setNotice(nextRole === 'admin' ? `${item.email} is now an Admin.` : `Admin access removed from ${item.email}.`);
-    } catch (requestError) {
-      setError(requestError.message);
-    } finally {
-      setRoleBusy('');
-    }
-  }, [isOwner, patchUser]);
+  const removeUserFromDashboard = useCallback((userId) => {
+    setData((current) => removeAdminUserFromDashboard(current, userId));
+  }, []);
 
-  const changeBan = useCallback(async (item) => {
-    if (!canModerateUser(user, item)) return;
-    const nextBanned = !item.disabled;
-    let reason = '';
-    if (nextBanned) {
-      const enteredReason = globalThis.prompt?.(`Ban ${item.email}?\n\nEnter the reason for the audit log. The account will be signed out immediately.`, 'Policy or security review');
-      if (enteredReason === null) return;
-      reason = String(enteredReason || '').trim();
-    } else if (!globalThis.confirm?.(`Unban ${item.email}?`)) return;
-    setBanBusy(item.id); setError(''); setNotice('');
-    try {
-      const updated = await setUserBan(item.id, nextBanned, reason);
-      patchUser(item.id, updated);
-      setNotice(nextBanned ? `${item.email} is now banned and all sessions were revoked.` : `${item.email} is active again.`);
-    } catch (requestError) {
-      setError(requestError.message);
-    } finally {
-      setBanBusy('');
-    }
-  }, [patchUser, user]);
-
-  const resetPassword = useCallback(async (item) => {
-    if (!isOwner || item.isOwner) return;
-    if (!globalThis.confirm?.(`Send a secure password reset link to ${item.email}?`)) return;
-    setResetBusy(item.id); setError(''); setNotice('');
-    try {
-      await sendOwnerPasswordReset(item.id);
-      setNotice(`Password reset email sent to ${item.email}. The link is single-use and expires in 30 minutes.`);
-    } catch (requestError) {
-      setError(requestError.message);
-    } finally {
-      setResetBusy('');
-    }
-  }, [isOwner]);
-
-  const removeUser = useCallback(async (item) => {
-    if (!isOwner || item.isOwner) return;
-    if (!globalThis.confirm?.(`Delete ${item.email}?\n\nThis permanently deletes the account and active sessions. This cannot be undone.`)) return;
-    setDeleteBusy(item.id); setError(''); setNotice('');
-    try {
-      await deleteUserAccount(item.id);
-      setData((current) => removeAdminUserFromDashboard(current, item.id));
-      setAccountLog((current) => current.filter((entry) => entry.id !== item.id));
-      setNotice(`${item.email} was deleted.`);
-    } catch (requestError) {
-      setError(requestError.message);
-    } finally {
-      setDeleteBusy('');
-    }
-  }, [isOwner]);
+  const {
+    roleBusy,
+    deleteBusy,
+    banBusy,
+    resetBusy,
+    changeRole,
+    changeBan,
+    resetPassword,
+    removeUser,
+  } = useAdminUserActions({
+    user,
+    isOwner,
+    patchUser,
+    removeUserFromDashboard,
+    setAccountLog,
+    setError,
+    setNotice,
+  });
 
   const addAdmin = useCallback(async (event) => {
     event.preventDefault();
