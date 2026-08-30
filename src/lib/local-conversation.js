@@ -1,49 +1,5 @@
+import { detectConversationalArchetype } from './conversation-intent.js';
 import { selectConversationVariant } from './conversation-variation.js';
-
-function normalize(value) {
-  return String(value || '')
-    .toLowerCase()
-    .replace(/[\u0610-\u061a\u064b-\u065f\u0670\u06d6-\u06ed]/g, '')
-    .replace(/[أإآ]/g, 'ا')
-    .replace(/ى/g, 'ي')
-    .replace(/ة/g, 'ه')
-    .replace(/[ـ]/g, '')
-    .replace(/[’']/g, '')
-    .replace(/([a-z\u0621-\u064a])\1{2,}/gi, '$1')
-    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-function detectLanguage(value) {
-  const raw = String(value || '');
-  const arabic = (raw.match(/[\u0600-\u06ff]/g) || []).length;
-  const latin = (raw.match(/[a-z]/gi) || []).length;
-  return latin > arabic ? 'en' : 'ar';
-}
-
-function isLaughter(value) {
-  const raw = String(value || '').trim().replace(/[.!؟?،,\s]+/g, '');
-  return /^(?:[😂🤣😄😁😅]+|ههه+|خخخ+|ha(?:ha)+|lol+|lmao)$/iu.test(raw);
-}
-
-const INTENT_PATTERNS = [
-  ['morning_greeting', /^(?:good morning|morning|صباح الخير|صباح النور|صباح الفل)$/],
-  ['evening_greeting', /^(?:good evening|evening|مساء الخير|مساء النور|مساء الفل)$/],
-  ['how_are_you', /^(?:how are you|how r u|hows it going|how is it going|whats up|what is up|you good|ازيك|ازيكم|عامل اي|عامل ايه|عامله اي|عامله ايه|اخبارك|ايه الاخبار|الدنيا ايه|الدنيا عامله ايه)$/],
-  ['greeting', /^(?:hi|hello|hey|اهلا|هاي|هلا|يا هلا|يا اهلا|سلام|السلام عليكم|وعليكم السلام)$/],
-  ['thanks', /^(?:thanks|thank you|thx|appreciate it|شكرا|شكرا جدا|تسلم|تسلمي|متشكر|متشكره|ميرسي)$/],
-  ['acknowledgement', /^(?:ok|okay|got it|cool|perfect|makes sense|all good|تمام|تمام كده|كده تمام|اوكي|اوكي تمام|ماشي|حلو|جميل|فهمت|وصلت|فل|اشطا)$/],
-  ['goodbye', /^(?:bye|goodbye|see you|see you later|later|good night|باي|يلا سلام|سلام سلام|اشوفك بعدين|نشوفك بعدين|تصبح علي خير|تصبحي علي خير)$/],
-  ['apology', /^(?:sorry|my bad|apologies|اسف|معلش|حقك عليا|سامحني)$/],
-  ['confusion', /^(?:im confused|i am confused|confused|i dont understand|dont understand|im lost|i am lost|مش فاهم|مش فاهمك|مش واضح|مش واضحه|اتلخبطت|انا تايه|تايه|مش مستوعب)$/],
-  ['vague_help', /^(?:help me|can you help me|i need help|need help|ساعدني|محتاج مساعده|عايز مساعده|ممكن تساعدني)$/],
-  ['frustration', /^(?:im frustrated|i am frustrated|this is annoying|it doesnt work|not working|زهقت|اتخنقت|الموضوع مستفز|مش شغال|مش نافع)$/],
-  ['compliment', /^(?:awesome|great job|nice one|well done|love it|جامد|عاش|برافو|عظمه|حلو اوي|انت جامد)$/],
-  ['identity', /^(?:who are you|what are you|انت مين|مين انت)$/],
-  ['doing', /^(?:what are you doing|what r u doing|انت بتعمل اي|انت بتعمل ايه|بتعمل اي|بتعمل ايه)$/],
-  ['capability', /^(?:what can you do|what can u do|تقدر تعمل اي|تقدر تعمل ايه|بتعرف تعمل اي|بتعرف تعمل ايه)$/],
-];
 
 const RESPONSES = {
   ar: {
@@ -87,6 +43,26 @@ const RESPONSES = {
       'وصلت. هات اللي بعده.',
       'تمام كده، أنا معاك.',
       'اشطا 😄 نتحرك على الخطوة اللي بعدها.',
+    ],
+    ready: [
+      'يلا بينا 🔥 هات أول حاجة.',
+      'جاهزين 👌 ابعت اللي عايز نبدأ بيه.',
+      'تمام، نبدأ فورًا. إيه أول خطوة؟',
+      'يلا نتحرك 😄 هات المطلوب.',
+      'أنا جاهز. ارمِ أول حاجة على الطاولة ونمسكها.',
+    ],
+    encouragement: [
+      'إنت محتاج حركة واحدة بس دلوقتي: ابدأ بأصغر خطوة، وبعدها الدنيا بتفتح لوحدها 💪',
+      'يلا يا معلم، متستناش المزاج المثالي. اعمل أول 10 دقايق بس وخلي الباقي ييجي وراهم.',
+      'شد حيلك 🔥 ركّز على اللي تقدر تعمله دلوقتي، مش على حجم المشوار كله.',
+      'إنت مش محتاج تخلص كل حاجة مرة واحدة. خلّص الخطوة الجاية بس، وبعدها ناخد اللي بعدها.',
+      'يلا بينا 💪 هدف صغير واضح دلوقتي أحسن من خطة عظيمة مركونة.',
+    ],
+    positive_update: [
+      'حلو جدًا 😄 كده نكمّل وإحنا رايقين.',
+      'عاش 👌 المهم إن الدنيا ماشية معاك.',
+      'الحمد لله 🙌 كده تمام. هات اللي عندك بقى.',
+      'زي الفل 😄 نكمّل على كده.',
     ],
     goodbye: [
       'سلام يا معلم 👋 أشوفك على خير.',
@@ -190,6 +166,26 @@ const RESPONSES = {
       'Got it. I’m with you.',
       'Cool 😄 Let’s move to the next step.',
     ],
+    ready: [
+      'Let’s go 🔥 Send the first thing.',
+      'Ready 👌 What are we starting with?',
+      'I’m in. Give me the first step.',
+      'Let’s start 😄 Send it over.',
+      'Ready when you are. Put the first thing in front of me.',
+    ],
+    encouragement: [
+      'Start with the smallest useful step. Momentum is much easier to build than motivation 💪',
+      'You don’t need the perfect mood. Give it ten focused minutes and let the next step earn its way in.',
+      'Keep the target small and concrete 🔥 One finished step beats a huge plan sitting still.',
+      'Don’t carry the whole project at once. Do the next clear thing, then reassess.',
+      'You’ve got a move available right now 💪 Pick the smallest one and make it real.',
+    ],
+    positive_update: [
+      'Nice 😄 Glad things are going well.',
+      'Love that 👌 Let’s keep the momentum.',
+      'Good to hear 🙌 What’s next?',
+      'Great 😄 Let’s keep rolling.',
+    ],
     goodbye: [
       'See you 👋 Come back anytime.',
       'Take care. We can pick it up whenever you’re back.',
@@ -253,27 +249,22 @@ const RESPONSES = {
   },
 };
 
-export function detectConversationalIntent(prompt) {
-  const raw = String(prompt || '').trim();
-  if (!raw || raw.length > 160) return null;
-  if (isLaughter(raw)) return 'laughter';
-  const text = normalize(raw);
-  if (!text) return null;
-  for (const [intent, pattern] of INTENT_PATTERNS) {
-    if (pattern.test(text)) return intent;
-  }
-  return null;
+export function detectConversationalIntent(prompt, options = {}) {
+  return detectConversationalArchetype(prompt, options)?.intent || null;
 }
 
 export function localConversationalReply(prompt, options = {}) {
-  const intent = detectConversationalIntent(prompt);
-  if (!intent) return null;
+  const archetype = detectConversationalArchetype(prompt, {
+    hasPriorContext: options.hasPriorContext === true,
+  });
+  if (!archetype) return null;
+
   const language = options.language === 'en' || options.language === 'ar'
     ? options.language
-    : detectLanguage(prompt);
-  const variants = RESPONSES[language]?.[intent] || RESPONSES.ar[intent] || [];
+    : archetype.language;
+  const variants = RESPONSES[language]?.[archetype.intent] || RESPONSES.ar[archetype.intent] || [];
   const answer = selectConversationVariant({
-    intent,
+    intent: archetype.intent,
     language,
     variants,
     storage: options.storage,
