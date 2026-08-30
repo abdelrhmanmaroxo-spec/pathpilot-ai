@@ -198,7 +198,7 @@ export default function AdminDashboard({ user, onBack }) {
         />
       )}
 
-      {tab === 'security' && <AdminSecurity bannedUsers={bannedUsers} loginLog={data?.loginLog} />}
+      {tab === 'security' && <AdminSecurity bannedUsers={bannedUsers} loginLog={data?.loginLog} visitorLog={data?.visitorLog || []} visitorRetentionDays={data?.visitorRetentionDays || 30} />}
       {tab === 'owner-log' && user?.isOwner && <AdminOwnerLog accounts={accountLog} />}
       {tab === 'api' && <AdminApiUsage requests={data?.apiUsage} />}
       {tab === 'errors' && <AdminErrors errors={data?.errors} />}
