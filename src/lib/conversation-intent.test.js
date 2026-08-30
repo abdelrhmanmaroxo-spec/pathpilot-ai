@@ -29,6 +29,14 @@ test('detects lightweight archetypes across Arabic Egyptian and English', () => 
   }
 });
 
+test('recognizes embedded social phrases instead of requiring exact whole-message matches', () => {
+  assert.equal(detectConversationalArchetype('اهلا عامل ايه يا معلم')?.intent, 'how_are_you');
+  assert.equal(detectConversationalArchetype('صباح الخير يا صاحبي')?.intent, 'morning_greeting');
+  assert.equal(detectConversationalArchetype('good evening my friend')?.intent, 'evening_greeting');
+  assert.equal(detectConversationalArchetype('شجعني شويه يا معلم')?.intent, 'encouragement');
+  assert.equal(detectConversationalArchetype('ممكن تساعدني يا صاحبي')?.intent, 'vague_help');
+});
+
 test('handles short mixed-language social turns using token archetypes', () => {
   assert.equal(detectConversationalArchetype('thanks يا معلم')?.intent, 'thanks');
   assert.equal(detectConversationalArchetype('تمام bro')?.intent, 'acknowledgement');
@@ -43,6 +51,8 @@ test('does not swallow action-bearing messages just because they contain social 
     'شكرا وضح refresh token',
     'hello اكتبلي ايميل',
     'cool now debug this function',
+    'ممكن تساعدني في تحليل OAuth؟',
+    'can you help me analyze this API?',
   ]) {
     assert.equal(detectConversationalArchetype(prompt), null, prompt);
   }
