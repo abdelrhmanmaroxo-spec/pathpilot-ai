@@ -2,7 +2,23 @@ const MAX_SOCIAL_CHARS = 220;
 const MAX_SOCIAL_TOKENS = 18;
 
 const ARABIC_DIACRITICS = /[\u0610-\u061a\u064b-\u065f\u0670\u06d6-\u06ed]/g;
-const ROMANIZED_ARABIC_CUES = /(?:\b(?:ezayak|ezayek|ezzayak|ezzayek|akhbarak|shokran|shukran|tmam|tamam|mashy|mashi|eshta|yalla|yala|ma3lesh|malesh|asif|salam)\b|\b(?:3amel|amel)\s+(?:eh|eih)\b)/i;
+const ROMANIZED_ARABIC_CUES = /(?:\b(?:ezayak|ezayek|ezzayak|ezzayek|akhbarak|shokran|shukran|tmam|tamam|mashy|mashi|eshta|yalla|yala|ma3lesh|malesh|asif|salam|msh|mesh|mosh|fahem|fahm|sh8al|shghal|3ayz|3ayez|3ayza|kwayes|kwys|mhtag|mehtag|mohtag|msa3da|sa7by|sa7bi)\b|\b(?:3amel|amel)\s+(?:eh|eih)\b)/i;
+
+const ARABIZI_TOKEN_MAP = new Map([
+  ['msh', 'مش'], ['mesh', 'مش'], ['mosh', 'مش'],
+  ['fahem', 'فاهم'], ['fahm', 'فاهم'], ['fhm', 'فاهم'],
+  ['fahma', 'فاهمه'], ['fahmah', 'فاهمه'],
+  ['sh8al', 'شغال'], ['shghal', 'شغال'], ['shaghal', 'شغال'],
+  ['naf3', 'نافع'], ['nafe3', 'نافع'],
+  ['mhtag', 'محتاج'], ['mehtag', 'محتاج'], ['mohtag', 'محتاج'],
+  ['msa3da', 'مساعده'], ['mosa3da', 'مساعده'],
+  ['3ayz', 'عايز'], ['3ayez', 'عايز'], ['3ayza', 'عايزه'], ['3ayzah', 'عايزه'],
+  ['kwayes', 'كويس'], ['kways', 'كويس'], ['kwys', 'كويس'],
+  ['kwayesa', 'كويسه'], ['kwysa', 'كويسه'],
+  ['ta3ban', 'تعبان'], ['ta3bana', 'تعبانه'],
+  ['za3lan', 'زعلان'], ['za3lana', 'زعلانه'],
+  ['asf', 'اسف'],
+]);
 
 // This matcher runs after normalization, so Arabic cues intentionally use normalized
 // Alef/Ya/Taa-Marbuta forms. Common Egyptian attached pronouns are accepted to keep
@@ -14,7 +30,7 @@ const EMBEDDED_PATTERNS = [
   ['evening_greeting', /(?:^|\s)(?:good evening|مساء الخير|مساء النور|مساء الفل)(?:\s|$)/],
   ['how_are_you', /(?:\bhow are you\b|\bhow r u\b|\bhows it going\b|\bwhats up\b|\b(?:ezayak|ezayek|ezzayak|ezzayek|akhbarak)\b|\b(?:3amel|amel)\s+(?:eh|eih)\b|(?:^|\s)(?:ازيك|ازيكم|عامل اي|عامل ايه|عامله اي|عامله ايه|اخبارك|الدنيا عامله ايه)(?:\s|$))/],
   ['encouragement', /(?:\bencourage me\b|\bmotivate me\b|\bgive me a push\b|(?:^|\s)(?:شجعني|حفزني|اديني دفعه)(?:\s|$))/],
-  ['vague_help', /(?:\bhelp me\b|\bcan you help me\b|\bi need help\b|(?:^|\s)(?:ساعدني|ممكن تساعدني|عايز مساعده|محتاج مساعده)(?:\s|$))/],
+  ['vague_help', /(?:\bhelp me\b|\bcan you help me\b|\bi need help\b|(?:^|\s)(?:ساعدني|ممكن تساعدني|عايز مساعده|عايز مساعده|محتاج مساعده)(?:\s|$))/],
   ['confusion', /(?:\bstill confused\b|\bstill dont understand\b|(?:^|\s)(?:لسه مش فاهم|مش فاهم خالص|مش مستوعب خالص)(?:\s|$))/],
   ['frustration', /(?:\bstill not working\b|\bthis still isnt working\b|(?:^|\s)(?:لسه مش شغال|مش شغال خالص|مش نافع خالص)(?:\s|$))/],
   ['positive_update', /(?:\b(?:im|i am) (?:good|fine|okay)\b|(?:^|\s)انا (?:تمام|كويس|كويسه|بخير)(?:\s|$))/],
@@ -44,7 +60,7 @@ const EXACT_PATTERNS = [
 const SOCIAL_FILLERS = new Set([
   'يا', 'معلم', 'صاحبي', 'صديقي', 'حبيبي', 'باشا', 'ريس', 'برنس', 'عم', 'برو', 'bro', 'man', 'mate', 'friend',
   'جدا', 'اوي', 'قوي', 'بجد', 'خالص', 'شويه', 'شوي', 'really', 'very', 'so', 'much', 'a', 'lot', 'just', 'here',
-  'ya', 'enta', 'enty', 'wenta', 'wenty', 'gedan', 'awyy', 'awy', 'bgd', 'khalas',
+  'ya', 'enta', 'enty', 'wenta', 'wenty', 'gedan', 'awyy', 'awy', 'bgd', 'khalas', 'm3lm', 'sa7by', 'sa7bi',
 ]);
 
 const TOKEN_ARCHETYPES = [
@@ -57,8 +73,17 @@ const TOKEN_ARCHETYPES = [
   { intent: 'goodbye', any: ['bye', 'goodbye', 'later', 'salam', 'باي', 'سلام'], maxMeaningfulFillers: 2 },
 ];
 
+function normalizeArabiziTokens(text) {
+  const tokens = String(text || '').split(' ').filter(Boolean);
+  const mapped = tokens.map((token) => ARABIZI_TOKEN_MAP.get(token) || token);
+  const joined = mapped.join(' ');
+  return joined
+    .replace(/\bana\s+(تمام|كويس|كويسه|تعبان|تعبانه|زعلان|زعلانه)\b/gi, 'انا $1')
+    .replace(/\b(?:momken|mmkn)\s+(مساعده)\b/gi, 'ممكن $1');
+}
+
 export function normalizeConversationText(value) {
-  return String(value || '')
+  const normalized = String(value || '')
     .toLowerCase()
     .replace(ARABIC_DIACRITICS, '')
     .replace(/[أإآ]/g, 'ا')
@@ -70,13 +95,17 @@ export function normalizeConversationText(value) {
     .replace(/[^\p{L}\p{N}\s]/gu, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+  return normalizeArabiziTokens(normalized);
 }
 
 export function detectConversationLanguage(value) {
   const raw = String(value || '');
   const arabic = (raw.match(/[\u0600-\u06ff]/g) || []).length;
   const latin = (raw.match(/[a-z]/gi) || []).length;
-  if (!arabic) return ROMANIZED_ARABIC_CUES.test(normalizeConversationText(raw)) ? 'ar' : 'en';
+  if (!arabic) {
+    const normalized = normalizeConversationText(raw);
+    return ROMANIZED_ARABIC_CUES.test(raw) || /[\u0600-\u06ff]/.test(normalized) ? 'ar' : 'en';
+  }
   if (!latin) return 'ar';
   // Arabic-first code switching is common in Egyptian chat. Keep Arabic when it is a
   // meaningful part of the turn instead of flipping the whole reply because of one
