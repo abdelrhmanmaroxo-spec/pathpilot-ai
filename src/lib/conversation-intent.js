@@ -3,7 +3,10 @@ const MAX_SOCIAL_TOKENS = 18;
 
 const ARABIC_DIACRITICS = /[\u0610-\u061a\u064b-\u065f\u0670\u06d6-\u06ed]/g;
 
-const ACTION_CUES = /(?:\b(?:continue|explain|why|write|rewrite|translate|compare|search|find|fix|debug|analy[sz]e|analysis|summari[sz]e|summary|calculate|solve|show|build|create|edit)\b|(?:^|\s)(?:كمل|كمّل|تابع|وضح|وضّح|ليه|اكتب|اعد|أعد|ترجم|قارن|دور|ابحث|اصلح|أصلح|حلل|لخص|احسب|حل|وريني|اعمل|ابني|عدل|عدّل|تحليل|شرح|ترجمه|مقارنه|تلخيص)(?:\s|$))/i;
+// This matcher runs after normalization, so Arabic cues intentionally use normalized
+// Alef/Ya/Taa-Marbuta forms. Common Egyptian attached pronouns are accepted to keep
+// real work requests out of the lightweight social fast path.
+const ACTION_CUES = /(?:\b(?:continue|explain|why|write|rewrite|translate|compare|search|find|fix|debug|analy[sz]e|analysis|summari[sz]e|summary|calculate|solve|show|build|create|edit)\b|(?:^|\s)(?:كمل(?:لي|ه|ها|لنا)?|تابع(?:لي|ه|ها)?|وضح(?:لي|ه|ها|لنا)?|ليه|اكتب(?:لي|ه|ها|لنا)?|اعد(?:لي|ه|ها)?|ترجم(?:لي|ه|ها|لنا)?|قارن(?:لي|ه|ها)?|دور(?:لي)?|ابحث(?:لي)?|اصلح(?:لي|ه|ها)?|حلل(?:لي|ه|ها)?|لخص(?:لي|ه|ها)?|احسب(?:لي|ه|ها)?|حل(?:لي|ه|ها)?|وريني|اعمل(?:لي|ه|ها|لنا)?|ابني(?:لي|ه|ها)?|عدل(?:لي|ه|ها)?|تحليل|شرح|ترجمه|مقارنه|تلخيص)(?:\s|$))/i;
 
 const EMBEDDED_PATTERNS = [
   ['morning_greeting', /(?:^|\s)(?:good morning|صباح الخير|صباح النور|صباح الفل)(?:\s|$)/],
@@ -20,7 +23,7 @@ const EXACT_PATTERNS = [
   ['greeting', /^(?:hi|hello|hey|اهلا|هاي|هلا|يا هلا|يا اهلا|سلام|السلام عليكم|وعليكم السلام)$/],
   ['thanks', /^(?:thanks|thank you|thx|appreciate it|شكرا|شكرا جدا|تسلم|تسلمي|متشكر|متشكره|ميرسي)$/],
   ['acknowledgement', /^(?:ok|okay|got it|cool|perfect|makes sense|all good|تمام|تمام كده|كده تمام|اوكي|اوكي تمام|ماشي|حلو|جميل|فهمت|وصلت|فل|اشطا)$/],
-  ['ready', /^(?:ready|im ready|i am ready|lets go|lets start|go ahead|جاهز|جاهزه|يلا|يلا بينا|يلا نبدأ|ابدأ|ابدا)$/],
+  ['ready', /^(?:ready|im ready|i am ready|lets go|lets start|go ahead|جاهز|جاهزه|يلا|يلا بينا|يلا نبدا|ابدا)$/],
   ['encouragement', /^(?:encourage me|motivate me|give me a push|شجعني|حفزني|اديني دفعه|عايز تشجيع|محتاج تشجيع)$/],
   ['positive_update', /^(?:im good|i am good|doing good|im fine|i am fine|all good here|انا تمام|انا كويس|انا كويسه|الحمد لله تمام|الدنيا تمام|كله تمام)$/],
   ['goodbye', /^(?:bye|goodbye|see you|see you later|later|good night|باي|يلا سلام|سلام سلام|اشوفك بعدين|نشوفك بعدين|تصبح علي خير|تصبحي علي خير)$/],
