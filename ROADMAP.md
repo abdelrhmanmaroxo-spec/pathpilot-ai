@@ -12,6 +12,7 @@ This file is the execution tracker for the two approved 50-item roadmaps. Status
 
 ## Progress notes
 
+- 2026-08-30: A02 architecture cleanup advanced by extracting the complete Users/admin-invitation table and owner-only account controls into `src/admin/AdminUsers.jsx`. `AdminDashboard.jsx` now acts as the orchestration shell for that feature while all existing server-side role checks, protected-owner guards, confirmations, busy states, and platform API calls remain unchanged. This reduces dashboard UI coupling without changing authentication, persistence, or admin behavior; A02 remains `IN_PROGRESS` while the remaining orchestration/actions are further modularized.
 - 2026-08-30: A09 completed at the production API boundary. All JSON `4xx/5xx` responses now pass through one backward-compatible error-envelope middleware that preserves the existing human-readable `error`, preserves valid explicit codes, replaces unsafe/arbitrary codes with stable HTTP-class codes, and guarantees the active `requestId` for correlation. SSE, HTML verification/reset pages, successful JSON responses, authentication behavior, and provider payloads are left untouched. Regression tests cover stable defaults, explicit-code preservation, arbitrary-code rejection, JSON enrichment, and non-JSON passthrough.
 - 2026-08-30: A06 production persistence guard hardened. Startup validation now rejects `DATABASE_PATH=:memory:` whenever PathPilot is running in production or Railway, preventing an accidental ephemeral SQLite database from replacing the mounted persistent database at runtime. Development/test in-memory databases remain supported, and feature reporting now exposes `persistentDatabase` as a strict boolean. Regression tests cover standard production, Railway detection, and development compatibility.
 - 2026-08-30: Production live-AI connectivity fixed across the server stack. The browser's central API client sends `X-Request-ID` for end-to-end correlation; every active CORS layer now explicitly permits that header, allowing the streamed assistant POST to proceed after a successful preflight instead of falling through to Local Intelligence. A preflight regression test locks the browser/server contract.
@@ -45,7 +46,7 @@ This file is the execution tracker for the two approved 50-item roadmaps. Status
 | ID | Status | Item |
 |---|---|---|
 | A01 | DONE | Split App.jsx into focused UI modules |
-| A02 | IN_PROGRESS | Split Admin Dashboard into feature modules |
+| A02 | IN_PROGRESS | Split Admin Dashboard into feature modules; Users/admin-invitation UI extracted, orchestration/actions remain |
 | A03 | TODO | Split authentication UI by flow |
 | A04 | TODO | Archive/remove legacy intelligence servers after parity verification |
 | A05 | DONE | Central API client, including JSON contracts, request IDs, abort/timeout handling, and SSE event streaming |
