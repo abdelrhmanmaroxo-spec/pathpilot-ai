@@ -5,6 +5,14 @@ const ARABIC_DIACRITICS = /[\u0610-\u061a\u064b-\u065f\u0670\u06d6-\u06ed]/g;
 
 const ACTION_CUES = /(?:\b(?:continue|explain|why|write|rewrite|translate|compare|search|find|fix|debug|analy[sz]e|summari[sz]e|calculate|solve|show|build|create|edit)\b|(?:^|\s)(?:كمل|كمّل|تابع|وضح|وضّح|ليه|اكتب|اعد|أعد|ترجم|قارن|دور|ابحث|اصلح|أصلح|حلل|لخص|احسب|حل|وريني|اعمل|ابني|عدل|عدّل)(?:\s|$))/i;
 
+const EMBEDDED_PATTERNS = [
+  ['morning_greeting', /(?:^|\s)(?:good morning|صباح الخير|صباح النور|صباح الفل)(?:\s|$)/],
+  ['evening_greeting', /(?:^|\s)(?:good evening|مساء الخير|مساء النور|مساء الفل)(?:\s|$)/],
+  ['how_are_you', /(?:\bhow are you\b|\bhow r u\b|\bwhats up\b|(?:^|\s)(?:ازيك|ازيكم|عامل اي|عامل ايه|عامله اي|عامله ايه|اخبارك)(?:\s|$))/],
+  ['encouragement', /(?:\bencourage me\b|\bmotivate me\b|(?:^|\s)(?:شجعني|حفزني)(?:\s|$))/],
+  ['vague_help', /(?:\bhelp me\b|\bcan you help me\b|(?:^|\s)(?:ساعدني|ممكن تساعدني|عايز مساعده|محتاج مساعده)(?:\s|$))/],
+];
+
 const EXACT_PATTERNS = [
   ['morning_greeting', /^(?:good morning|morning|صباح الخير|صباح النور|صباح الفل)$/],
   ['evening_greeting', /^(?:good evening|evening|مساء الخير|مساء النور|مساء الفل)$/],
@@ -67,7 +75,14 @@ function tokenSet(text) {
 
 function hasActionBearingContent(text, intent) {
   if (!ACTION_CUES.test(text)) return false;
-  return !['ready'].includes(intent);
+  return intent !== 'ready';
+}
+
+function firstMatchingIntent(text, patterns) {
+  for (const [intent, pattern] of patterns) {
+    if (pattern.test(text)) return intent;
+  }
+  return null;
 }
 
 function tokenIntent(text) {
@@ -91,14 +106,9 @@ export function detectConversationalArchetype(prompt, { hasPriorContext = false 
   const tokenCount = text.split(' ').filter(Boolean).length;
   if (tokenCount > MAX_SOCIAL_TOKENS) return null;
 
-  let intent = null;
-  for (const [candidate, pattern] of EXACT_PATTERNS) {
-    if (pattern.test(text)) {
-      intent = candidate;
-      break;
-    }
-  }
-  if (!intent) intent = tokenIntent(text);
+  const exactIntent = firstMatchingIntent(text, EXACT_PATTERNS);
+  const embeddedIntent = firstMatchingIntent(text, EMBEDDED_PATTERNS);
+  const intent = exactIntent || embeddedIntent || tokenIntent(text);
   if (!intent) return null;
 
   if (hasActionBearingContent(text, intent)) return null;
@@ -107,6 +117,6 @@ export function detectConversationalArchetype(prompt, { hasPriorContext = false 
   return {
     intent,
     language: detectConversationLanguage(raw),
-    confidence: EXACT_PATTERNS.some(([candidate, pattern]) => candidate === intent && pattern.test(text)) ? 1 : 0.78,
+    confidence: exactIntent ? 1 : embeddedIntent ? 0.9 : 0.78,
   };
 }
