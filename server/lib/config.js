@@ -31,6 +31,7 @@ export function inspectRuntimeConfig(env = process.env) {
 
   if (!Number.isInteger(port) || port <= 0 || port > 65535) errors.push('PORT_INVALID');
   if (production && !databasePath) errors.push('DATABASE_PATH_REQUIRED_IN_PRODUCTION');
+  if (production && databasePath === ':memory:') errors.push('DATABASE_PATH_MUST_BE_PERSISTENT_IN_PRODUCTION');
   if (production && !allowedOrigins.length) errors.push('ALLOWED_ORIGINS_REQUIRED_IN_PRODUCTION');
   if (aiKey !== aiModel) warnings.push('AI_CONFIGURATION_INCOMPLETE');
   if (!filled(env.TAVILY_API_KEY)) warnings.push('TAVILY_NOT_CONFIGURED');
@@ -48,7 +49,7 @@ export function inspectRuntimeConfig(env = process.env) {
       email: email.configured,
       emailProvider: email.provider,
       googleSignIn: filled(env.GOOGLE_CLIENT_ID),
-      persistentDatabase: databasePath && databasePath !== ':memory:',
+      persistentDatabase: Boolean(databasePath && databasePath !== ':memory:'),
     },
   };
 }

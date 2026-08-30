@@ -12,6 +12,7 @@ This file is the execution tracker for the two approved 50-item roadmaps. Status
 
 ## Progress notes
 
+- 2026-08-30: A06 production persistence guard hardened. Startup validation now rejects `DATABASE_PATH=:memory:` whenever PathPilot is running in production or Railway, preventing an accidental ephemeral SQLite database from replacing the mounted persistent database at runtime. Development/test in-memory databases remain supported, and feature reporting now exposes `persistentDatabase` as a strict boolean. Regression tests cover standard production, Railway detection, and development compatibility.
 - 2026-08-30: Production live-AI connectivity fixed across the server stack. The browser's central API client sends `X-Request-ID` for end-to-end correlation; every active CORS layer now explicitly permits that header, allowing the streamed assistant POST to proceed after a successful preflight instead of falling through to Local Intelligence. A preflight regression test locks the browser/server contract.
 - 2026-08-30: Production testing showed the configured Gemini compatibility endpoint completing normal AI requests in about 23 seconds but timing out native stream negotiation after 90 seconds. The assistant SSE route now selects provider-aware delivery: Gemini uses its reliable complete-response request, keeps the browser connection alive, and progressively emits lossless visible chunks through the same abortable live channel; providers with healthy native SSE keep true token streaming. The UI advances to the analysis stage as soon as the live channel opens.
 - 2026-08-30: A09 streaming error correlation hardened. The live assistant stream now maps raw provider failures into a stable public taxonomy (`PROVIDER_AUTH_FAILED`, `PROVIDER_RATE_LIMITED`, `PROVIDER_UNAVAILABLE`, `PROVIDER_REQUEST_REJECTED`, `EMPTY_PROVIDER_RESPONSE`, `PROVIDER_TIMEOUT`, `REQUEST_ABORTED`, `STREAM_FAILED`) instead of reusing arbitrary internal/provider messages as error codes. Request IDs remain attached to client-visible failures and stable codes are recorded for analytics; regression tests cover provider statuses, arbitrary internal messages, empty streams, disconnects, and timeouts. Core API error-envelope consolidation remains in progress.
@@ -47,7 +48,7 @@ This file is the execution tracker for the two approved 50-item roadmaps. Status
 | A03 | TODO | Split authentication UI by flow |
 | A04 | TODO | Archive/remove legacy intelligence servers after parity verification |
 | A05 | DONE | Central API client, including JSON contracts, request IDs, abort/timeout handling, and SSE event streaming |
-| A06 | DONE | Startup configuration validator |
+| A06 | DONE | Startup configuration validator, including production/Railway persistent-SQLite enforcement |
 | A07 | DONE | Deep health checks for DB, Gemini, Tavily, Gmail API |
 | A08 | DONE | React Error Boundary |
 | A09 | IN_PROGRESS | Unified error codes and request correlation; streaming provider failures now use a stable public taxonomy, while core API envelope consolidation remains |
