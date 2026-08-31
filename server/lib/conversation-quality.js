@@ -1,6 +1,6 @@
 const ARABIC_RE = /[\u0600-\u06ff]/;
 const ARABIZI_RE = /\b(?:ezay|ezayak|3amel|shokran|tmam|yalla|ma3lesh|msh|mhtag|3ayez|3ayza|kwayes|kwayesa|fahm|fahma)\b/i;
-const ACTION_RE = /\b(?:explain|debug|fix|write|draft|compare|plan|summari[sz]e|review|analy[sz]e|continue|clarify|help)\b|اشرح|وضح|كمّل|كمل|اكتب|قارن|خطط|لخّص|راجع|حلّل|صحح|ساعد/i;
+const ACTION_RE = /\b(?:explain|debug|fix|write|draft|compare|plan|summari[sz]e|review|analy[sz]e|continue|clarify|help)\b|اشرح|وضح|كمّل|كمل|اكتب|قارن|خطط|لخّص|راجع|حلّل|صحح/i;
 const SOCIAL_PATTERNS = [
   ['greeting', /^(?:hi|hello|hey|yo|سلام|اهلا|ازيك|عامل(?:ة)? ايه|ezayak|3amel eh)(?:\s+(?:يا|ya)\s+\S+)?$/i],
   ['thanks', /^(?:thanks|thank you|thx|شكرا|تسلم|متشكر(?:ة)?|shokran)(?:\s+(?:يا|ya)\s+\S+)?$/i],
@@ -40,17 +40,19 @@ export function detectConversationLanguage(input) {
 export function detectConversationIntent(input) {
   const normalized = normalizeConversationText(input);
   if (!normalized) return 'empty';
-  if (ACTION_RE.test(normalized)) return 'substantive';
   for (const [intent, pattern] of SOCIAL_PATTERNS) {
     if (pattern.test(normalized)) return intent;
   }
+  if (ACTION_RE.test(normalized)) return 'substantive';
   return normalized.split(' ').length <= 6 ? 'casual' : 'substantive';
 }
 
 export function detectSelfReferenceGender(input) {
   const normalized = normalizeConversationText(input);
-  if (/(?:انا|i am|i'm)\s+(?:ولد|ذكر|راجل|male|man|محتاج|قلقان|مضغوط|متضايق|مرهق|مستعد|كويس)\b/i.test(normalized)) return 'masculine';
-  if (/(?:انا|i am|i'm)\s+(?:بنت|انثي|ست|female|woman|محتاجة|قلقانة|مضغوطة|متضايقة|مرهقة|مستعدة|كويسة)\b/i.test(normalized)) return 'feminine';
+  const firstPerson = '(?:انا|i am|i m)';
+  const end = '(?=\\s|$)';
+  if (new RegExp(`${firstPerson}\\s+(?:ولد|ذكر|راجل|male|man|محتاج|قلقان|مضغوط|متضايق|مرهق|مستعد|كويس)${end}`, 'i').test(normalized)) return 'masculine';
+  if (new RegExp(`${firstPerson}\\s+(?:بنت|انثي|ست|female|woman|محتاجة|قلقانة|مضغوطة|متضايقة|مرهقة|مستعدة|كويسة)${end}`, 'i').test(normalized)) return 'feminine';
   return 'unknown';
 }
 
