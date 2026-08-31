@@ -79,8 +79,15 @@ export function detectSelfReferenceGender(input = '') {
 export function resolveConversationGender(turns = []) {
   let gender = 'unknown';
   for (const turn of turns) {
-    const evidence = detectSelfReferenceGender(turn?.content || turn || '');
-    if (evidence !== 'unknown') gender = evidence;
+    const content = turn?.content || turn || '';
+    const normalized = normalizeConversationText(content);
+    const evidence = detectSelfReferenceGender(content);
+    const hasContradictorySelfReference = /(?:^|\s)(?:انا|أنا)\s+[^.!?؟\n]{0,80}\s+(?:انا|أنا)\s+/u.test(normalized);
+    if (hasContradictorySelfReference) {
+      gender = 'unknown';
+    } else if (evidence !== 'unknown') {
+      gender = evidence;
+    }
   }
   return gender;
 }
