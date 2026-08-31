@@ -28,7 +28,7 @@ export function normalizeConversationText(input = '') {
     .replace(/[ـ]/gu, '')
     .replace(/[إأآ]/gu, 'ا')
     .replace(/ى/gu, 'ي')
-    .replace(/[][؟?!.,;:،؛(){}"'`]/gu, ' ')
+    .replace(/[\u005B\u005D؟?!.,;:،؛(){}"'`]/gu, ' ')
     .replace(/\s+/gu, ' ')
     .trim()
     .toLocaleLowerCase('ar-EG'));
