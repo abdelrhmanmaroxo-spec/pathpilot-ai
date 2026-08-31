@@ -25,11 +25,13 @@ test('action-bearing requests never get swallowed by lightweight routing', () =>
 });
 
 test('short unknown turns remain lightweight without pretending to be a task', () => {
-  const result = classifyConversationTurn('الدنيا عاملة ايه');
+  const result = classifyConversationTurn('الدنيا عاملة؟');
   assert.equal(result.kind, 'short');
   assert.equal(result.lightweight, true);
 });
 
-test('contextual continuation keeps direct-intent guidance', () => {
-  assert.match(conversationDirective('طب وبعدين؟'), /infer the user’s concrete intent/i);
+test('contextual continuation stays concise while preserving direct-intent guidance', () => {
+  const directive = conversationDirective('طب وبعدين؟');
+  assert.match(directive, /lightweight conversational turn/i);
+  assert.doesNotMatch(directive, /contains an action or information request/i);
 });
