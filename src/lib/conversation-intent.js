@@ -2,17 +2,19 @@ const MAX_SOCIAL_CHARS = 220;
 const MAX_SOCIAL_TOKENS = 18;
 
 const ARABIC_DIACRITICS = /[\u0610-\u061a\u064b-\u065f\u0670\u06d6-\u06ed]/g;
-const ROMANIZED_ARABIC_CUES = /(?:\b(?:ezayak|ezayek|ezzayak|ezzayek|akhbarak|shokran|shukran|tmam|tamam|mashy|mashi|eshta|yalla|yala|ma3lesh|malesh|asif|salam|msh|mesh|mosh|fahem|fahm|sh8al|shghal|3ayz|3ayez|3ayza|kwayes|kwys|mhtag|mehtag|mohtag|msa3da|sa7by|sa7bi)\b|\b(?:3amel|amel)\s+(?:eh|eih)\b)/i;
+const ROMANIZED_ARABIC_CUES = /(?:\b(?:ezayak|ezayek|ezzayak|ezzayek|akhbarak|shokran|shukran|tmam|tamam|mashy|mashi|eshta|yalla|yala|ma3lesh|malesh|asif|salam|msh|mesh|mosh|fahem|fahm|fhm|fahma|fahmah|fehm|sh8al|shghal|shaghal|3ayz|3ayez|3ayza|3ayzah|kwayes|kways|kwys|kwayesa|kwysa|mhtag|mehtag|mohtag|msa3da|mosa3da|mmkn|momken|3arfa|3aref|ta3ban|ta3bana|za3lan|za3lana|sa7by|sa7bi)\b|\b(?:3amel|amel)\s+(?:eh|eih)\b)/i;
 
 const ARABIZI_TOKEN_MAP = new Map([
   ['msh', 'مش'], ['mesh', 'مش'], ['mosh', 'مش'],
-  ['fahem', 'فاهم'], ['fahm', 'فاهم'], ['fhm', 'فاهم'],
+  ['fahem', 'فاهم'], ['fahm', 'فاهم'], ['fhm', 'فاهم'], ['fehm', 'فاهم'],
   ['fahma', 'فاهمه'], ['fahmah', 'فاهمه'],
   ['sh8al', 'شغال'], ['shghal', 'شغال'], ['shaghal', 'شغال'],
   ['naf3', 'نافع'], ['nafe3', 'نافع'],
   ['mhtag', 'محتاج'], ['mehtag', 'محتاج'], ['mohtag', 'محتاج'],
   ['msa3da', 'مساعده'], ['mosa3da', 'مساعده'],
+  ['mmkn', 'ممكن'], ['momken', 'ممكن'],
   ['3ayz', 'عايز'], ['3ayez', 'عايز'], ['3ayza', 'عايزه'], ['3ayzah', 'عايزه'],
+  ['3arfa', 'عارفه'], ['3aref', 'عارف'],
   ['kwayes', 'كويس'], ['kways', 'كويس'], ['kwys', 'كويس'],
   ['kwayesa', 'كويسه'], ['kwysa', 'كويسه'],
   ['ta3ban', 'تعبان'], ['ta3bana', 'تعبانه'],
@@ -31,7 +33,7 @@ const EMBEDDED_PATTERNS = [
   ['how_are_you', /(?:\bhow are you\b|\bhow r u\b|\bhows it going\b|\bwhats up\b|\b(?:ezayak|ezayek|ezzayak|ezzayek|akhbarak)\b|\b(?:3amel|amel)\s+(?:eh|eih)\b|(?:^|\s)(?:ازيك|ازيكم|عامل اي|عامل ايه|عامله اي|عامله ايه|اخبارك|الدنيا عامله ايه)(?:\s|$))/],
   ['encouragement', /(?:\bencourage me\b|\bmotivate me\b|\bgive me a push\b|(?:^|\s)(?:شجعني|حفزني|اديني دفعه)(?:\s|$))/],
   ['vague_help', /(?:\bhelp me\b|\bcan you help me\b|\bi need help\b|(?:^|\s)(?:ساعدني|ممكن تساعدني|عايز مساعده|محتاج مساعده)(?:\s|$))/],
-  ['confusion', /(?:\bstill confused\b|\bstill dont understand\b|(?:^|\s)(?:لسه مش فاهم|مش فاهم خالص|مش مستوعب خالص)(?:\s|$))/],
+  ['confusion', /(?:\bstill confused\b|\bstill dont understand\b|(?:^|\s)(?:لسه مش فاهم|لسه مش فاهمه|مش فاهم خالص|مش فاهمه خالص|مش مستوعب خالص|مش مستوعبه خالص)(?:\s|$))/],
   ['frustration', /(?:\bstill not working\b|\bthis still isnt working\b|(?:^|\s)(?:لسه مش شغال|مش شغال خالص|مش نافع خالص)(?:\s|$))/],
   ['positive_update', /(?:\b(?:im|i am) (?:good|fine|okay)\b|(?:^|\s)انا (?:تمام|كويس|كويسه|بخير)(?:\s|$))/],
 ];
@@ -48,7 +50,7 @@ const EXACT_PATTERNS = [
   ['positive_update', /^(?:im good|i am good|doing good|im fine|i am fine|im okay|i am okay|all good here|ana tamam|ana tmam|انا تمام|انا كويس|انا كويسه|انا بخير|الحمد لله تمام|الدنيا تمام|كله تمام)$/],
   ['goodbye', /^(?:bye|goodbye|see you|see you later|later|good night|take care|salam|salam ya bro|باي|يلا سلام|سلام سلام|اشوفك بعدين|نشوفك بعدين|تصبح علي خير|تصبحي علي خير|في امان الله)$/],
   ['apology', /^(?:sorry|my bad|apologies|sorry about that|ma3lesh|malesh|asif|اسف|معلش|حقك عليا|سامحني)$/],
-  ['confusion', /^(?:im confused|i am confused|confused|i dont understand|dont understand|im lost|i am lost|مش فاهم|مش فاهمك|مش واضح|مش واضحه|اتلخبطت|انا تايه|تايه|مش مستوعب)$/],
+  ['confusion', /^(?:im confused|i am confused|confused|i dont understand|dont understand|im lost|i am lost|مش فاهم|مش فاهمه|مش فاهمك|مش واضح|مش واضحه|اتلخبطت|انا تايه|انا تايهه|تايه|تايهه|مش مستوعب|مش مستوعبه)$/],
   ['vague_help', /^(?:help me|can you help me|i need help|need help|ساعدني|محتاج مساعده|عايز مساعده|ممكن تساعدني)$/],
   ['frustration', /^(?:im frustrated|i am frustrated|this is annoying|it doesnt work|not working|زهقت|اتخنقت|الموضوع مستفز|مش شغال|مش نافع)$/],
   ['compliment', /^(?:awesome|great job|nice one|well done|love it|جامد|عاش|برافو|عظمه|حلو اوي|انت جامد)$/],
@@ -74,7 +76,7 @@ const TOKEN_ARCHETYPES = [
 ];
 
 function normalizeArabiziTokens(text) {
-  const tokens = String(text || '').split(' ').filter(Boolean);
+  const tokens = String(text || '').split(/\s+/).filter(Boolean);
   const mapped = tokens.map((token) => ARABIZI_TOKEN_MAP.get(token) || token);
   const joined = mapped.join(' ');
   return joined
@@ -107,9 +109,6 @@ export function detectConversationLanguage(value) {
     return ROMANIZED_ARABIC_CUES.test(raw) || /[\u0600-\u06ff]/.test(normalized) ? 'ar' : 'en';
   }
   if (!latin) return 'ar';
-  // Arabic-first code switching is common in Egyptian chat. Keep Arabic when it is a
-  // meaningful part of the turn instead of flipping the whole reply because of one
-  // English product/tech word; clearly Latin-dominant messages still stay English.
   return arabic >= latin * 0.45 ? 'ar' : 'en';
 }
 
