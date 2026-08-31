@@ -17,7 +17,7 @@ test('social turns stay lightweight across Arabic, Egyptian, English, and Arabiz
   }
 });
 
-test('action-bearing requests never get swallowed by lightweight routing', () => {
+test('Arabic and English action-bearing requests never get swallowed by lightweight routing', () => {
   for (const input of ['كمل الشرح عن OAuth', 'debug this API', 'اشرح DNS', 'عايز أفهم ليه الموضوع ده بيحصل']) {
     assert.equal(classifyConversationTurn(input).kind, 'substantive', input);
     assert.match(conversationDirective(input), /contains an action or information request/i);
