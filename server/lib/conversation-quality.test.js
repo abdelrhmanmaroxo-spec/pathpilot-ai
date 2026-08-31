@@ -27,7 +27,7 @@ test('covers social archetypes but preserves substantive fallthrough', () => {
     ['شكرا يا صاحبي', 'thanks'],
     ['msh fahm??', 'confusion'],
   ]) assert.equal(detectConversationIntent(input), expected, input);
-  for (const input of ['كمل الشرح عن OAuth', 'debug this API', 'اشرح DNS', 'help me fix this login']) {
+  for (const input of ['كمل الشرح عن OAuth', 'debug this API', 'اشرح DNS', 'help me fix this login', 'ساعدني في إصلاح تسجيل الدخول']) {
     assert.equal(detectConversationIntent(input), 'substantive', input);
   }
 });
@@ -35,6 +35,7 @@ test('covers social archetypes but preserves substantive fallthrough', () => {
 test('uses only explicit or clear first-person grammar for gender adaptation', () => {
   assert.equal(detectSelfReferenceGender('انا ولد ومحتاج مساعدة'), 'masculine');
   assert.equal(detectSelfReferenceGender('انا بنت ومحتاجة مساعدة'), 'feminine');
+  assert.equal(detectSelfReferenceGender("I'm a man and need help"), 'masculine');
   assert.equal(detectSelfReferenceGender('محمد محتاج مساعدة'), 'unknown');
   assert.equal(detectSelfReferenceGender('ممكن تساعدني؟'), 'unknown');
 });
