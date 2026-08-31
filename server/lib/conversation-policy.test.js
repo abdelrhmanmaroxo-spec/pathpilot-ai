@@ -50,9 +50,9 @@ test('contextual continuation stays concise while preserving direct-intent guida
   assert.doesNotMatch(directive, /contains an action or information request/i);
 });
 
-test('ambiguous language remains neutral instead of inventing a demographic or gender signal', () => {
+test('ambiguous language remains lightweight and neutral instead of inventing a demographic or gender signal', () => {
   const result = classifyConversationTurn('تمام، شكرًا');
   assert.equal(result.language, 'ar');
-  assert.equal(result.kind, 'open');
-  assert.equal(result.lightweight, false);
+  assert.equal(result.kind, 'short');
+  assert.equal(result.lightweight, true);
 });
