@@ -3,10 +3,10 @@ const INTENT_PATTERNS = [
   ['thanks', /(?:\b(?:thanks|thank you|thx|ty)\b|شكر(?:ا|اً)|متشكر|تسلم|ميرسي)/iu],
   ['apology', /(?:\b(?:sorry|my bad|apologies)\b|آسف(?:ة)?|معلش|حقك عليا|سامحني)/iu],
   ['encouragement', /(?:\b(?:you got this|good luck|wish me luck|cheer me up)\b|شد حيلك|بالتوفيق|شجعني|ادعيلي)/iu],
-  ['confusion', /(?:\b(?:confused|i do not get it|what do you mean|huh)\b|مش فاهم(?:ة)?|مش واضح|مش مستوعب(?:ة)?|يعني ايه|مش فاهم)/iu],
+  ['confusion', /(?:\b(?:confused|i do not get it|what do you mean|huh)\b|\bmsh\s+fah+?m\b|مش فاهم(?:ة)?|مش واضح|مش مستوعب(?:ة)?|يعني ايه|مش فاهم)/iu],
   ['frustration', /(?:\b(?:frustrated|annoyed|this is not working|ugh)\b|زهقت|متضايق(?:ة)?|مستفز|مش شغال|تعبت)/iu],
   ['acknowledgement', /(?:\b(?:ok|okay|got it|noted|sure|alright)\b|تمام|حاضر|ماشي|فاهم|وصلت|أوكي)/iu],
-  ['greeting', /(?:\b(?:hi|hello|hey|morning|evening|good morning|good evening)\b|اهلا|أهلاً|هاي|ازيك|إزيك|عامل ايه|عاملة ايه|مساء الخير|صباح الخير)/iu],
+  ['greeting', /(?:\b(?:hi|hello|hey|morning|evening|good morning|good evening)\b|\b(?:h+a+i+|h+e+l+l+o+|h+e+y+)\b|اهلا|أهلاً|هاي|ازيك|إزيك|عامل ايه|عاملة ايه|مساء الخير|صباح الخير)/iu],
   ['small_talk', /(?:\b(?:how are you|what is up|how is it going|and you)\b|اخبارك|عامل ايه|عاملة ايه|الدنيا ايه|وانت|وانتي)/iu],
 ];
 
@@ -28,7 +28,7 @@ export function normalizeConversationText(input = '') {
     .replace(/[ـ]/gu, '')
     .replace(/[إأآ]/gu, 'ا')
     .replace(/ى/gu, 'ي')
-    .replace(/[؟?!.,;:،؛()[\]{}"'`]/gu, ' ')
+    .replace(/[؟?!.,;:،؛()[\]{}\"'`]/gu, ' ')
     .replace(/\s+/gu, ' ')
     .trim()
     .toLocaleLowerCase('ar-EG'));
