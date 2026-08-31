@@ -82,7 +82,7 @@ export function resolveConversationGender(turns = []) {
     const content = turn?.content || turn || '';
     const normalized = normalizeConversationText(content);
     const evidence = detectSelfReferenceGender(content);
-    const hasContradictorySelfReference = /(?:^|\s)(?:انا|أنا)\s+[^.!?؟\n]{0,80}\s+(?:انا|أنا)\s+/u.test(normalized);
+    const hasContradictorySelfReference = /(?:^|\s)(?:انا|أنا)\s+[^.!?؟\n]{0,80}(?:\s|و)(?:انا|أنا)\s+/u.test(normalized);
     if (hasContradictorySelfReference) {
       gender = 'unknown';
     } else if (evidence !== 'unknown') {
