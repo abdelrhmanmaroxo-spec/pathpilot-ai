@@ -1,8 +1,8 @@
 const ARABIC_RE = /[\u0600-\u06ff]/;
 const LATIN_RE = /[A-Za-z]/;
 const ARABIZI_RE = /(?:^|\s)(?:[2-9]?3?\w*(?:[23\u0662\u0663])\w*|ezay|3amel|shokran|tmam|ma3lesh|yalla|enta|enti|akhbar|helo)(?:\s|$)/i;
-const EN_ACTION_RE = /\b(explain|debug|fix|write|draft|summarize|compare|plan|review|how|why|what)\b/i;
-const AR_ACTION_RE = /(كمل|اشرح|وضح|حل|اكتب|لخص|قارن|اعمل|ازاي|ليه|إيه|ايه)/i;
+const EN_ACTION_WORDS = new Set(['explain', 'debug', 'fix', 'write', 'draft', 'summarize', 'compare', 'plan', 'review', 'how', 'why', 'what']);
+const AR_ACTION_WORDS = new Set(['كمل', 'اشرح', 'وضح', 'حل', 'اكتب', 'لخص', 'قارن', 'اعمل', 'ازاي', 'ليه', 'إيه', 'ايه']);
 const SOCIAL_PATTERNS = [
   /^(hi|hello|hey|good morning|good evening|how are you|thanks|thank you|sorry|ok|okay|great|bye|see you|and you|what about you)$/i,
   /^(مرحبا|اهلا|أهلا|ازيك|إزيك|عامل ايه|عامل إيه|تمام|شكرا|شكرًا|معلش|حاضر|باي|سلام|وانت|وإنت|أخبارك|الدنيا ايه|هلو|هلوو)$/i,
@@ -11,6 +11,14 @@ const SOCIAL_PATTERNS = [
 
 function collapseRepeatedLetters(value) {
   return value.replace(/(.)\1{2,}/gu, '$1$1');
+}
+
+function words(value) {
+  return value.split(' ').filter(Boolean);
+}
+
+function hasActionWord(value, actionWords) {
+  return words(value).some((word) => actionWords.has(word));
 }
 
 export function normalizeConversationText(value) {
@@ -39,10 +47,10 @@ export function classifyConversationTurn(value) {
   const language = detectConversationLanguage(value);
   if (!normalized) return { kind: 'empty', language, lightweight: true };
   if (SOCIAL_PATTERNS.some((pattern) => pattern.test(normalized))) return { kind: 'social', language, lightweight: true };
-  if (EN_ACTION_RE.test(normalized) || AR_ACTION_RE.test(normalized)) {
+  if (hasActionWord(normalized, EN_ACTION_WORDS) || hasActionWord(normalized, AR_ACTION_WORDS)) {
     return { kind: 'substantive', language, lightweight: false };
   }
-  if (normalized.split(' ').length <= 4 && !/[?؟]/.test(normalized)) return { kind: 'short', language, lightweight: true };
+  if (normalized.split(' ').length <= 4) return { kind: 'short', language, lightweight: true };
   return { kind: 'open', language, lightweight: false };
 }
 
