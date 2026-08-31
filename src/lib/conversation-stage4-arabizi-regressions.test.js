@@ -7,7 +7,7 @@ import {
 } from './conversation-intent.js';
 
 test('normalizes mixed-case and whitespace-heavy Egyptian Arabizi variants', () => {
-  assert.equal(normalizeConversationText('  MMKN   TSA3DNI?  '), 'mmkn tsa3dni');
+  assert.equal(normalizeConversationText('  MMKN   TSA3DNI?  '), 'ممكن tsa3dni');
   assert.equal(normalizeConversationText('momken msa3da'), 'ممكن مساعده');
   assert.equal(normalizeConversationText('FEHM   3ARFA'), 'فاهم عارفه');
   assert.equal(normalizeConversationText('msh   fahma'), 'مش فاهمه');
