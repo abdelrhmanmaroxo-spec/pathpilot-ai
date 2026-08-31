@@ -3,8 +3,8 @@ const LATIN_RE = /[A-Za-z]/;
 const ACTION_RE = /\b(explain|debug|fix|write|draft|summarize|compare|plan|review|how|why|what|كمل|اشرح|وضح|حل|اكتب|لخص|قارن|اعمل|ازاي|ليه|إيه|ايه)\b/i;
 const SOCIAL_PATTERNS = [
   /^(hi|hello|hey|good morning|good evening|how are you|thanks|thank you|sorry|ok|okay|great|bye|see you|and you|what about you)$/i,
-  /^(مرحبا|اهلا|أهلا|ازيك|إزيك|عامل ايه|عامل إيه|تمام|شكرا|شكرًا|معلش|حاضر|باي|سلام|وانت|وإنت|أخبارك|الدنيا ايه)$/i,
-  /^(ezayak|3amel eh|tmam|shokran|ma3lesh|yalla|w enta|akhbarak)$/i,
+  /^(مرحبا|اهلا|أهلا|ازيك|إزيك|عامل ايه|عامل إيه|تمام|شكرا|شكرًا|معلش|حاضر|باي|سلام|وانت|وإنت|أخبارك|الدنيا ايه|هلو)$/i,
+  /^(ezayak|3amel eh|tmam|shokran|ma3lesh|yalla|w enta|akhbarak|helo|hello ya)$/i,
 ];
 
 function collapseRepeatedLetters(value) {
