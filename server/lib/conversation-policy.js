@@ -1,9 +1,10 @@
 const ARABIC_RE = /[\u0600-\u06ff]/;
 const LATIN_RE = /[A-Za-z]/;
-const ACTION_RE = /\b(explain|debug|fix|write|draft|summarize|compare|plan|review|how|why|what|كمل|اشرح|وضح|حل|اكتب|لخص|قارن|اعمل|ازاي|ليه|إيه|ايه)\b/i;
+const EN_ACTION_RE = /\b(explain|debug|fix|write|draft|summarize|compare|plan|review|how|why|what)\b/i;
+const AR_ACTION_RE = /(كمل|اشرح|وضح|حل|اكتب|لخص|قارن|اعمل|ازاي|ليه|إيه|ايه)/i;
 const SOCIAL_PATTERNS = [
   /^(hi|hello|hey|good morning|good evening|how are you|thanks|thank you|sorry|ok|okay|great|bye|see you|and you|what about you)$/i,
-  /^(مرحبا|اهلا|أهلا|ازيك|إزيك|عامل ايه|عامل إيه|تمام|شكرا|شكرًا|معلش|حاضر|باي|سلام|وانت|وإنت|أخبارك|الدنيا ايه|هلو)$/i,
+  /^(مرحبا|اهلا|أهلا|ازيك|إزيك|عامل ايه|عامل إيه|تمام|شكرا|شكرًا|معلش|حاضر|باي|سلام|وانت|وإنت|أخبارك|الدنيا ايه|هلو|هلوو)$/i,
   /^(ezayak|3amel eh|tmam|shokran|ma3lesh|yalla|w enta|akhbarak|helo|hello ya)$/i,
 ];
 
@@ -36,7 +37,9 @@ export function classifyConversationTurn(value) {
   const normalized = normalizeConversationText(value);
   const language = detectConversationLanguage(value);
   if (!normalized) return { kind: 'empty', language, lightweight: true };
-  if (ACTION_RE.test(normalized)) return { kind: 'substantive', language, lightweight: false };
+  if (EN_ACTION_RE.test(normalized) || AR_ACTION_RE.test(normalized)) {
+    return { kind: 'substantive', language, lightweight: false };
+  }
   if (SOCIAL_PATTERNS.some((pattern) => pattern.test(normalized))) return { kind: 'social', language, lightweight: true };
   if (normalized.split(' ').length <= 4 && !/[?؟]/.test(normalized)) return { kind: 'short', language, lightweight: true };
   return { kind: 'open', language, lightweight: false };
