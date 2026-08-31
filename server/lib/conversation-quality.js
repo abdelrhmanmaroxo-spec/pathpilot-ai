@@ -17,6 +17,7 @@ const ACTION_PATTERNS = [
   /\b(?:explain|debug|fix|write|draft|compare|analy[sz]e|summari[sz]e|plan|research|review|show me|how do i)\b/iu,
   /(?:اشرح|فسر|حل|صلح|اكتب|قارن|لخص|خطط|ابحث|راجع|وريني|ازاي|إزاي|كمل الشرح|وضح أكتر)/u,
   /\b(?:api|oauth|dns|sql|javascript|python|code|bug|error|resume|cv|email)\b/iu,
+  /(?:^|\s)(?:ليه|لماذا|كيف|متى|فين|اين|أين)\b/u,
 ];
 
 function collapseRepeatedLetters(value) {
