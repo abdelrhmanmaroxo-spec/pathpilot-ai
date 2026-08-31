@@ -7,8 +7,10 @@ test('normalization handles Arabic punctuation, tatweel, diacritics, and repeate
 });
 
 test('language detection keeps Arabizi Arabic-like and mixed turns visible', () => {
-  assert.equal(detectConversationLanguage('ezayak ya bro'), 'en');
+  assert.equal(detectConversationLanguage('ezayak ya bro'), 'ar');
+  assert.equal(detectConversationLanguage('3ayza msa3da'), 'ar');
   assert.equal(detectConversationLanguage('ازيك bro'), 'ar');
+  assert.equal(detectConversationLanguage('hello bro'), 'en');
 });
 
 test('social turns stay lightweight across Arabic, Egyptian, English, and Arabizi', () => {
