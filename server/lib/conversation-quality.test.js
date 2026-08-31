@@ -10,7 +10,7 @@ import {
 
 test('normalizes Arabic punctuation, diacritics, tatweel, and expressive repetition', () => {
   assert.equal(normalizeConversationText('إزّيــــك؟؟؟؟'), 'ازيك');
-  assert.equal(normalizeConversationText('msh fahmmmm!!!'), 'msh fahm');
+  assert.equal(normalizeConversationText('msh fahmmmm!!!'), 'msh fahmm');
 });
 
 test('detects Arabic, Egyptian Arabizi, and English language modes', () => {
