@@ -5,6 +5,7 @@ import { normalizeConversationText, detectConversationLanguage, detectConversati
 test('normalizes noisy Arabic and Arabizi turns', () => {
   assert.equal(normalizeConversationText('إزّيــــك؟؟؟؟'), 'ازيك');
   assert.equal(normalizeConversationText('msh fahmmmm!!!'), 'msh fahmm');
+  assert.equal(normalizeConversationText('  شُكْرًاااا يا معلم... '), 'شكرا يا معلم');
 });
 
 test('detects Arabic, Arabizi, and English without over-weighting code-switching', () => {
@@ -15,8 +16,20 @@ test('detects Arabic, Arabizi, and English without over-weighting code-switching
 });
 
 test('covers social archetypes but preserves substantive fallthrough', () => {
-  for (const [input, expected] of [['hello', 'greeting'], ['شكرا يا معلم', 'thanks'], ['msh fahm', 'confusion'], ['معلش', 'apology'], ['يلا سلام', 'farewell'], ['ساعدني', 'help']]) assert.equal(detectConversationIntent(input), expected, input);
-  for (const input of ['كمل الشرح عن OAuth', 'debug this API', 'اشرح DNS']) assert.equal(detectConversationIntent(input), 'substantive', input);
+  for (const [input, expected] of [
+    ['hello', 'greeting'],
+    ['شكرا يا معلم', 'thanks'],
+    ['msh fahm', 'confusion'],
+    ['معلش', 'apology'],
+    ['يلا سلام', 'farewell'],
+    ['ساعدني', 'help'],
+    ['هلووو!!!', 'greeting'],
+    ['شكراااا يا صاحبي', 'thanks'],
+    ['msh fahhhhhm??', 'confusion'],
+  ]) assert.equal(detectConversationIntent(input), expected, input);
+  for (const input of ['كمل الشرح عن OAuth', 'debug this API', 'اشرح DNS', 'help me fix this login']) {
+    assert.equal(detectConversationIntent(input), 'substantive', input);
+  }
 });
 
 test('uses only explicit or clear first-person grammar for gender adaptation', () => {
@@ -29,4 +42,6 @@ test('uses only explicit or clear first-person grammar for gender adaptation', (
 test('keeps short social turns lightweight and action turns substantive', () => {
   assert.equal(profileConversationTurn('تمام').lightweight, true);
   assert.equal(profileConversationTurn('explain the second part').lightweight, false);
+  assert.equal(profileConversationTurn('شكرا يا معلم').actionBearing, false);
+  assert.equal(profileConversationTurn('اشرح الجزء التاني').actionBearing, true);
 });
