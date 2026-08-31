@@ -14,7 +14,7 @@ test('language detection keeps Arabizi Arabic-like and mixed turns visible', () 
 });
 
 test('social turns stay lightweight across Arabic, Egyptian, English, and Arabizi', () => {
-  for (const input of ['hello!!!', 'عامل ايه؟', 'shokran', 'تمام', 'هلووو!!!']) {
+  for (const input of ['hello!!!', 'عامل ايه؟', 'shokran', 'تمام', 'هلووو!!!', 'ezayak ya bro']) {
     assert.equal(classifyConversationTurn(input).lightweight, true, input);
   }
 });
@@ -26,10 +26,16 @@ test('Arabic social questions are not mistaken for action requests', () => {
 });
 
 test('Arabic and English action-bearing requests never get swallowed by lightweight routing', () => {
-  for (const input of ['كمل الشرح عن OAuth', 'debug this API', 'اشرح DNS', 'عايز أفهم ليه الموضوع ده بيحصل']) {
+  for (const input of ['كمل الشرح عن OAuth', 'debug this API', 'اشرح DNS', 'عايز أفهم ليه الموضوع ده بيحصل', 'what is DNS?']) {
     assert.equal(classifyConversationTurn(input).kind, 'substantive', input);
     assert.match(conversationDirective(input), /contains an action or information request/i);
   }
+});
+
+test('action words are matched as whole tokens, avoiding substring false positives', () => {
+  assert.equal(classifyConversationTurn('somehow nice').kind, 'open');
+  assert.equal(classifyConversationTurn('whatever').kind, 'open');
+  assert.equal(classifyConversationTurn('ازيك يا صاحبي').kind, 'short');
 });
 
 test('short unknown turns remain lightweight without pretending to be a task', () => {
@@ -42,4 +48,11 @@ test('contextual continuation stays concise while preserving direct-intent guida
   const directive = conversationDirective('طب وبعدين؟');
   assert.match(directive, /lightweight conversational turn/i);
   assert.doesNotMatch(directive, /contains an action or information request/i);
+});
+
+test('ambiguous language remains neutral instead of inventing a demographic or gender signal', () => {
+  const result = classifyConversationTurn('تمام، شكرًا');
+  assert.equal(result.language, 'ar');
+  assert.equal(result.kind, 'open');
+  assert.equal(result.lightweight, false);
 });
