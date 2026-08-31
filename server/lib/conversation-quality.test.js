@@ -29,8 +29,9 @@ test('keeps social turns lightweight but preserves action-bearing fallthrough', 
   assert.equal(detectConversationIntent('debug this API').lightweight, false);
 });
 
-test('uses context only for unresolved short follow-ups', () => {
-  assert.equal(detectConversationIntent('ليه السماء زرقا', { hasRelevantContext: true }).intent, 'contextual_follow_up');
+test('keeps standalone informational questions substantive and only uses context for short unresolved follow-ups', () => {
+  assert.equal(detectConversationIntent('ليه السماء زرقا', { hasRelevantContext: true }).intent, 'substantive');
+  assert.equal(detectConversationIntent('why is DNS cached', { hasRelevantContext: true }).intent, 'substantive');
   assert.equal(detectConversationIntent('طب وبعدين؟', { hasRelevantContext: true }).intent, 'contextual_follow_up');
 });
 
