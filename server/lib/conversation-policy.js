@@ -17,7 +17,7 @@ export function normalizeConversationText(value) {
     .normalize('NFKC')
     .replace(/[\u064B-\u065F\u0670]/g, '')
     .replace(/ـ+/g, '')
-    .replace(/[!?؟.,،؛:;()[\]{}"'`]/g, ' ')
+    .replace(/[\u0021-\u002F\u003A-\u0040\u005B-\u0060\u007B-\u007E\u060C\u061F\u061B\u06D4]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
     .toLowerCase());
