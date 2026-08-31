@@ -29,6 +29,11 @@ test('keeps social turns lightweight but preserves action-bearing fallthrough', 
   assert.equal(detectConversationIntent('debug this API').lightweight, false);
 });
 
+test('accepts noisy Arabic and Arabizi social variants', () => {
+  assert.equal(detectConversationIntent('هلووو!!!', { hasRelevantContext: true }).intent, 'greeting');
+  assert.equal(detectConversationIntent('msh fahhhhhm??', { hasRelevantContext: true }).intent, 'confusion');
+});
+
 test('keeps standalone informational questions substantive and only uses context for short unresolved follow-ups', () => {
   assert.equal(detectConversationIntent('ليه السماء زرقا', { hasRelevantContext: true }).intent, 'substantive');
   assert.equal(detectConversationIntent('why is DNS cached', { hasRelevantContext: true }).intent, 'substantive');
