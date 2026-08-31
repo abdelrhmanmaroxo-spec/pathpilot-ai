@@ -48,7 +48,7 @@ test('newer strong self-reference overrides older context, ambiguity stays unkno
     { content: 'انا محتاجة شرح أبسط' },
   ]), 'female');
   assert.equal(resolveConversationGender([{ content: 'ممكن تساعدني؟' }]), 'unknown');
-  assert.equal(resolveConversationGender([{ content: 'انا ولد وانا بنت' }]), 'male');
+  assert.equal(resolveConversationGender([{ content: 'انا ولد وانا بنت' }]), 'unknown');
 });
 
 test('builds safe hints without exposing a demographic label in the output contract', () => {
