@@ -14,7 +14,7 @@ const ACTION_PATTERNS = [
   /\b(?:explain|debug|fix|write|draft|compare|analy[sz]e|summari[sz]e|plan|research|review|show me|how do i)\b/iu,
   /(?:اشرح|فسر|حل|صلح|اكتب|قارن|لخص|خطط|ابحث|راجع|وريني|ازاي|إزاي|كمل الشرح|وضح أكتر)/u,
   /\b(?:api|oauth|dns|sql|javascript|python|code|bug|error|resume|cv|email)\b/iu,
-  /(?:^|\s)(?:ليه|لماذا|كيف|متى|فين|اين|أين)\b/u,
+  /(?:^|\s)(?:ليه|لماذا|كيف|متى|فين|اين|أين)(?:\s|$)/u,
 ];
 
 function collapseRepeatedLetters(value) {
@@ -72,6 +72,7 @@ const DIRECT_SELF_CUES = [
 export function detectSelfReferenceGender(input = '') {
   const normalized = normalizeConversationText(input);
   const hits = DIRECT_SELF_CUES.filter(([, pattern]) => pattern.test(normalized)).map(([gender]) => gender);
+  if (hits.includes('female') && hits.includes('male')) return 'unknown';
   return hits.length === 1 ? hits[0] : 'unknown';
 }
 
