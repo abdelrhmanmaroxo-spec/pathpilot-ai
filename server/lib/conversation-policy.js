@@ -38,10 +38,10 @@ export function classifyConversationTurn(value) {
   const normalized = normalizeConversationText(value);
   const language = detectConversationLanguage(value);
   if (!normalized) return { kind: 'empty', language, lightweight: true };
+  if (SOCIAL_PATTERNS.some((pattern) => pattern.test(normalized))) return { kind: 'social', language, lightweight: true };
   if (EN_ACTION_RE.test(normalized) || AR_ACTION_RE.test(normalized)) {
     return { kind: 'substantive', language, lightweight: false };
   }
-  if (SOCIAL_PATTERNS.some((pattern) => pattern.test(normalized))) return { kind: 'social', language, lightweight: true };
   if (normalized.split(' ').length <= 4 && !/[?؟]/.test(normalized)) return { kind: 'short', language, lightweight: true };
   return { kind: 'open', language, lightweight: false };
 }
