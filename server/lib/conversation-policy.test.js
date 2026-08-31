@@ -19,6 +19,12 @@ test('social turns stay lightweight across Arabic, Egyptian, English, and Arabiz
   }
 });
 
+test('Arabic social questions are not mistaken for action requests', () => {
+  for (const input of ['عامل ايه؟', 'الدنيا ايه؟', 'how are you?']) {
+    assert.equal(classifyConversationTurn(input).kind, 'social', input);
+  }
+});
+
 test('Arabic and English action-bearing requests never get swallowed by lightweight routing', () => {
   for (const input of ['كمل الشرح عن OAuth', 'debug this API', 'اشرح DNS', 'عايز أفهم ليه الموضوع ده بيحصل']) {
     assert.equal(classifyConversationTurn(input).kind, 'substantive', input);
