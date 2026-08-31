@@ -33,8 +33,8 @@ test('Arabic and English action-bearing requests never get swallowed by lightwei
 });
 
 test('action words are matched as whole tokens, avoiding substring false positives', () => {
-  assert.equal(classifyConversationTurn('somehow nice').kind, 'open');
-  assert.equal(classifyConversationTurn('whatever').kind, 'open');
+  assert.equal(classifyConversationTurn('somehow nice').kind, 'short');
+  assert.equal(classifyConversationTurn('whatever').kind, 'short');
   assert.equal(classifyConversationTurn('ازيك يا صاحبي').kind, 'short');
 });
 
