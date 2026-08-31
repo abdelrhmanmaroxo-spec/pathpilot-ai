@@ -1,6 +1,3 @@
-const ARABIC_RE = /[\u0600-\u06FF]/u;
-const LATIN_RE = /[A-Za-z]/u;
-
 const INTENT_PATTERNS = [
   ['farewell', /(?:\b(?:bye|goodbye|see you|cya|gn)\b|سلام|مع السلامة|تصبح على خير|اشوفك|باي)/iu],
   ['thanks', /(?:\b(?:thanks|thank you|thx|ty)\b|شكر(?:ا|اً)|متشكر|تسلم|ميرسي)/iu],
