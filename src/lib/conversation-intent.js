@@ -2,17 +2,19 @@ const MAX_SOCIAL_CHARS = 220;
 const MAX_SOCIAL_TOKENS = 18;
 
 const ARABIC_DIACRITICS = /[\u0610-\u061a\u064b-\u065f\u0670\u06d6-\u06ed]/g;
-const ROMANIZED_ARABIC_CUES = /(?:\b(?:ezayak|ezayek|ezzayak|ezzayek|akhbarak|shokran|shukran|tmam|tamam|mashy|mashi|eshta|yalla|yala|ma3lesh|malesh|asif|salam|msh|mesh|mosh|fahem|fahm|sh8al|shghal|3ayz|3ayez|3ayza|kwayes|kwys|mhtag|mehtag|mohtag|msa3da|sa7by|sa7bi)\b|\b(?:3amel|amel)\s+(?:eh|eih)\b)/i;
+const ROMANIZED_ARABIC_CUES = /(?:\b(?:ezayak|ezayek|ezzayak|ezzayek|akhbarak|shokran|shukran|tmam|tamam|mashy|mashi|eshta|yalla|yala|ma3lesh|malesh|asif|salam|msh|mesh|mosh|fahem|fahm|fhm|fahma|fehm|sh8al|shghal|shaghal|3ayz|3ayez|3ayza|3ayzah|kwayes|kways|kwys|kwayesa|kwysa|mhtag|mehtag|mohtag|msa3da|mosa3da|mmkn|momken|3arfa|3aref|ta3ban|ta3bana|za3lan|za3lana|sa7by|sa7bi)\b|\b(?:3amel|amel)\s+(?:eh|eih)\b)/i;
 
 const ARABIZI_TOKEN_MAP = new Map([
   ['msh', 'مش'], ['mesh', 'مش'], ['mosh', 'مش'],
-  ['fahem', 'فاهم'], ['fahm', 'فاهم'], ['fhm', 'فاهم'],
+  ['fahem', 'فاهم'], ['fahm', 'فاهم'], ['fhm', 'فاهم'], ['fehm', 'فاهم'],
   ['fahma', 'فاهمه'], ['fahmah', 'فاهمه'],
   ['sh8al', 'شغال'], ['shghal', 'شغال'], ['shaghal', 'شغال'],
   ['naf3', 'نافع'], ['nafe3', 'نافع'],
   ['mhtag', 'محتاج'], ['mehtag', 'محتاج'], ['mohtag', 'محتاج'],
   ['msa3da', 'مساعده'], ['mosa3da', 'مساعده'],
+  ['mmkn', 'ممكن'], ['momken', 'ممكن'],
   ['3ayz', 'عايز'], ['3ayez', 'عايز'], ['3ayza', 'عايزه'], ['3ayzah', 'عايزه'],
+  ['3arfa', 'عارفه'], ['3aref', 'عارف'],
   ['kwayes', 'كويس'], ['kways', 'كويس'], ['kwys', 'كويس'],
   ['kwayesa', 'كويسه'], ['kwysa', 'كويسه'],
   ['ta3ban', 'تعبان'], ['ta3bana', 'تعبانه'],
@@ -74,7 +76,7 @@ const TOKEN_ARCHETYPES = [
 ];
 
 function normalizeArabiziTokens(text) {
-  const tokens = String(text || '').split(' ').filter(Boolean);
+  const tokens = String(text || '').split(/\s+/).filter(Boolean);
   const mapped = tokens.map((token) => ARABIZI_TOKEN_MAP.get(token) || token);
   const joined = mapped.join(' ');
   return joined
@@ -107,9 +109,6 @@ export function detectConversationLanguage(value) {
     return ROMANIZED_ARABIC_CUES.test(raw) || /[\u0600-\u06ff]/.test(normalized) ? 'ar' : 'en';
   }
   if (!latin) return 'ar';
-  // Arabic-first code switching is common in Egyptian chat. Keep Arabic when it is a
-  // meaningful part of the turn instead of flipping the whole reply because of one
-  // English product/tech word; clearly Latin-dominant messages still stay English.
   return arabic >= latin * 0.45 ? 'ar' : 'en';
 }
 
