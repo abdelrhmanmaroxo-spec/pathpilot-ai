@@ -1,5 +1,6 @@
 const ARABIC_RE = /[\u0600-\u06ff]/;
 const LATIN_RE = /[A-Za-z]/;
+const ARABIZI_RE = /(?:^|\s)(?:[2-9]?3?\w*(?:[23\u0662\u0663])\w*|ezay|3amel|shokran|tmam|ma3lesh|yalla|enta|enti|akhbar|helo)(?:\s|$)/i;
 const EN_ACTION_RE = /\b(explain|debug|fix|write|draft|summarize|compare|plan|review|how|why|what)\b/i;
 const AR_ACTION_RE = /(كمل|اشرح|وضح|حل|اكتب|لخص|قارن|اعمل|ازاي|ليه|إيه|ايه)/i;
 const SOCIAL_PATTERNS = [
@@ -29,7 +30,7 @@ export function detectConversationLanguage(value) {
   const latin = (text.match(/[A-Za-z]/g) || []).length;
   if (arabic && latin) return arabic >= latin ? 'ar' : 'mixed';
   if (arabic) return 'ar';
-  if (latin) return 'en';
+  if (latin) return ARABIZI_RE.test(text) ? 'ar' : 'en';
   return 'unknown';
 }
 
