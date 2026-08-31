@@ -17,7 +17,7 @@ test('normalizes expressive spelling, punctuation, and Arabic variants', () => {
 
 test('detects Arabic, mixed, English, and unknown language modes', () => {
   assert.equal(detectConversationLanguage('ازيك'), 'ar');
-  assert.equal(detectConversationLanguage('debug ا'), 'ar-mixed');
+  assert.equal(detectConversationLanguage('debug بالعربي'), 'ar-mixed');
   assert.equal(detectConversationLanguage('hello there'), 'en');
   assert.equal(detectConversationLanguage('123?!'), 'unknown');
 });
