@@ -14,6 +14,7 @@ test('normalizes expressive spelling, punctuation, and Arabic variants', () => {
   assert.equal(normalizeConversationText('إزّاييي؟؟  عامل   إيه!!!'), 'ازايي عامل ايه');
   assert.equal(normalizeConversationText('heyyyy!!!'), 'heyy');
   assert.equal(normalizeConversationText('I’m ready'), 'im ready');
+  assert.equal(normalizeConversationText('  tab  و  بعدين؟ '), 'tab و بعدين');
 });
 
 test('detects Arabic, mixed, romanized Arabic, English, and unknown language modes', () => {
@@ -35,6 +36,8 @@ test('keeps social turns lightweight but preserves action-bearing fallthrough', 
 test('accepts noisy Arabic and Arabizi social variants', () => {
   assert.equal(detectConversationIntent('هلووو!!!', { hasRelevantContext: true }).intent, 'greeting');
   assert.equal(detectConversationIntent('msh fahhhhhm??', { hasRelevantContext: true }).intent, 'confusion');
+  assert.equal(detectConversationIntent('mesh fahm', { hasRelevantContext: true }).intent, 'confusion');
+  assert.equal(detectConversationIntent('msh sh8al', { hasRelevantContext: true }).intent, 'frustration');
 });
 
 test('keeps standalone informational questions substantive and only uses context for short unresolved follow-ups', () => {
@@ -59,6 +62,7 @@ test('accepts explicit or clear first-person gender evidence only', () => {
   assert.equal(detectSelfReferenceGender("I'm a woman and need help"), 'female');
   assert.equal(detectSelfReferenceGender('I’m a woman and need help'), 'female');
   assert.equal(detectSelfReferenceGender('ana bnt w m7taga msa3da'), 'female');
+  assert.equal(detectSelfReferenceGender('ana wld w 3ayz abda'), 'male');
   assert.equal(detectSelfReferenceGender('محمد محتاج مساعدة'), 'unknown');
   assert.equal(detectSelfReferenceGender('اسمها سارة وهي كويسة'), 'unknown');
 });
