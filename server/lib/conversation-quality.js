@@ -67,6 +67,10 @@ export function detectConversationIntent(input = '', { hasRelevantContext = fals
 const DIRECT_SELF_CUES = [
   ['female', /(?:^|\s)(?:انا|أنا)\s+(?:بنت|ست|محتاجة|عايزة|كويسة|قلقانة|مضغوطة|متضايقة|مرهقة|مستعدة)(?:\s|$)/u],
   ['male', /(?:^|\s)(?:انا|أنا)\s+(?:ولد|راجل|محتاج|عايز|كويس|قلقان|مضغوط|متضايق|مرهق|مستعد)(?:\s|$)/u],
+  ['female', /(?:^|\s)(?:i(?:'m| am)?)\s+(?:a\s+)?(?:girl|woman|female)\b/iu],
+  ['male', /(?:^|\s)(?:i(?:'m| am)?)\s+(?:a\s+)?(?:boy|man|male)\b/iu],
+  ['female', /(?:^|\s)ana\s+(?:bnt|set|m7taga|3ayza|kwyssa|mst3da)\b/iu],
+  ['male', /(?:^|\s)ana\s+(?:wld|ragel|m7tag|3ayz|kwayes|mst3d)\b/iu],
 ];
 
 export function detectSelfReferenceGender(input = '') {
@@ -82,7 +86,7 @@ export function resolveConversationGender(turns = []) {
     const content = turn?.content || turn || '';
     const normalized = normalizeConversationText(content);
     const evidence = detectSelfReferenceGender(content);
-    const hasContradictorySelfReference = /(?:^|\s)(?:انا|أنا)\s+[^.!?؟\n]{0,80}(?:\s|و)(?:انا|أنا)\s+/u.test(normalized);
+    const hasContradictorySelfReference = /(?:^|\s)(?:انا|أنا|ana)\s+[^.!?؟\n]{0,80}(?:\s|و)(?:انا|أنا|ana)\s+/iu.test(normalized);
     if (hasContradictorySelfReference) {
       gender = 'unknown';
     } else if (evidence !== 'unknown') {
@@ -92,17 +96,22 @@ export function resolveConversationGender(turns = []) {
   return gender;
 }
 
+function signature(value) {
+  return normalizeConversationText(value).replace(/\s+/gu, ' ');
+}
+
 export function selectFreshVariant(variants, recentSignatures = []) {
   const pool = Array.isArray(variants) ? variants.filter(Boolean) : [];
   if (!pool.length) return '';
-  const recent = new Set(Array.isArray(recentSignatures) ? recentSignatures : []);
-  const fresh = pool.find((candidate) => !recent.has(candidate));
+  const recent = new Set((Array.isArray(recentSignatures) ? recentSignatures : []).map(signature));
+  const fresh = pool.find((candidate) => !recent.has(signature(candidate)));
   return fresh || pool[0];
 }
 
 export function buildConversationQualityHints(input, context = {}) {
+  const currentGender = detectSelfReferenceGender(input);
+  const gender = currentGender !== 'unknown' ? currentGender : resolveConversationGender(context.turns || []);
   const profile = detectConversationIntent(input, { hasRelevantContext: Boolean(context.hasRelevantContext) });
-  const gender = resolveConversationGender(context.turns || []);
   return {
     ...profile,
     gender,
