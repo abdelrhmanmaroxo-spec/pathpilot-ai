@@ -10,22 +10,14 @@ test('system prompt adapts to workspace and protects accuracy', () => {
 });
 
 test('deep analysis preference adds stricter verification without exposing chain of thought', () => {
-  const prompt = buildSystemPrompt({
-    mode: 'general',
-    tool: 'ask',
-    preferences: { deepThinkEnabled: true, responseStyle: 'detailed' },
-  });
+  const prompt = buildSystemPrompt({ mode: 'general', tool: 'ask', preferences: { deepThinkEnabled: true, responseStyle: 'detailed' } });
   assert.match(prompt, /Deep analysis mode is enabled/i);
   assert.match(prompt, /verification pass/i);
   assert.match(prompt, /Do not reveal hidden chain-of-thought/i);
 });
 
 test('automatic chat agent guidance reaches the provider system prompt', () => {
-  const prompt = buildSystemPrompt({
-    preferences: {
-      agentGuidance: 'Chat agent orchestration: agent-v1; selection mode: auto. Selected helper capabilities: context_memory, rag_retriever, final_quality_gate.',
-    },
-  });
+  const prompt = buildSystemPrompt({ preferences: { agentGuidance: 'Chat agent orchestration: agent-v1; selection mode: auto. Selected helper capabilities: context_memory, rag_retriever, final_quality_gate.' } });
   assert.match(prompt, /selection mode: auto/i);
   assert.match(prompt, /rag_retriever/);
   assert.match(prompt, /final_quality_gate/);
@@ -73,4 +65,11 @@ test('provider request supports optional reasoning without requiring it', () => 
 test('provider response parsing supports both API modes', () => {
   assert.equal(extractProviderText({ choices: [{ message: { content: ' answer ' } }] }, 'chat-completions'), 'answer');
   assert.equal(extractProviderText({ output_text: ' result ' }, 'responses'), 'result');
+});
+
+test('provider request embeds lightweight versus substantive turn policy', () => {
+  const casual = buildProviderRequest({ apiMode: 'chat-completions', model: 'model-a', prompt: 'مَرْحـبــــااا!!!' });
+  const task = buildProviderRequest({ apiMode: 'chat-completions', model: 'model-a', prompt: 'اشرح OAuth بالتفصيل' });
+  assert.match(casual.messages[0].content, /lightweight conversational turn/i);
+  assert.match(task.messages[0].content, /contains an action or information request/i);
 });
