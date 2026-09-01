@@ -15,9 +15,11 @@ test('normalizes expressive spelling, punctuation, and Arabic variants', () => {
   assert.equal(normalizeConversationText('heyyyy!!!'), 'heyy');
 });
 
-test('detects Arabic, mixed, English, and unknown language modes', () => {
+test('detects Arabic, mixed, romanized Arabic, English, and unknown language modes', () => {
   assert.equal(detectConversationLanguage('ازيك'), 'ar');
   assert.equal(detectConversationLanguage('debug بالعربي'), 'ar-mixed');
+  assert.equal(detectConversationLanguage('ezayak ya bro'), 'ar-romanized');
+  assert.equal(detectConversationLanguage('debug 3ala DNS'), 'ar-romanized');
   assert.equal(detectConversationLanguage('hello there'), 'en');
   assert.equal(detectConversationLanguage('123?!'), 'unknown');
 });
@@ -64,6 +66,13 @@ test('builds safe hints with current-turn evidence taking precedence over older 
   assert.equal(hints.gender, 'male');
   assert.equal(hints.useNeutralArabic, false);
   assert.equal(Object.prototype.hasOwnProperty.call(hints, 'genderLabel'), false);
+});
+
+test('preserves Arabic response mode for romanized Egyptian turns', () => {
+  const hints = buildConversationQualityHints('ezayak ya bro');
+  assert.equal(hints.language, 'ar-romanized');
+  assert.equal(hints.preserveLanguage, 'arabic');
+  assert.equal(hints.useNeutralArabic, true);
 });
 
 test('ambiguous Arabic stays neutral instead of inheriting a weak cue', () => {
