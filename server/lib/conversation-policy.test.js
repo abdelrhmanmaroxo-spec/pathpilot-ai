@@ -6,15 +6,16 @@ test('normalization handles Arabic punctuation, tatweel, diacritics, and repeate
   assert.equal(normalizeConversationText('مَرْحـبــــااا!!!'), 'مرحباا');
 });
 
-test('language detection keeps Arabizi Arabic-like and mixed turns visible', () => {
-  assert.equal(detectConversationLanguage('ezayak ya bro'), 'ar');
-  assert.equal(detectConversationLanguage('3ayza msa3da'), 'ar');
+test('language detection keeps common Arabizi variants Arabic-like and mixed turns visible', () => {
+  for (const input of ['ezayak ya bro', 'ezayek ya bro', '3ayza msa3da', '3amel eh ya bro', 'اخبارك bro']) {
+    assert.equal(detectConversationLanguage(input), 'ar', input);
+  }
   assert.equal(detectConversationLanguage('ازيك bro'), 'ar');
   assert.equal(detectConversationLanguage('hello bro'), 'en');
 });
 
 test('social turns stay lightweight across Arabic, Egyptian, English, and Arabizi', () => {
-  for (const input of ['hello!!!', 'عامل ايه؟', 'shokran', 'تمام', 'هلووو!!!', 'ezayak ya bro']) {
+  for (const input of ['hello!!!', 'عامل ايه؟', 'shokran', 'تمام', 'هلووو!!!', 'ezayak ya bro', 'ezayek']) {
     assert.equal(classifyConversationTurn(input).lightweight, true, input);
   }
 });
