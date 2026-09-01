@@ -38,8 +38,10 @@ export function detectConversationLanguage(input = '') {
   const text = String(input);
   const arabic = (text.match(/[\u0600-\u06FF]/gu) || []).length;
   const latin = (text.match(/[A-Za-z]/gu) || []).length;
-  if (arabic && latin) return arabic >= latin ? 'ar-mixed' : 'en-mixed';
+  const arabiziSignal = /(?:\b(?:ana|enta|enty|ezay|ezzay|3amel|3amla|msh|mesh|mhtag|m7tag|3ayz|3ayza|bnt|wld|shokran|tmam|ma3lesh)\b|[2356798])/iu.test(text);
+  if (arabic && latin) return arabic >= latin || arabiziSignal ? 'ar-mixed' : 'en-mixed';
   if (arabic) return 'ar';
+  if (latin && arabiziSignal) return 'ar-romanized';
   if (latin) return 'en';
   return 'unknown';
 }
@@ -112,10 +114,11 @@ export function buildConversationQualityHints(input, context = {}) {
   const currentGender = detectSelfReferenceGender(input);
   const gender = currentGender !== 'unknown' ? currentGender : resolveConversationGender(context.turns || []);
   const profile = detectConversationIntent(input, { hasRelevantContext: Boolean(context.hasRelevantContext) });
+  const arabicMode = ['ar', 'ar-mixed', 'ar-romanized'].includes(profile.language);
   return {
     ...profile,
     gender,
-    useNeutralArabic: gender === 'unknown' && (profile.language === 'ar' || profile.language === 'ar-mixed'),
-    preserveLanguage: profile.language === 'ar' || profile.language === 'ar-mixed' ? 'arabic' : profile.language === 'en' ? 'english' : 'dominant',
+    useNeutralArabic: gender === 'unknown' && arabicMode,
+    preserveLanguage: arabicMode ? 'arabic' : profile.language === 'en' ? 'english' : 'dominant',
   };
 }
