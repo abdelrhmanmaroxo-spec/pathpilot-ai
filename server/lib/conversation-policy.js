@@ -1,12 +1,12 @@
 const ARABIC_RE = /[\u0600-\u06ff]/;
 const LATIN_RE = /[A-Za-z]/;
-const ARABIZI_RE = /(?:^|\s)(?:[2-9]?3?\w*(?:[23\u0662\u0663])\w*|ezay|3amel|shokran|tmam|ma3lesh|yalla|enta|enti|akhbar|helo)(?:\s|$)/i;
+const ARABIZI_RE = /(?:^|\s)(?:[2-9]?3?\w*(?:[23\u0662\u0663])\w*|ezay\w*|3amel\w*|shokran\w*|tmam\w*|ma3lesh\w*|yalla\w*|enta\w*|enti\w*|akhbar\w*|helo\w*|kefak\w*|mabrook\w*|saba7\w*)(?:\s|$)/i;
 const EN_ACTION_WORDS = new Set(['explain', 'debug', 'fix', 'write', 'draft', 'summarize', 'compare', 'plan', 'review', 'how', 'why', 'what']);
 const AR_ACTION_WORDS = new Set(['كمل', 'اشرح', 'وضح', 'حل', 'اكتب', 'لخص', 'قارن', 'اعمل', 'ازاي', 'ليه', 'إيه', 'ايه']);
 const SOCIAL_PATTERNS = [
   /^(hi|hello|hey|good morning|good evening|how are you|thanks|thank you|sorry|ok|okay|great|bye|see you|and you|what about you)$/i,
   /^(مرحبا|اهلا|أهلا|ازيك|إزيك|عامل ايه|عامل إيه|تمام|شكرا|شكرًا|معلش|حاضر|باي|سلام|وانت|وإنت|أخبارك|الدنيا ايه|هلو|هلوو)$/i,
-  /^(ezayak|3amel eh|tmam|shokran|ma3lesh|yalla|w enta|akhbarak|helo|hello ya)$/i,
+  /^(ezayak|ezayek|3amel eh|3amla eh|tmam|shokran|ma3lesh|yalla|w enta|w enti|akhbarak|akhbarek|helo|hello ya)$/i,
 ];
 
 function collapseRepeatedLetters(value) {
