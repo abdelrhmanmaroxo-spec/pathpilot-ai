@@ -43,6 +43,8 @@ test('keeps standalone informational questions substantive and only uses context
 test('accepts explicit or clear first-person gender evidence only', () => {
   assert.equal(detectSelfReferenceGender('أنا بنت ومحتاجة مساعدة'), 'female');
   assert.equal(detectSelfReferenceGender('انا ولد وعايز أبدأ'), 'male');
+  assert.equal(detectSelfReferenceGender("I'm a woman and need help"), 'female');
+  assert.equal(detectSelfReferenceGender('ana bnt w m7taga msa3da'), 'female');
   assert.equal(detectSelfReferenceGender('محمد محتاج مساعدة'), 'unknown');
   assert.equal(detectSelfReferenceGender('اسمها سارة وهي كويسة'), 'unknown');
 });
@@ -56,15 +58,21 @@ test('newer strong self-reference overrides older context, ambiguity stays unkno
   assert.equal(resolveConversationGender([{ content: 'انا ولد وانا بنت' }]), 'unknown');
 });
 
-test('builds safe hints without exposing a demographic label in the output contract', () => {
-  const hints = buildConversationQualityHints('ازيك يا صاحبي', { turns: [{ content: 'انا بنت' }] });
+test('builds safe hints with current-turn evidence taking precedence over older turns', () => {
+  const hints = buildConversationQualityHints('انا ولد وعايز أبدأ', { turns: [{ content: 'انا بنت' }] });
   assert.equal(hints.preserveLanguage, 'arabic');
-  assert.equal(hints.gender, 'female');
+  assert.equal(hints.gender, 'male');
   assert.equal(hints.useNeutralArabic, false);
   assert.equal(Object.prototype.hasOwnProperty.call(hints, 'genderLabel'), false);
 });
 
-test('avoids immediate variant repetition when a fresh candidate exists', () => {
-  assert.equal(selectFreshVariant(['a', 'b', 'c'], ['a']), 'b');
+test('ambiguous Arabic stays neutral instead of inheriting a weak cue', () => {
+  const hints = buildConversationQualityHints('ازيك يا صاحبي', { turns: [{ content: 'محمد محتاج مساعدة' }] });
+  assert.equal(hints.gender, 'unknown');
+  assert.equal(hints.useNeutralArabic, true);
+});
+
+test('avoids immediate near-duplicate variant repetition after normalization', () => {
+  assert.equal(selectFreshVariant(['تمام، نكمل', 'حاضر، نبدأ'], ['تمام نكمل']), 'حاضر، نبدأ');
   assert.equal(selectFreshVariant(['a', 'b'], ['a', 'b']), 'a');
 });
