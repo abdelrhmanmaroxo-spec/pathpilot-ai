@@ -18,7 +18,7 @@ const ACTION_PATTERNS = [
 ];
 
 const CONTEXT_FOLLOW_UP_PATTERNS = [
-  /^(?:طب|طيب|وبعدين|كمل|كمّل|ودي|وده|دي كمان|نفس اللي فات)$/u,
+  /^(?:طب|طيب|طب وبعدين|طيب وبعدين|وبعدين|كمل|كمّل|ودي|وده|دي كمان|نفس اللي فات)$/u,
   /^(?:tab|tayeb|w ba3den|kml|kmel|w da|w دي|nafs elly fat)$/iu,
   /^(?:what about (?:the )?(?:second|next|other) one|and this one)$/iu,
 ];
