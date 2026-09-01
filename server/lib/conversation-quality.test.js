@@ -41,12 +41,14 @@ test('keeps standalone informational questions substantive and only uses context
   assert.equal(detectConversationIntent('ليه السماء زرقا', { hasRelevantContext: true }).intent, 'substantive');
   assert.equal(detectConversationIntent('why is DNS cached', { hasRelevantContext: true }).intent, 'substantive');
   assert.equal(detectConversationIntent('طب وبعدين؟', { hasRelevantContext: true }).intent, 'contextual_follow_up');
+  assert.equal(detectConversationIntent('طب و بعدين؟', { hasRelevantContext: true }).intent, 'contextual_follow_up');
 });
 
 test('recognizes short Arabic, English, and Arabizi continuity markers only with relevant context', () => {
   assert.equal(detectConversationIntent('دي كمان', { hasRelevantContext: true }).intent, 'contextual_follow_up');
   assert.equal(detectConversationIntent('what about the second one', { hasRelevantContext: true }).intent, 'contextual_follow_up');
   assert.equal(detectConversationIntent('kml', { hasRelevantContext: true }).intent, 'contextual_follow_up');
+  assert.equal(detectConversationIntent('w  ba3den', { hasRelevantContext: true }).intent, 'contextual_follow_up');
   assert.equal(detectConversationIntent('kml').intent, 'open');
   assert.equal(detectConversationIntent('kml الشرح', { hasRelevantContext: true }).intent, 'substantive');
 });
