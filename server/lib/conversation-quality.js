@@ -67,10 +67,10 @@ export function detectConversationIntent(input = '', { hasRelevantContext = fals
 const DIRECT_SELF_CUES = [
   ['female', /(?:^|\s)(?:انا|أنا)\s+(?:بنت|ست|محتاجة|عايزة|كويسة|قلقانة|مضغوطة|متضايقة|مرهقة|مستعدة)(?:\s|$)/u],
   ['male', /(?:^|\s)(?:انا|أنا)\s+(?:ولد|راجل|محتاج|عايز|كويس|قلقان|مضغوط|متضايق|مرهق|مستعد)(?:\s|$)/u],
-  ['female', /(?:^|\s)(?:im|i am)\s+(?:a\s+)?(?:girl|woman|female)(?:\s|$)/iu],
-  ['male', /(?:^|\s)(?:im|i am)\s+(?:a\s+)?(?:boy|man|male)(?:\s|$)/iu],
-  ['female', /(?:^|\s)ana\s+(?:bnt|set|m7taga|3ayza|kwyssa|mst3da)(?:\s|$)/iu],
-  ['male', /(?:^|\s)ana\s+(?:wld|ragel|m7tag|3ayz|kwayes|mst3d)(?:\s|$)/iu],
+  ['female', /(?:^|[^a-z])(?:im|i am)(?:\s+)(?:a\s+)?(?:girl|woman|female)(?:\s|$)/iu],
+  ['male', /(?:^|[^a-z])(?:im|i am)(?:\s+)(?:a\s+)?(?:boy|man|male)(?:\s|$)/iu],
+  ['female', /(?:^|[^a-z])ana\s+(?:bnt|set|m7taga|3ayza|kwyssa|mst3da)(?:\s|$)/iu],
+  ['male', /(?:^|[^a-z])ana\s+(?:wld|ragel|m7tag|3ayz|kwayes|mst3d)(?:\s|$)/iu],
 ];
 
 export function detectSelfReferenceGender(input = '') {
