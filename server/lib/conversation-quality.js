@@ -38,7 +38,7 @@ export function detectConversationLanguage(input = '') {
   const text = String(input);
   const arabic = (text.match(/[\u0600-\u06FF]/gu) || []).length;
   const latin = (text.match(/[A-Za-z]/gu) || []).length;
-  const arabiziSignal = /(?:\b(?:ana|enta|enty|ezay|ezzay|3amel|3amla|msh|mesh|mhtag|m7tag|3ayz|3ayza|bnt|wld|shokran|tmam|ma3lesh)\b|[2356798])/iu.test(text);
+  const arabiziSignal = /(?:\b(?:ana|enta|enty|ezay\w*|ezzay\w*|3amel|3amla|msh|mesh|mhtag|m7tag|3ayz|3ayza|bnt|wld|shokran|tmam|ma3lesh|3ala)\b|[2356798])/iu.test(text);
   if (arabic && latin) return arabic >= latin || arabiziSignal ? 'ar-mixed' : 'en-mixed';
   if (arabic) return 'ar';
   if (latin && arabiziSignal) return 'ar-romanized';
@@ -69,10 +69,10 @@ export function detectConversationIntent(input = '', { hasRelevantContext = fals
 const DIRECT_SELF_CUES = [
   ['female', /(?:^|\s)(?:انا|أنا)\s+(?:بنت|ست|محتاجة|عايزة|كويسة|قلقانة|مضغوطة|متضايقة|مرهقة|مستعدة)(?:\s|$)/u],
   ['male', /(?:^|\s)(?:انا|أنا)\s+(?:ولد|راجل|محتاج|عايز|كويس|قلقان|مضغوط|متضايق|مرهق|مستعد)(?:\s|$)/u],
-  ['female', /(?:^|[^a-z])(?:im|i am)(?:\s+)(?:a\s+)?(?:girl|woman|female)(?:\s|$)/iu],
-  ['male', /(?:^|[^a-z])(?:im|i am)(?:\s+)(?:a\s+)?(?:boy|man|male)(?:\s|$)/iu],
-  ['female', /(?:^|[^a-z])ana\s+(?:bnt|set|m7taga|3ayza|kwyssa|mst3da)(?:\s|$)/iu],
-  ['male', /(?:^|[^a-z])ana\s+(?:wld|ragel|m7tag|3ayz|kwayes|mst3d)(?:\s|$)/iu],
+  ['female', /(?:^|\s)(?:im|i am)\s+(?:a\s+)?(?:girl|woman|female)(?:\s|$)/iu],
+  ['male', /(?:^|\s)(?:im|i am)\s+(?:a\s+)?(?:boy|man|male)(?:\s|$)/iu],
+  ['female', /(?:^|\s)ana\s+(?:bnt|set|m7taga|3ayza|kwyssa|mst3da)(?:\s|$)/iu],
+  ['male', /(?:^|\s)ana\s+(?:wld|ragel|m7tag|3ayz|kwayes|mst3d)(?:\s|$)/iu],
 ];
 
 export function detectSelfReferenceGender(input = '') {
