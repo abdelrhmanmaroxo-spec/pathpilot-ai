@@ -12,14 +12,14 @@ const INTENT_PATTERNS = [
 
 const ACTION_PATTERNS = [
   /\b(?:explain|debug|fix|write|draft|compare|analy[sz]e|summari[sz]e|plan|research|review|show me|how do i)\b/iu,
-  /(?:اشرح|فسر|حل|صلح|اكتب|قارن|لخص|خطط|ابحث|راجع|وريني|ازاي|إزاي|كمل الشرح|وضح أكتر)/u,
+  /(?:اشرح|فسر|حل|صلح|اكتب|قارن|لخص|خطط|ابحث|راجع|وريني|ازاي|إزاي|كمل\s+الشرح|وضح\s+أكتر)/u,
   /\b(?:api|oauth|dns|sql|javascript|python|code|bug|error|resume|cv|email)\b/iu,
   /(?:^|\s)(?:ليه|لماذا|كيف|متى|فين|اين|أين)(?:\s|$)/u,
 ];
 
 const CONTEXT_FOLLOW_UP_PATTERNS = [
-  /^(?:طب|طيب|طب وبعدين|طيب وبعدين|وبعدين|كمل|كمّل|ودي|وده|دي كمان|نفس اللي فات)$/u,
-  /^(?:tab|tayeb|w ba3den|kml|kmel|w da|w دي|nafs elly fat)$/iu,
+  /^(?:طب|طيب|طب\s+وبعدين|طيب\s+وبعدين|وبعدين|كمل|كمّل|ودي|وده|دي\s+كمان|نفس\s+اللي\s+فات)$/u,
+  /^(?:tab|tayeb|w\s+ba3den|kml|kmel|w\s+da|w\s+دي|nafs\s+elly\s+fat)$/iu,
   /^(?:what about (?:the )?(?:second|next|other) one|and this one)$/iu,
 ];
 
