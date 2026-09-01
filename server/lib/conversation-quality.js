@@ -17,6 +17,12 @@ const ACTION_PATTERNS = [
   /(?:^|\s)(?:ليه|لماذا|كيف|متى|فين|اين|أين)(?:\s|$)/u,
 ];
 
+const CONTEXT_FOLLOW_UP_PATTERNS = [
+  /^(?:طب|طيب|وبعدين|كمل|كمّل|ودي|وده|دي كمان|نفس اللي فات)$/u,
+  /^(?:tab|tayeb|w ba3den|kml|kmel|w da|w دي|nafs elly fat)$/iu,
+  /^(?:what about (?:the )?(?:second|next|other) one|and this one)$/iu,
+];
+
 function collapseRepeatedLetters(value) {
   return value.replace(/([A-Za-z\u0600-\u06FF])\1{2,}/gu, '$1$1');
 }
@@ -28,7 +34,7 @@ export function normalizeConversationText(input = '') {
     .replace(/[ـ]/gu, '')
     .replace(/[إأآ]/gu, 'ا')
     .replace(/ى/gu, 'ي')
-    .replace(/[\u005B\u005D؟?!.,;:،؛(){}"'`]/gu, ' ')
+    .replace(/[\u005B\u005D؟?!.,;:،؛(){}\"'`]/gu, ' ')
     .replace(/\s+/gu, ' ')
     .trim()
     .toLocaleLowerCase('ar-EG'));
@@ -38,7 +44,7 @@ export function detectConversationLanguage(input = '') {
   const text = String(input);
   const arabic = (text.match(/[\u0600-\u06FF]/gu) || []).length;
   const latin = (text.match(/[A-Za-z]/gu) || []).length;
-  const arabiziSignal = /(?:\b(?:ana|enta|enty|ezay\w*|ezzay\w*|3amel|3amla|msh|mesh|mhtag|m7tag|3ayz|3ayza|bnt|wld|shokran|tmam|ma3lesh|3ala)\b|[2356798])/iu.test(text);
+  const arabiziSignal = /(?:\b(?:ana|enta|enty|ezay\w*|ezzay\w*|3amel|3amla|msh|mesh|mhtag|m7tag|3ayz|3ayza|bnt|wld|shokran|tmam|ma3lesh|3ala|tab|tayeb|kml|kmel|feen|feyn|yalla)\b|[2356798])/iu.test(text);
   if (arabic && latin) return arabic >= latin || arabiziSignal ? 'ar-mixed' : 'en-mixed';
   if (arabic) return 'ar';
   if (latin && arabiziSignal) return 'ar-romanized';
@@ -52,6 +58,9 @@ export function detectConversationIntent(input = '', { hasRelevantContext = fals
   const actionBearing = ACTION_PATTERNS.some((pattern) => pattern.test(normalized));
   if (actionBearing) {
     return { intent: 'substantive', normalized, language: detectConversationLanguage(input), lightweight: false };
+  }
+  if (hasRelevantContext && normalized.split(' ').length <= 7 && CONTEXT_FOLLOW_UP_PATTERNS.some((pattern) => pattern.test(normalized))) {
+    return { intent: 'contextual_follow_up', normalized, language: detectConversationLanguage(input), lightweight: false };
   }
   for (const [intent, pattern] of INTENT_PATTERNS) {
     if (pattern.test(normalized)) {
