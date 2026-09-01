@@ -13,6 +13,7 @@ import {
 test('normalizes expressive spelling, punctuation, and Arabic variants', () => {
   assert.equal(normalizeConversationText('إزّاييي؟؟  عامل   إيه!!!'), 'ازايي عامل ايه');
   assert.equal(normalizeConversationText('heyyyy!!!'), 'heyy');
+  assert.equal(normalizeConversationText('I’m ready'), 'im ready');
 });
 
 test('detects Arabic, mixed, romanized Arabic, English, and unknown language modes', () => {
@@ -54,6 +55,7 @@ test('accepts explicit or clear first-person gender evidence only', () => {
   assert.equal(detectSelfReferenceGender('أنا بنت ومحتاجة مساعدة'), 'female');
   assert.equal(detectSelfReferenceGender('انا ولد وعايز أبدأ'), 'male');
   assert.equal(detectSelfReferenceGender("I'm a woman and need help"), 'female');
+  assert.equal(detectSelfReferenceGender('I’m a woman and need help'), 'female');
   assert.equal(detectSelfReferenceGender('ana bnt w m7taga msa3da'), 'female');
   assert.equal(detectSelfReferenceGender('محمد محتاج مساعدة'), 'unknown');
   assert.equal(detectSelfReferenceGender('اسمها سارة وهي كويسة'), 'unknown');
