@@ -37,7 +37,9 @@ test('accepts noisy Arabic and Arabizi social variants', () => {
   assert.equal(detectConversationIntent('هلووو!!!', { hasRelevantContext: true }).intent, 'greeting');
   assert.equal(detectConversationIntent('msh fahhhhhm??', { hasRelevantContext: true }).intent, 'confusion');
   assert.equal(detectConversationIntent('mesh fahm', { hasRelevantContext: true }).intent, 'confusion');
+  assert.equal(detectConversationIntent('msh fahim', { hasRelevantContext: true }).intent, 'confusion');
   assert.equal(detectConversationIntent('msh sh8al', { hasRelevantContext: true }).intent, 'frustration');
+  assert.equal(detectConversationIntent('msh shaghal', { hasRelevantContext: true }).intent, 'frustration');
 });
 
 test('keeps standalone informational questions substantive and only uses context for short unresolved follow-ups', () => {
@@ -52,6 +54,8 @@ test('recognizes short Arabic, English, and Arabizi continuity markers only with
   assert.equal(detectConversationIntent('what about the second one', { hasRelevantContext: true }).intent, 'contextual_follow_up');
   assert.equal(detectConversationIntent('kml', { hasRelevantContext: true }).intent, 'contextual_follow_up');
   assert.equal(detectConversationIntent('w  ba3den', { hasRelevantContext: true }).intent, 'contextual_follow_up');
+  assert.equal(detectConversationIntent('w dah', { hasRelevantContext: true }).intent, 'contextual_follow_up');
+  assert.equal(detectConversationIntent('el tany', { hasRelevantContext: true }).intent, 'contextual_follow_up');
   assert.equal(detectConversationIntent('nafs   elly  fat', { hasRelevantContext: true }).intent, 'contextual_follow_up');
   assert.equal(detectConversationIntent('kml').intent, 'open');
   assert.equal(detectConversationIntent('kml الشرح', { hasRelevantContext: true }).intent, 'substantive');

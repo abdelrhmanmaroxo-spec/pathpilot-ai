@@ -3,8 +3,8 @@ const INTENT_PATTERNS = [
   ['thanks', /(?:\b(?:thanks|thank you|thx|ty)\b|شكر(?:ا|اً)|متشكر|تسلم|ميرسي)/iu],
   ['apology', /(?:\b(?:sorry|my bad|apologies)\b|آسف(?:ة)?|معلش|حقك عليا|سامحني)/iu],
   ['encouragement', /(?:\b(?:you got this|good luck|wish me luck|cheer me up)\b|شد حيلك|بالتوفيق|شجعني|ادعيلي)/iu],
-  ['confusion', /(?:\b(?:confused|i do not get it|what do you mean|huh)\b|\bmsh\s+fah+?m\b|\bmesh\s+fah+?m\b|مش فاهم(?:ة)?|مش واضح|مش مستوعب(?:ة)?|يعني ايه|مش فاهم)/iu],
-  ['frustration', /(?:\b(?:frustrated|annoyed|this is not working|ugh)\b|\bmsh\s+sh[8g]al\b|زهقت|متضايق(?:ة)?|مستفز|مش شغال|تعبت)/iu],
+  ['confusion', /(?:\b(?:confused|i do not get it|what do you mean|huh)\b|\bmsh\s+fah+(?:m|im)\b|\bmesh\s+fah+(?:m|im)\b|مش فاهم(?:ة)?|مش واضح|مش مستوعب(?:ة)?|يعني ايه|مش فاهم)/iu],
+  ['frustration', /(?:\b(?:frustrated|annoyed|this is not working|ugh)\b|\bmsh\s+sh(?:8|g|gh)al\b|زهقت|متضايق(?:ة)?|مستفز|مش شغال|تعبت)/iu],
   ['acknowledgement', /(?:\b(?:ok|okay|got it|noted|sure|alright)\b|تمام|حاضر|ماشي|فاهم|وصلت|أوكي)/iu],
   ['greeting', /(?:\b(?:hi|hello|hey|morning|evening|good morning|good evening)\b|\b(?:h+a+i+|h+e+l+l+o+|h+e+y+)\b|اهلا|أهلاً|هاي|هلو|ازيك|إزيك|عامل ايه|عاملة ايه|مساء الخير|صباح الخير)/iu],
   ['small_talk', /(?:\b(?:how are you|what is up|how is it going|and you)\b|اخبارك|عامل ايه|عاملة ايه|الدنيا ايه|وانت|وانتي)/iu],
@@ -18,8 +18,8 @@ const ACTION_PATTERNS = [
 ];
 
 const CONTEXT_FOLLOW_UP_PATTERNS = [
-  /^(?:طب|طيب|طب\s+وبعدين|طيب\s+وبعدين|طب\s+و\s+بعدين|طيب\s+و\s+بعدين|وبعدين|كمل|كمّل|ودي|وده|دي\s+كمان|نفس\s+اللي\s+فات)$/u,
-  /^(?:tab|tayeb|w\s+ba3den|kml|kmel|w\s+da|w\s+دي|nafs\s+elly\s+fat)$/iu,
+  /^(?:طب|طيب|طب\s+وبعدين|طيب\s+وبعدين|طب\s+و\s+بعدين|طيب\s+و\s+بعدين|وبعدين|كمل|كمّل|ودي|وده|دي\s+كمان|نفس\s+اللي\s+فات|التاني|التانية|اللي\s+بعده|اللي\s+بعدها)$/u,
+  /^(?:tab|tayeb|w\s+(?:ba3den|b3den|dah|da)|kml|kmel|w\s+دي|nafs\s+elly\s+fat|el\s+tany|el\s+tanya|el\s+b3do|el\s+b3dha)$/iu,
   /^(?:what about (?:the )?(?:second|next|other) one|and this one)$/iu,
 ];
 
@@ -44,7 +44,7 @@ export function detectConversationLanguage(input = '') {
   const text = String(input);
   const arabic = (text.match(/[\u0600-\u06FF]/gu) || []).length;
   const latin = (text.match(/[A-Za-z]/gu) || []).length;
-  const arabiziSignal = /(?:\b(?:ana|enta|enty|ezay\w*|ezzay\w*|3amel|3amla|msh|mesh|mhtag|m7tag|3ayz|3ayza|bnt|wld|shokran|tmam|ma3lesh|3ala|tab|tayeb|kml|kmel|feen|feyn|yalla)\b|[2356798])/iu.test(text);
+  const arabiziSignal = /(?:\b(?:ana|enta|enty|ezay\w*|ezzay\w*|3amel|3amla|msh|mesh|mhtag|m7tag|3ayz|3ayza|bnt|wld|shokran|tmam|ma3lesh|3ala|tab|tayeb|kml|kmel|feen|feyn|yalla|ba3den|b3den|tany|tanya)\b|[2356798])/iu.test(text);
   if (arabic && latin) return arabic >= latin || arabiziSignal ? 'ar-mixed' : 'en-mixed';
   if (arabic) return 'ar';
   if (latin && arabiziSignal) return 'ar-romanized';
