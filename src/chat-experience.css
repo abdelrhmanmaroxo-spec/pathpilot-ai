@@ -1,4 +1,4 @@
-.chat-page {
+.chat-.chat-thread, .conversation-thread, .chat-messages, .conversation-experience { overflow-y: auto !important; scroll-behavior: smooth !important; max-height: calc(100vh - 210px); } .pp-file-upload-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 8px 0; } .pp-file-btn, .pp-scroll-btn, .pp-quick-tool-chip { cursor: pointer; border-radius: 999px; padding: 6px 12px; font-size: 0.82rem; border: 1px solid rgba(16, 185, 129, 0.4); background: rgba(16, 185, 129, 0.14); color: inherit; }page {
   padding: 30px 0 72px;
 }
 
