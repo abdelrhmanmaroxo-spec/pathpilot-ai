@@ -26,7 +26,6 @@ function loadGoogleScript() {
   return googleScriptPromise;
 }
 export function DirectDbAuthOption({ onAuthenticate }) { const [email, setEmail] = useState(''); const [password, setPassword] = useState(''); const handleDirectDbAuth = () => { if (email && password && onAuthenticate) { onAuthenticate({ email, directDb: true }); } }; return ( <div className="direct-db-auth-option"> <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Direct DB Email" /> <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Password" /> <button type="button" onClick={handleDirectDbAuth}>Direct DB Login</button>button> </div>div> ); }
-</div>
 export default function AuthDialog({ open, onClose, onAuthenticated }) {
   const [view, setView] = useState('login');
   const [form, setForm] = useState({ name: '', email: '', password: '' });
