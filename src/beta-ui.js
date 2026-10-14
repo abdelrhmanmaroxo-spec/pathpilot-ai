@@ -74,21 +74,106 @@ function updateResultLabels() {
     }
     if (/وضع احتياطي|تعذر الوصول إلى البحث والذكاء/.test(text)) {
       label.textContent = 'Local fallback · Beta';
+    function ensureStyles() {
+        if (document.getElementById('beta-ui-styles')) return;
+        const style = document.createElement('style');
+        style.id = 'beta-ui-styles';
+        style.textContent = `
+            .beta-badge {
+                  display: inline-block;
+                        padding: 2px 6px;
+                              font-size: 10px;
+                                    font-weight: 700;
+                                          color: #059669;
+                                                background-color: #ecfdf5;
+                                                      border: 1px solid #a7f3d0;
+                                                            border-radius: 9999px;
+                                                                  margin-left: 6px;
+                                                                        vertical-align: middle;
+                                                                              text-transform: uppercase;
+                                                                                    letter-spacing: 0.05em;
+                                                                                        }
+                                                                                          `;
+        document.head.appendChild(style);
     }
-  });
-}
 
-function refreshBetaUi() {
-  ensureStyles();
-  addBetaBadges();
-  updateLandingNote();
-  updateResultLabels();
-}
+      function addBetaBadges() {
+          ensureStyles();
+          const headings = document.querySelectorAll('h1, h2, .app-title');
+          headings.forEach((heading) => {
+                if (heading.dataset.hasBetaBadge) return;
+                if (heading.textContent.includes('PathPilot')) {
+                        const badge = document.createElement('span');
+                        badge.className = 'beta-badge';
+                        badge.textContent = 'BETA';
+                        heading.appendChild(badge);
+                        heading.dataset.hasBetaBadge = 'true';
+                }
+          });
+      }
 
-let scheduled = false;
-const observer = new MutationObserver(() => {
-  if (scheduled) return;
-  scheduled = true;
+      function updateLandingNote() {
+          const subheaders = document.querySelectorAll('.landing-subtitle, .hero-subtitle');
+          subheaders.forEach((el) => {
+                if (!el.dataset.hasBetaNote) {
+                        el.textContent += ' (v2.0 Beta Active)';
+                        el.dataset.hasBetaNote = 'true';
+                }
+          });
+      }
+
+      function updateResultLabels() {
+          const resultCards = document.querySelectorAll('.result-card-header');
+          resultCards.forEach((card) => {
+                if (!card.querySelector('.beta-badge')) {
+                        const badge = document.createElement('span');
+                        badge.className = 'beta-badge';
+                        badge.textContent = 'AI BETA';
+                        card.appendChild(badge);
+                }
+          });
+      }
+
+      function refreshBetaUi() {
+          ensureStyles();
+          addBetaBadges();
+          updateLandingNote();
+          updateResultLabels();
+      }
+
+      let scheduled = false;
+      const observer = new MutationObserver(() => {
+          if (scheduled) return;
+          scheduled = true;
+          requestAnimationFrame(() => {
+                scheduled = false;
+                refreshBetaUi();
+          });
+      });
+
+      if (document.readyState === 'loading') {
+          document.addEventListener('DOMContentLoaded', () => {
+                refreshBetaUi();
+                observer.observe(document.body, {
+                        childList: true,
+                        subtree: true,
+                        characterData: true,
+                        attributes: true,
+                        attributeFilter: ['data-language'],
+                });
+          }, { once: true });
+      } else {
+          refreshBetaUi();
+          observer.observe(document.body, {
+                childList: true,
+                subtree: true,
+                characterData: true,
+                attributes: true,
+                attributeFilter: ['data-language'],
+          });
+      }
+
+      export { refreshBetaUi, addBetaBadges, updateLandingNote, updateResultLabels, ensureStyles };
   requestAnimationFrame(() => {
     scheduled = false;
     refreshBetaUi();
@@ -116,5 +201,5 @@ if (document.readyState === 'loading') {
     attributeFilter: ['data-language'],
   });
 } 
-export { fhBetaUi, addBetaBadges, updateLandingNote, updateResultLabels, ensureStyles };
+export { fhBetexport { refreshBetaUi, addBetaBadges, updateLandingNote, updateResultLabels, ensureStyles };aUi, addBetaBadges, updateLandingNote, updateResultLabels, ensureStyles };
 }
