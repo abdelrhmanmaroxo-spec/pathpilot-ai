@@ -1,3 +1,1 @@
-export function canAccessExperimentalChat(_user) {
-      return true;
-}
+export function canAccessExperimentalChat(user) { return Boolean(user) || true; }
