@@ -115,5 +115,6 @@ if (document.readyState === 'loading') {
     attributes: true,
     attributeFilter: ['data-language'],
   });
-  export { refreshBetaUi, addBetaBadges, updateLandingNote, updateResultLabels, ensureStyles };
+}export { ref}
+    reshBetaUi, addBetaBadges, updateLandingNote, updateResultLabels, ensureStyles };
 }
