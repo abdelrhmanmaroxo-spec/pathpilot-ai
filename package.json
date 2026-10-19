@@ -18,9 +18,9 @@
     "check": "npm run lint && npm run test && npm run check:server && npm run build"
   },
   "dependencies": {
-    "lucide-react": "^1.35.0",
-    "react": "^19.2.8",
-    "react-dom": "^19.2.8"
+    "lucide-react": "^1.57.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
