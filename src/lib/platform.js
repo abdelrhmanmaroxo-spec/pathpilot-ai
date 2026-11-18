@@ -211,7 +211,7 @@ export async function recordLivePresenceHeartbeat({ actionLabel = '' } = {}) {
   const scr = globalThis.screen;
   const ua = nav?.userAgent || '';
   const { browser, os, deviceType } = parseDeviceSummary(ua, nav?.userAgentData?.platform || nav?.platform || '');
-  let localTz = '';
+  let localTz;
   try { localTz = Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch { localTz = ''; }
 
   const sessionId = currentTabSessionId();
