@@ -3,7 +3,7 @@ import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { buildProviderRequest, extractProviderText } from './lib/ai-provider.js';
 import {
-  DEFAULT_OWNER_EMAIL,
+  isProtectedOwnerEmail,
   DEFAULT_SUPPORT_EMAIL,
   createSessionToken,
   createVerificationCode,
@@ -105,7 +105,7 @@ export function createPathPilotServer({
   const endpoint = env.AI_ENDPOINT || `${baseUrl}/${apiMode === 'responses' ? 'responses' : 'chat/completions'}`;
   const reasoningEffort = env.AI_REASONING_EFFORT || '';
   const allowedOrigins = new Set((env.ALLOWED_ORIGINS || 'http://localhost:5173').split(',').map((item) => item.trim()).filter(Boolean));
-  const ownerEmail = normalizeEmail(env.OWNER_EMAIL ?? env.ADMIN_EMAIL ?? (env === process.env ? DEFAULT_OWNER_EMAIL : ''));
+  const ownerEmail = normalizeEmail(env.OWNER_EMAIL || env.ADMIN_EMAIL || '');
   const supportEmail = String(env.SUPPORT_EMAIL || DEFAULT_SUPPORT_EMAIL).trim();
   const googleClientId = String(env.GOOGLE_CLIENT_ID || '').trim();
   const resendApiKey = String(env.RESEND_API_KEY || '').trim();
@@ -178,7 +178,7 @@ export function createPathPilotServer({
 
   function decorateUser(user) {
     if (!user) return null;
-    const isOwner = Boolean(ownerEmail && normalizeEmail(user.email) === ownerEmail);
+    const isOwner = isProtectedOwnerEmail(user.email, env);
     let role = user.role;
     if (isOwner && role !== 'admin') {
       setUserRole(database, user.id, 'admin');
@@ -188,7 +188,7 @@ export function createPathPilotServer({
   }
 
   function initialRoleForEmail(email) {
-    if (ownerEmail && email === ownerEmail) return 'admin';
+    if (isProtectedOwnerEmail(email, env)) return 'admin';
     return findPendingAdminInvite(database, email) ? 'admin' : 'user';
   }
 
@@ -635,7 +635,7 @@ export function createPathPilotServer({
 
     if (request.method === 'GET' && path === '/api/admin/users') {
       if (!requireAdmin(request, response, origin)) return;
-      const users = listUsers(database).map((item) => ({ ...item, isOwner: Boolean(ownerEmail && normalizeEmail(item.email) === ownerEmail), emailVerified: Boolean(item.email_verified) }));
+      const users = listUsers(database).map((item) => ({ ...item, isOwner: isProtectedOwnerEmail(item.email, env), emailVerified: Boolean(item.email_verified) }));
       return sendJson(response, 200, { users }, origin);
     }
 
@@ -682,7 +682,7 @@ export function createPathPilotServer({
       if (ownerEmail && normalizeEmail(target.email) === ownerEmail && role !== 'admin') return sendJson(response, 400, { error: 'The owner account cannot be demoted.' }, origin);
       const user = setUserRole(database, target.id, role);
       trackEvent(database, { userId: user.id, eventType: role === 'admin' ? 'admin_granted' : 'admin_removed' });
-      return sendJson(response, 200, { user: { ...user, isOwner: Boolean(ownerEmail && normalizeEmail(user.email) === ownerEmail), emailVerified: Boolean(user.email_verified) } }, origin);
+      return sendJson(response, 200, { user: { ...user, isOwner: isProtectedOwnerEmail(user.email, env), emailVerified: Boolean(user.email_verified) } }, origin);
     }
 
     if (request.method === 'POST' && path === '/api/admin/users/delete') {

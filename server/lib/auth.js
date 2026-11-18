@@ -3,11 +3,28 @@ import { promisify } from 'node:util';
 
 const scrypt = promisify(scryptCallback);
 
-export const DEFAULT_OWNER_EMAIL = 'abdelrhman.maroxo@gmail.com';
+export const OWNER_IDENTITY_SHA256 = '1424b269c2238aa013af777f59195da1897669c79faa2d42dda38a009d96dcdb';
+const OWNER_PEPPER = 'pathpilot-owner-v6-pepper::';
 export const DEFAULT_SUPPORT_EMAIL = 'pathpilot.app00@gmail.com';
 
 export function normalizeEmail(value) {
   return String(value || '').trim().toLowerCase();
+}
+
+export function isProtectedOwnerEmail(email, env = process.env) {
+  const candidate = normalizeEmail(email);
+  if (!candidate) return false;
+  const explicitOwner = normalizeEmail(env.OWNER_EMAIL || env.ADMIN_EMAIL || '');
+  if (explicitOwner) {
+    return candidate === explicitOwner;
+  }
+  if (env === process.env) {
+    const digest = createHash('sha256').update(`${OWNER_PEPPER}${candidate}`).digest('hex');
+    const left = Buffer.from(digest, 'hex');
+    const right = Buffer.from(OWNER_IDENTITY_SHA256, 'hex');
+    return left.length === right.length && timingSafeEqual(left, right);
+  }
+  return false;
 }
 
 export async function hashPassword(password) {

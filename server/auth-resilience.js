@@ -1,5 +1,5 @@
 import {
-  DEFAULT_OWNER_EMAIL,
+  isProtectedOwnerEmail,
   createSessionToken,
   createVerificationCode,
   hashEmailOtp,
@@ -76,7 +76,7 @@ export function createAuthResilience({
   allowedOrigins,
   emailSender = sendVerificationEmail,
 } = {}) {
-  const ownerEmail = normalizeEmail(env.OWNER_EMAIL ?? env.ADMIN_EMAIL ?? (env === process.env ? DEFAULT_OWNER_EMAIL : ''));
+  const ownerEmail = normalizeEmail(env.OWNER_EMAIL || env.ADMIN_EMAIL || '');
   const apiKey = String(env.RESEND_API_KEY || '').trim();
   const emailFrom = String(env.EMAIL_FROM || '').trim();
   const emailProvider = String(env.EMAIL_PROVIDER || '').trim().toLowerCase();
@@ -101,13 +101,13 @@ export function createAuthResilience({
   const deliveryMode = getEmailDeliveryMode(emailFrom, emailProvider);
 
   function roleFor(email) {
-    if (ownerEmail && email === ownerEmail) return 'admin';
+    if (isProtectedOwnerEmail(email, env)) return 'admin';
     return findPendingAdminInvite(database, email) ? 'admin' : 'user';
   }
 
   function decorateUser(userRecord) {
     if (!userRecord) return null;
-    const isOwner = Boolean(ownerEmail && normalizeEmail(userRecord.email) === ownerEmail);
+    const isOwner = isProtectedOwnerEmail(userRecord.email, env);
     let role = userRecord.role;
     if (isOwner && role !== 'admin') {
       setUserRole(database, userRecord.id, 'admin');

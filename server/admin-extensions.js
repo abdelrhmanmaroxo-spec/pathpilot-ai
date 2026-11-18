@@ -1,4 +1,4 @@
-import { DEFAULT_OWNER_EMAIL, createSessionToken, hashToken, normalizeEmail } from './lib/auth.js';
+import { isProtectedOwnerEmail, createSessionToken, hashToken, normalizeEmail } from './lib/auth.js';
 import {
   createPasswordReset,
   deleteSessionsForUser,
@@ -90,7 +90,7 @@ function decorateUser(user, ownerEmail) {
     disabled_by: user.disabled_by || null,
     disabled_by_name: user.disabled_by_name || null,
     disabled_by_email: user.disabled_by_email || null,
-    isOwner: Boolean(ownerEmail && normalizeEmail(user.email) === ownerEmail),
+    isOwner: isProtectedOwnerEmail(user.email, env),
   };
 }
 
@@ -135,7 +135,7 @@ async function readJson(request) {
 }
 
 export function createAdminExtensions({ database, env = process.env, sendJson, allowedOrigins }) {
-  const ownerEmail = normalizeEmail(env.OWNER_EMAIL ?? env.ADMIN_EMAIL ?? (env === process.env ? DEFAULT_OWNER_EMAIL : ''));
+  const ownerEmail = normalizeEmail(env.OWNER_EMAIL || env.ADMIN_EMAIL || '');
   const resendApiKey = String(env.RESEND_API_KEY || '').trim();
   const emailProvider = String(env.EMAIL_PROVIDER || '').trim().toLowerCase();
   const smtp = {
