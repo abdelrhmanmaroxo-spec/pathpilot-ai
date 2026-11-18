@@ -1,9 +1,21 @@
-import { createSessionToken, hashPassword, hashToken, normalizeEmail } from './lib/auth.js';
 import {
+  DEFAULT_OWNER_EMAIL,
+  createSessionToken,
+  createVerificationCode,
+  hashEmailOtp,
+  hashPassword,
+  hashToken,
+  normalizeEmail,
+} from './lib/auth.js';
+import {
+  consumeEmailVerificationCode,
   createEmailVerification,
+  createSession,
   createUser,
   findPendingAdminInvite,
   findUserByEmail,
+  markAdminInviteAccepted,
+  setUserRole,
   trackEvent,
 } from './lib/database.js';
 import {
@@ -64,7 +76,7 @@ export function createAuthResilience({
   allowedOrigins,
   emailSender = sendVerificationEmail,
 } = {}) {
-  const ownerEmail = normalizeEmail(env.OWNER_EMAIL || env.ADMIN_EMAIL);
+  const ownerEmail = normalizeEmail(env.OWNER_EMAIL ?? env.ADMIN_EMAIL ?? (env === process.env ? DEFAULT_OWNER_EMAIL : ''));
   const apiKey = String(env.RESEND_API_KEY || '').trim();
   const emailFrom = String(env.EMAIL_FROM || '').trim();
   const emailProvider = String(env.EMAIL_PROVIDER || '').trim().toLowerCase();
@@ -93,10 +105,23 @@ export function createAuthResilience({
     return findPendingAdminInvite(database, email) ? 'admin' : 'user';
   }
 
+  function decorateUser(userRecord) {
+    if (!userRecord) return null;
+    const isOwner = Boolean(ownerEmail && normalizeEmail(userRecord.email) === ownerEmail);
+    let role = userRecord.role;
+    if (isOwner && role !== 'admin') {
+      setUserRole(database, userRecord.id, 'admin');
+      role = 'admin';
+    }
+    return { ...userRecord, role, isOwner, emailVerified: Boolean(userRecord.email_verified) };
+  }
+
   async function issueVerification(request, userRecord) {
     const token = createSessionToken();
+    const verificationCode = createVerificationCode();
     createEmailVerification(database, {
       tokenHash: hashToken(token),
+      codeHash: hashEmailOtp(userRecord.email, verificationCode),
       userId: userRecord.id,
       hours: 24,
     });
@@ -107,6 +132,7 @@ export function createAuthResilience({
       from: emailFrom,
       to: userRecord.email,
       name: userRecord.name,
+      verificationCode,
       verificationUrl: `${apiOrigin}/api/auth/verify-email?token=${encodeURIComponent(token)}`,
       provider: emailProvider,
       smtp,
@@ -145,7 +171,7 @@ export function createAuthResilience({
         sendJson(response, 409, {
           error: existing.email_verified
             ? 'An account already exists for this email.'
-            : 'This email is waiting for verification. Use resend verification.',
+            : 'This email is waiting for verification. Enter the 6-digit code or resend.',
           code,
           requiresVerification: !existing.email_verified,
           email,
@@ -192,6 +218,7 @@ export function createAuthResilience({
           requiresVerification: true,
           deliveryPending: false,
           deliveryMode,
+          otpEnabled: true,
           email,
         }, origin, allowedOrigins);
       } catch (error) {
@@ -209,10 +236,48 @@ export function createAuthResilience({
           deliveryCode,
           deliveryStage,
           deliveryMode,
+          otpEnabled: true,
           email,
           message: safeDeliveryMessage(deliveryMode),
         }, origin, allowedOrigins);
       }
+      return true;
+    }
+
+    if (request.method === 'POST' && path === '/api/auth/verify-code') {
+      let body;
+      try {
+        body = await readJson(request);
+      } catch {
+        sendJson(response, 400, { error: 'Invalid request.' }, origin, allowedOrigins);
+        return true;
+      }
+      const email = normalizeEmail(body.email);
+      const code = String(body.code || '').replace(/\s+/g, '');
+      if (!EMAIL_PATTERN.test(email) || !/^\d{6}$/.test(code)) {
+        sendJson(response, 400, { error: 'Enter the 6-digit verification code.' }, origin, allowedOrigins);
+        return true;
+      }
+      const existing = findUserByEmail(database, email);
+      if (!existing || existing.disabled) {
+        sendJson(response, 400, { error: 'Verification code is invalid or expired.' }, origin, allowedOrigins);
+        return true;
+      }
+      const verified = consumeEmailVerificationCode(database, existing.id, hashEmailOtp(email, code));
+      if (!verified) {
+        sendJson(response, 400, { error: 'Verification code is invalid or expired.' }, origin, allowedOrigins);
+        return true;
+      }
+      let finalRecord = verified;
+      if (findPendingAdminInvite(database, email)) {
+        if (finalRecord.role !== 'admin') finalRecord = setUserRole(database, finalRecord.id, 'admin');
+        markAdminInviteAccepted(database, email);
+      }
+      const user = decorateUser(finalRecord);
+      const sessionToken = createSessionToken();
+      createSession(database, { tokenHash: hashToken(sessionToken), userId: user.id });
+      trackEvent(database, { userId: user.id, eventType: 'email_verified_otp' });
+      sendJson(response, 200, { ok: true, token: sessionToken, user }, origin, allowedOrigins);
       return true;
     }
 

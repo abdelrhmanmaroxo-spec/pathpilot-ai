@@ -112,7 +112,7 @@ function writeLine(socket, value) {
   socket.write(`${value}\r\n`);
 }
 
-async function sendSmtpEmail({ host, port, secure, user, pass, from, to, subject, html }) {
+async function sendSmtpEmail({ host, port, secure, user, pass, from, to, replyTo, subject, html }) {
   if (!host || !user || !pass || !from) throw new Error('SMTP_NOT_CONFIGURED');
   if (!secure) throw new Error('SMTP_SECURE_REQUIRED');
   const fromAddress = mailbox(from) || user;
@@ -145,11 +145,13 @@ async function sendSmtpEmail({ host, port, secure, user, pass, from, to, subject
     writeLine(socket, 'DATA');
     await expectResponse(reader, 354, 'SMTP_DATA');
 
+    const encodedSubject = `=?UTF-8?B?${Buffer.from(cleanHeader(subject), 'utf8').toString('base64')}?=`;
     const messageId = `<${Date.now()}.${Math.random().toString(16).slice(2)}@pathpilot.local>`;
-    const body = [
+    const headers = [
       `From: ${cleanHeader(from)}`,
       `To: ${toAddress}`,
-      `Subject: ${cleanHeader(subject)}`,
+      ...(replyTo ? [`Reply-To: ${cleanHeader(replyTo)}`] : []),
+      `Subject: ${encodedSubject}`,
       `Date: ${new Date().toUTCString()}`,
       `Message-ID: ${messageId}`,
       'MIME-Version: 1.0',
@@ -157,7 +159,8 @@ async function sendSmtpEmail({ host, port, secure, user, pass, from, to, subject
       'Content-Transfer-Encoding: base64',
       '',
       base64Lines(html),
-    ].join('\r\n').replace(/\r\n\./g, '\r\n..');
+    ];
+    const body = headers.join('\r\n').replace(/\r\n\./g, '\r\n..');
 
     socket.write(`${body}\r\n.\r\n`);
     await expectResponse(reader, 250, 'SMTP_MESSAGE');
@@ -189,16 +192,18 @@ async function getGmailApiAccessToken({ clientId, clientSecret, refreshToken }) 
   return payload.access_token;
 }
 
-async function sendGmailApiEmail({ clientId, clientSecret, refreshToken, from, to, subject, html }) {
+async function sendGmailApiEmail({ clientId, clientSecret, refreshToken, from, to, replyTo, subject, html }) {
   const accessToken = await getGmailApiAccessToken({ clientId, clientSecret, refreshToken });
   const fromAddress = mailbox(from);
   const toAddress = mailbox(to) || cleanHeader(to);
   if (!fromAddress || !toAddress) throw new Error('GMAIL_API_INVALID_ADDRESS');
 
+  const encodedSubject = `=?UTF-8?B?${Buffer.from(cleanHeader(subject), 'utf8').toString('base64')}?=`;
   const rawMessage = [
     `From: ${cleanHeader(from)}`,
     `To: ${toAddress}`,
-    `Subject: ${cleanHeader(subject)}`,
+    ...(replyTo ? [`Reply-To: ${cleanHeader(replyTo)}`] : []),
+    `Subject: ${encodedSubject}`,
     `Date: ${new Date().toUTCString()}`,
     'MIME-Version: 1.0',
     'Content-Type: text/html; charset=UTF-8',
@@ -223,7 +228,7 @@ async function sendGmailApiEmail({ clientId, clientSecret, refreshToken, from, t
   return { provider: 'gmail-api', accepted: true, id: payload.id || null };
 }
 
-async function sendResendEmail({ apiKey, from, to, subject, html, tag }) {
+async function sendResendEmail({ apiKey, from, to, replyTo, subject, html, tag }) {
   if (!apiKey || !from) throw new Error('EMAIL_NOT_CONFIGURED');
   const response = await fetch('https://api.resend.com/emails', {
     method: 'POST',
@@ -234,6 +239,7 @@ async function sendResendEmail({ apiKey, from, to, subject, html, tag }) {
     body: JSON.stringify({
       from,
       to: [to],
+      ...(replyTo ? { reply_to: replyTo } : {}),
       subject,
       html,
       tags: [{ name: 'category', value: tag }],
@@ -249,7 +255,7 @@ async function sendResendEmail({ apiKey, from, to, subject, html, tag }) {
   return response.json().catch(() => ({}));
 }
 
-async function sendEmail({ apiKey, from, to, subject, html, tag, provider, smtp, gmailApi }) {
+export async function sendEmail({ apiKey, from, to, replyTo, subject, html, tag = 'general', provider, smtp, gmailApi }) {
   const mode = getEmailDeliveryMode(from, provider);
   if (mode === 'gmail-api') {
     const config = gmailApi || {};
@@ -259,6 +265,7 @@ async function sendEmail({ apiKey, from, to, subject, html, tag, provider, smtp,
       refreshToken: config.refreshToken || process.env.GMAIL_REFRESH_TOKEN || '',
       from,
       to,
+      replyTo,
       subject,
       html,
     });
@@ -273,16 +280,24 @@ async function sendEmail({ apiKey, from, to, subject, html, tag, provider, smtp,
       pass: config.pass || process.env.SMTP_PASS || '',
       from,
       to,
+      replyTo,
       subject,
       html,
     });
   }
-  return sendResendEmail({ apiKey, from, to, subject, html, tag });
+  return sendResendEmail({ apiKey, from, to, replyTo, subject, html, tag });
 }
 
-export async function sendVerificationEmail({ apiKey, from, to, name, verificationUrl, provider, smtp, gmailApi }) {
+export async function sendVerificationEmail({ apiKey, from, to, name, verificationUrl, verificationCode, provider, smtp, gmailApi }) {
   const safeName = escapeHtml(name || 'there');
-  const safeUrl = escapeHtml(verificationUrl);
+  const safeUrl = escapeHtml(verificationUrl || '');
+  const safeCode = escapeHtml(verificationCode || '');
+  const codeBlock = safeCode ? `
+    <div style="margin:22px 0;padding:18px;background:#f5f3ff;border:2px dashed #6d5dfc;border-radius:14px;text-align:center">
+      <div style="font-size:12px;color:#4b5563;margin-bottom:6px">كود التفعيل السريع · Verification Code</div>
+      <div style="font-size:32px;font-weight:900;letter-spacing:8px;color:#4f46e5;font-family:monospace">${safeCode}</div>
+    </div>
+  ` : '';
   return sendEmail({
     apiKey,
     from,
@@ -290,24 +305,31 @@ export async function sendVerificationEmail({ apiKey, from, to, name, verificati
     provider,
     smtp,
     gmailApi,
-    subject: 'Verify your PathPilot email',
+    subject: safeCode ? `كود تفعيل PathPilot AI: ${safeCode}` : 'Verify your PathPilot email',
     tag: 'verify_email',
     html: `
-      <div style="font-family:Arial,sans-serif;max-width:560px;margin:auto;padding:28px;color:#111827">
-        <h1 style="margin:0 0 16px">Verify your email</h1>
+      <div style="font-family:Tahoma,Arial,sans-serif;max-width:560px;margin:auto;padding:28px;color:#111827">
+        <h1 style="margin:0 0 16px">تفعيل حسابك · Verify your email</h1>
         <p>Hi ${safeName},</p>
-        <p>Confirm this email address to activate your PathPilot account. This link expires in 24 hours.</p>
-        <p style="margin:28px 0"><a href="${safeUrl}" style="display:inline-block;background:#6d5dfc;color:#fff;text-decoration:none;padding:12px 20px;border-radius:10px;font-weight:700">Verify email</a></p>
-        <p style="font-size:13px;color:#6b7280">If you cannot find this message, check Spam, Junk, or Promotions and mark PathPilot as trusted.</p>
-        <p style="font-size:13px;color:#6b7280">If you did not create a PathPilot account, you can ignore this message.</p>
+        <p>أدخل كود التفعيل المكون من 6 أرقام داخل المنصة، أو اضغط زر التفعيل أدناه (صالح لمدة 24 ساعة):</p>
+        ${codeBlock}
+        ${safeUrl ? `<p style="margin:24px 0"><a href="${safeUrl}" style="display:inline-block;background:#6d5dfc;color:#fff;text-decoration:none;padding:12px 20px;border-radius:10px;font-weight:700">Verify email · تفعيل بالرابط</a></p>` : ''}
+        <p style="font-size:13px;color:#6b7280">If you cannot find this message, check Spam, Junk, or Promotions and mark PathPilot (pathpilot.app00@gmail.com) as trusted.</p>
       </div>
     `,
   });
 }
 
-export async function sendPasswordResetEmail({ apiKey, from, to, name, resetUrl, provider, smtp, gmailApi }) {
+export async function sendPasswordResetEmail({ apiKey, from, to, name, resetUrl, resetCode, provider, smtp, gmailApi }) {
   const safeName = escapeHtml(name || 'there');
-  const safeUrl = escapeHtml(resetUrl);
+  const safeUrl = escapeHtml(resetUrl || '');
+  const safeCode = escapeHtml(resetCode || '');
+  const codeBlock = safeCode ? `
+    <div style="margin:20px 0;padding:16px;background:#f5f3ff;border:2px dashed #6d5dfc;border-radius:14px;text-align:center">
+      <div style="font-size:12px;color:#4b5563;margin-bottom:6px">كود الاستعادة · Reset Code</div>
+      <div style="font-size:30px;font-weight:900;letter-spacing:8px;color:#4f46e5;font-family:monospace">${safeCode}</div>
+    </div>
+  ` : '';
   return sendEmail({
     apiKey,
     from,
@@ -315,16 +337,62 @@ export async function sendPasswordResetEmail({ apiKey, from, to, name, resetUrl,
     provider,
     smtp,
     gmailApi,
-    subject: 'Reset your PathPilot password',
+    subject: safeCode ? `كود استعادة كلمة المرور PathPilot: ${safeCode}` : 'Reset your PathPilot password',
     tag: 'password_reset',
     html: `
-      <div style="font-family:Arial,sans-serif;max-width:560px;margin:auto;padding:28px;color:#111827">
-        <h1 style="margin:0 0 16px">Reset your password</h1>
+      <div style="font-family:Tahoma,Arial,sans-serif;max-width:560px;margin:auto;padding:28px;color:#111827">
+        <h1 style="margin:0 0 16px">Reset your password · استعادة كلمة المرور</h1>
         <p>Hi ${safeName},</p>
-        <p>We received a request to reset your PathPilot password. This link expires in 30 minutes and can only be used once.</p>
-        <p style="margin:28px 0"><a href="${safeUrl}" style="display:inline-block;background:#6d5dfc;color:#fff;text-decoration:none;padding:12px 20px;border-radius:10px;font-weight:700">Reset password</a></p>
-        <p style="font-size:13px;color:#6b7280">If you cannot find this message, check Spam, Junk, or Promotions.</p>
-        <p style="font-size:13px;color:#6b7280">If you did not request this reset, ignore this message. Your password will stay unchanged.</p>
+        <p>We received a request to reset your PathPilot password. Valid for 30 minutes.</p>
+        ${codeBlock}
+        ${safeUrl ? `<p style="margin:24px 0"><a href="${safeUrl}" style="display:inline-block;background:#6d5dfc;color:#fff;text-decoration:none;padding:12px 20px;border-radius:10px;font-weight:700">Reset password</a></p>` : ''}
+        <p style="font-size:13px;color:#6b7280">If you did not request this reset, ignore this message.</p>
+      </div>
+    `,
+  });
+}
+
+export async function sendSupportTicketEmail({
+  apiKey,
+  from,
+  to,
+  replyTo,
+  ticket,
+  messageText,
+  isStaffReply = false,
+  isOwnerAlert = false,
+  provider,
+  smtp,
+  gmailApi,
+}) {
+  const safeId = escapeHtml(ticket?.id || '');
+  const safeSubject = escapeHtml(ticket?.subject || '');
+  const safeName = escapeHtml(ticket?.requester_name || '');
+  const safeRequesterEmail = escapeHtml(ticket?.requester_email || '');
+  const safeBody = escapeHtml(messageText || '');
+  const subject = isOwnerAlert
+    ? `[Owner Support Alert #${ticket?.id}] ${ticket?.subject}`
+    : isStaffReply
+      ? `[PathPilot #${ticket?.id}] رد الدعم الفني: ${ticket?.subject}`
+      : `[PathPilot #${ticket?.id}] تم فتح تذكرة الدعم: ${ticket?.subject}`;
+
+  return sendEmail({
+    apiKey,
+    from,
+    to,
+    replyTo,
+    provider,
+    smtp,
+    gmailApi,
+    subject,
+    tag: 'support_ticket',
+    html: `
+      <div dir="rtl" style="font-family:Tahoma,Arial,sans-serif;max-width:580px;margin:auto;padding:26px;color:#111827;border:1px solid #e5e7eb;border-radius:16px">
+        <h2 style="margin:0 0 12px;color:#4f46e5">${isOwnerAlert ? `تذكرة دعم جديدة #${safeId}` : isStaffReply ? `رد جديد من الدعم الفني #${safeId}` : `تم استلام تذكرتك #${safeId}`}</h2>
+        <p><strong>صاحب التذكرة:</strong> ${safeName} (${safeRequesterEmail})</p>
+        <p><strong>الموضوع:</strong> ${safeSubject}</p>
+        <div style="margin:18px 0;padding:16px;background:#f8fafc;border-right:4px solid #6d5dfc;border-radius:10px;white-space:pre-wrap;line-height:1.7">${safeBody}</div>
+        <p style="font-size:13px;color:#6b7280">بريد الدعم الرسمي: pathpilot.app00@gmail.com</p>
       </div>
     `,
   });

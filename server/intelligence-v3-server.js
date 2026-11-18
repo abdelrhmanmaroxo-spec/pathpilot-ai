@@ -31,7 +31,7 @@ const TOOL_GOALS = {
 };
 
 const PENALIZED = ['facebook.com','instagram.com','tiktok.com','quora.com','pinterest.com','x.com','twitter.com','medium.com','reddit.com','wordpress.com','blogspot.com'];
-const AUTHORITY = ['.gov','.edu','.ac.','docs.','developer.','support.','help.','github.com','mozilla.org','w3.org','microsoft.com','google.com','openai.com','apple.com','coursera.org','edx.org','freecodecamp.org','codecademy.com','theodinproject.com','khanacademy.org','code.org'];
+const AUTHORITY = ['.gov','.edu','.ac.','docs.','developer.','support.','help.','github.com','mozilla.org','w3.org','microsoft.com','google.com','openai.com','apple.com','coursera.org','edx.org','freecodecamp.org','codecademy.org','theodinproject.com','khanacademy.org','code.org'];
 
 function origins(value) { return new Set(String(value || 'http://localhost:5173').split(',').map((v) => v.trim()).filter(Boolean)); }
 function cors(origin, allowed) { return { 'Access-Control-Allow-Methods':'GET, POST, OPTIONS', 'Access-Control-Allow-Headers':'Content-Type, Authorization, X-Request-ID', ...(origin && allowed.has(origin) ? { 'Access-Control-Allow-Origin': origin } : {}), Vary:'Origin' }; }
@@ -170,7 +170,7 @@ export function createIntelligenceV3Handler({env=process.env,baseApp,database}) 
     }
 
     const control=database?getSystemControl(database):{paused:false};
-    const pauseExempt=path==='/api/status'||path==='/api/system/status'||path==='/api/research/status'||path.startsWith('/api/auth/')||path.startsWith('/api/admin/')||path.startsWith('/api/security/');
+    const pauseExempt=path==='/api/status'||path==='/api/system/status'||path==='/api/research/status'||path.startsWith('/api/auth/')||path.startsWith('/api/support/')||path.startsWith('/api/admin/')||path.startsWith('/api/security/');
     if(control.paused&&apiPath&&!pauseExempt){
       return sendJson(res,503,{error:'PathPilot is temporarily paused by administration.',code:'SYSTEM_PAUSED',reason:control.reason||'Maintenance mode'},origin,allowed);
     }

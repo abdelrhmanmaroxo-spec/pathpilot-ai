@@ -2,21 +2,36 @@ import { createServer } from 'node:http';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { buildProviderRequest, extractProviderText } from './lib/ai-provider.js';
-import { createSessionToken, hashPassword, hashToken, normalizeEmail, verifyPassword } from './lib/auth.js';
-import { sendPasswordResetEmail, sendVerificationEmail } from './lib/email.js';
+import {
+  DEFAULT_OWNER_EMAIL,
+  DEFAULT_SUPPORT_EMAIL,
+  createSessionToken,
+  createVerificationCode,
+  hashEmailOtp,
+  hashPassword,
+  hashToken,
+  normalizeEmail,
+  verifyPassword,
+} from './lib/auth.js';
+import { sendPasswordResetEmail, sendSupportTicketEmail, sendVerificationEmail } from './lib/email.js';
 import { verifyGoogleCredential } from './lib/google-auth.js';
 import {
+  appendSupportMessageRecord,
   consumeEmailVerification,
+  consumeEmailVerificationCode,
   consumePasswordReset,
+  consumePasswordResetCode,
   createEmailVerification,
   createFeedback,
   createPasswordReset,
   createSession,
+  createSupportTicketRecord,
   createUser,
   deleteSession,
   deleteSessionsForUser,
   deleteUser,
   findPendingAdminInvite,
+  findSupportTicketById,
   findUserByEmail,
   findUserById,
   getAdminSummary,
@@ -26,9 +41,11 @@ import {
   listAiRequests,
   listErrors,
   listFeedback,
+  listSupportTicketRecords,
   listUsers,
   markAdminInviteAccepted,
   revokeAdminInvite,
+  setSupportTicketStatusRecord,
   setUserEmailVerified,
   setUserPasswordHash,
   setUserRole,
@@ -73,7 +90,13 @@ function passwordResetPage({ token, appUrl }) {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Reset PathPilot password</title></head><body style="margin:0;background:#080d19;color:#f8fafc;font-family:Arial,sans-serif"><main style="max-width:620px;margin:8vh auto;padding:28px"><div style="background:#111827;border:1px solid #243047;border-radius:20px;padding:34px"><div style="width:46px;height:46px;border-radius:14px;background:#6d5dfc;display:grid;place-items:center;font-weight:900;color:white">P</div><h1>Choose a new password</h1><p style="line-height:1.7;color:#cbd5e1">Use at least 8 characters. After the reset, all existing PathPilot sessions will be signed out.</p><form id="reset-form"><label style="display:block;margin:18px 0 8px">New password</label><input id="password" type="password" minlength="8" maxlength="128" required autocomplete="new-password" style="box-sizing:border-box;width:100%;padding:13px;border-radius:10px;border:1px solid #334155;background:#0b1220;color:white"><label style="display:block;margin:18px 0 8px">Confirm password</label><input id="confirm" type="password" minlength="8" maxlength="128" required autocomplete="new-password" style="box-sizing:border-box;width:100%;padding:13px;border-radius:10px;border:1px solid #334155;background:#0b1220;color:white"><div id="status" style="min-height:24px;margin:14px 0;color:#fca5a5"></div><button id="submit" type="submit" style="border:0;border-radius:10px;background:#6d5dfc;color:white;padding:12px 18px;font-weight:700;cursor:pointer">Reset password</button></form></div></main><script>const token=${tokenJson};const appUrl=${appUrlJson};const form=document.getElementById('reset-form');const status=document.getElementById('status');const submit=document.getElementById('submit');form.addEventListener('submit',async(e)=>{e.preventDefault();const password=document.getElementById('password').value;const confirm=document.getElementById('confirm').value;if(password!==confirm){status.textContent='Passwords do not match.';return;}submit.disabled=true;status.textContent='Resetting password...';try{const res=await fetch('/api/auth/reset-password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token,password})});const data=await res.json();if(!res.ok)throw new Error(data.error||'Reset failed.');form.innerHTML='<h2 style="color:#86efac">Password updated</h2><p>Your password was reset and old sessions were signed out.</p><a style="display:inline-block;margin-top:12px;color:#c4b5fd" href="'+appUrl+'">Return to PathPilot</a>';}catch(err){status.textContent=err.message;submit.disabled=false;}});</script></body></html>`;
 }
 
-export function createPathPilotServer({ env = process.env, database = initializeDatabase(), emailSender = sendVerificationEmail, passwordResetSender = sendPasswordResetEmail } = {}) {
+export function createPathPilotServer({
+  env = process.env,
+  database = initializeDatabase(),
+  emailSender = sendVerificationEmail,
+  passwordResetSender = sendPasswordResetEmail,
+  supportEmailSender = sendSupportTicketEmail,
+} = {}) {
   const apiKey = env.AI_API_KEY || '';
   const model = env.AI_MODEL || '';
   const apiMode = env.AI_API_MODE === 'responses' ? 'responses' : 'chat-completions';
@@ -82,13 +105,30 @@ export function createPathPilotServer({ env = process.env, database = initialize
   const endpoint = env.AI_ENDPOINT || `${baseUrl}/${apiMode === 'responses' ? 'responses' : 'chat/completions'}`;
   const reasoningEffort = env.AI_REASONING_EFFORT || '';
   const allowedOrigins = new Set((env.ALLOWED_ORIGINS || 'http://localhost:5173').split(',').map((item) => item.trim()).filter(Boolean));
-  const ownerEmail = normalizeEmail(env.OWNER_EMAIL || env.ADMIN_EMAIL);
+  const ownerEmail = normalizeEmail(env.OWNER_EMAIL ?? env.ADMIN_EMAIL ?? (env === process.env ? DEFAULT_OWNER_EMAIL : ''));
+  const supportEmail = String(env.SUPPORT_EMAIL || DEFAULT_SUPPORT_EMAIL).trim();
   const googleClientId = String(env.GOOGLE_CLIENT_ID || '').trim();
   const resendApiKey = String(env.RESEND_API_KEY || '').trim();
+  const emailProvider = String(env.EMAIL_PROVIDER || '').trim().toLowerCase();
+  const smtp = {
+    host: String(env.SMTP_HOST || 'smtp.gmail.com').trim(),
+    port: Number(env.SMTP_PORT || 465),
+    secure: String(env.SMTP_SECURE || 'true').trim().toLowerCase() === 'true',
+    user: String(env.SMTP_USER || '').trim(),
+    pass: String(env.SMTP_PASS || '').replace(/\s+/g, ''),
+  };
+  const gmailApi = {
+    clientId: String(env.GMAIL_CLIENT_ID || '').trim(),
+    clientSecret: String(env.GMAIL_CLIENT_SECRET || '').trim(),
+    refreshToken: String(env.GMAIL_REFRESH_TOKEN || '').trim(),
+  };
   const emailFrom = String(env.EMAIL_FROM || '').trim();
   const appUrl = String(env.PUBLIC_APP_URL || 'https://abdelrhmanmaroxo-spec.github.io/pathpilot-ai/').trim();
   const aiConfigured = Boolean(apiKey && model);
-  const emailVerificationConfigured = Boolean(resendApiKey && emailFrom);
+  const smtpReady = ['gmail', 'smtp'].includes(emailProvider) && Boolean(smtp.host && smtp.user && smtp.pass && emailFrom);
+  const gmailApiReady = ['gmail-api', 'gmailapi'].includes(emailProvider) && Boolean(gmailApi.clientId && gmailApi.clientSecret && gmailApi.refreshToken && emailFrom);
+  const resendReady = Boolean(resendApiKey && emailFrom);
+  const emailVerificationConfigured = Boolean(smtpReady || gmailApiReady || resendReady);
   const rateLimits = new Map();
 
   function corsHeaders(origin) {
@@ -195,7 +235,13 @@ export function createPathPilotServer({ env = process.env, database = initialize
 
   async function issueVerification(request, userRecord) {
     const token = createSessionToken();
-    createEmailVerification(database, { tokenHash: hashToken(token), userId: userRecord.id, hours: 24 });
+    const verificationCode = createVerificationCode();
+    createEmailVerification(database, {
+      tokenHash: hashToken(token),
+      codeHash: hashEmailOtp(userRecord.email, verificationCode),
+      userId: userRecord.id,
+      hours: 24,
+    });
     const apiOrigin = requestOrigin(request);
     if (!apiOrigin) throw new Error('PUBLIC_API_ORIGIN');
     await emailSender({
@@ -203,13 +249,23 @@ export function createPathPilotServer({ env = process.env, database = initialize
       from: emailFrom,
       to: userRecord.email,
       name: userRecord.name,
+      verificationCode,
       verificationUrl: `${apiOrigin}/api/auth/verify-email?token=${encodeURIComponent(token)}`,
+      provider: emailProvider,
+      smtp,
+      gmailApi,
     });
   }
 
   async function issuePasswordReset(request, userRecord) {
     const token = createSessionToken();
-    createPasswordReset(database, { tokenHash: hashToken(token), userId: userRecord.id, minutes: 30 });
+    const resetCode = createVerificationCode();
+    createPasswordReset(database, {
+      tokenHash: hashToken(token),
+      codeHash: hashEmailOtp(userRecord.email, resetCode),
+      userId: userRecord.id,
+      minutes: 30,
+    });
     const apiOrigin = requestOrigin(request);
     if (!apiOrigin) throw new Error('PUBLIC_API_ORIGIN');
     await passwordResetSender({
@@ -217,8 +273,49 @@ export function createPathPilotServer({ env = process.env, database = initialize
       from: emailFrom,
       to: userRecord.email,
       name: userRecord.name,
+      resetCode,
       resetUrl: `${apiOrigin}/api/auth/reset-password?token=${encodeURIComponent(token)}`,
+      provider: emailProvider,
+      smtp,
+      gmailApi,
     });
+  }
+
+  async function dispatchTicketNotifications(ticket, messageText, isStaffReply) {
+    if (!emailVerificationConfigured) return false;
+    try {
+      await supportEmailSender({
+        apiKey: resendApiKey,
+        from: emailFrom,
+        to: ticket.requester_email,
+        replyTo: supportEmail,
+        ticket,
+        messageText,
+        isStaffReply,
+        isOwnerAlert: false,
+        provider: emailProvider,
+        smtp,
+        gmailApi,
+      });
+      if (!isStaffReply && ownerEmail) {
+        await supportEmailSender({
+          apiKey: resendApiKey,
+          from: emailFrom,
+          to: ownerEmail,
+          replyTo: ticket.requester_email,
+          ticket,
+          messageText,
+          isStaffReply: false,
+          isOwnerAlert: true,
+          provider: emailProvider,
+          smtp,
+          gmailApi,
+        });
+      }
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   async function handle(request, response) {
@@ -232,7 +329,11 @@ export function createPathPilotServer({ env = process.env, database = initialize
       return;
     }
 
-    const rateLimit = path === '/api/assistant' ? 30 : ['/api/auth/register', '/api/auth/resend-verification', '/api/auth/forgot-password', '/api/auth/reset-password'].includes(path) ? 5 : 90;
+    const rateLimit = path === '/api/assistant'
+      ? 30
+      : ['/api/auth/register', '/api/auth/resend-verification', '/api/auth/forgot-password', '/api/auth/reset-password', '/api/auth/verify-code', '/api/auth/reset-password-code'].includes(path)
+        ? 10
+        : 90;
     if (!checkRateLimit(request, rateLimit)) return sendJson(response, 429, { error: 'Too many requests. Try again shortly.' }, origin);
 
     if (request.method === 'GET' && ['/health', '/api/status'].includes(path)) {
@@ -247,6 +348,9 @@ export function createPathPilotServer({ env = process.env, database = initialize
         googleClientId: googleClientId || null,
         emailVerificationAvailable: emailVerificationConfigured,
         passwordResetAvailable: emailVerificationConfigured,
+        otpVerificationAvailable: emailVerificationConfigured,
+        supportTicketsAvailable: true,
+        supportEmail,
       }, origin);
     }
 
@@ -261,18 +365,38 @@ export function createPathPilotServer({ env = process.env, database = initialize
         const existing = findUserByEmail(database, email);
         if (existing) {
           const code = existing.email_verified ? 'ACCOUNT_EXISTS' : 'EMAIL_NOT_VERIFIED';
-          return sendJson(response, 409, { error: existing.email_verified ? 'An account already exists for this email.' : 'This email is waiting for verification. Use resend verification.', code }, origin);
+          return sendJson(response, 409, { error: existing.email_verified ? 'An account already exists for this email.' : 'This email is waiting for verification. Enter the 6-digit code or resend.', code }, origin);
         }
         const passwordHash = await hashPassword(body.password);
         createdUser = createUser(database, { name, email, passwordHash, role: initialRoleForEmail(email), emailVerified: false, authProvider: 'password' });
         await issueVerification(request, createdUser);
         trackEvent(database, { userId: createdUser.id, eventType: 'verification_sent' });
-        return sendJson(response, 201, { requiresVerification: true, email }, origin);
+        return sendJson(response, 201, { requiresVerification: true, otpEnabled: true, email }, origin);
       } catch (error) {
         if (createdUser) deleteUser(database, createdUser.id);
         if (error.message === 'PASSWORD_LENGTH') return sendJson(response, 400, { error: 'Password must be 8–128 characters.' }, origin);
         return sendJson(response, 502, { error: 'Could not send the verification email. Please try again.', code: 'EMAIL_SEND_FAILED' }, origin);
       }
+    }
+
+    if (request.method === 'POST' && path === '/api/auth/verify-code') {
+      const body = await readJson(request);
+      const email = normalizeEmail(body.email);
+      const code = String(body.code || '').replace(/\s+/g, '');
+      if (!EMAIL_PATTERN.test(email) || !/^\d{6}$/.test(code)) {
+        return sendJson(response, 400, { error: 'Enter the 6-digit verification code.' }, origin);
+      }
+      const existing = findUserByEmail(database, email);
+      if (!existing || existing.disabled) {
+        return sendJson(response, 400, { error: 'Verification code is invalid or expired.' }, origin);
+      }
+      const userRecord = consumeEmailVerificationCode(database, existing.id, hashEmailOtp(email, code));
+      if (!userRecord) {
+        return sendJson(response, 400, { error: 'Verification code is invalid or expired.' }, origin);
+      }
+      const activated = acceptAdminInviteIfPresent(userRecord);
+      trackEvent(database, { userId: activated.id, eventType: 'email_verified_otp' });
+      return sendJson(response, 200, { ok: true, ...startSessionFor(activated, 'login') }, origin);
     }
 
     if (request.method === 'GET' && path === '/api/auth/verify-email') {
@@ -297,7 +421,7 @@ export function createPathPilotServer({ env = process.env, database = initialize
           return sendJson(response, 502, { error: 'Could not send the verification email. Please try again.' }, origin);
         }
       }
-      return sendJson(response, 200, { ok: true, message: 'If this account is waiting for verification, a new email has been sent.' }, origin);
+      return sendJson(response, 200, { ok: true, message: 'If this account is waiting for verification, a new code has been sent.' }, origin);
     }
 
     if (request.method === 'POST' && path === '/api/auth/forgot-password') {
@@ -313,7 +437,29 @@ export function createPathPilotServer({ env = process.env, database = initialize
           return sendJson(response, 502, { error: 'Could not send the password reset email. Please try again.' }, origin);
         }
       }
-      return sendJson(response, 200, { ok: true, message: 'If an eligible account exists for that email, a password reset link has been sent.' }, origin);
+      return sendJson(response, 200, { ok: true, requiresResetCode: true, message: 'If an eligible account exists for that email, a password reset code and link have been sent.' }, origin);
+    }
+
+    if (request.method === 'POST' && path === '/api/auth/reset-password-code') {
+      try {
+        const body = await readJson(request);
+        const email = normalizeEmail(body.email);
+        const code = String(body.code || '').replace(/\s+/g, '');
+        if (!EMAIL_PATTERN.test(email) || !/^\d{6}$/.test(code)) {
+          return sendJson(response, 400, { error: 'Reset code is invalid or expired.' }, origin);
+        }
+        const existing = findUserByEmail(database, email);
+        if (!existing || existing.disabled) return sendJson(response, 400, { error: 'Reset code is invalid or expired.' }, origin);
+        const userRecord = consumePasswordResetCode(database, existing.id, hashEmailOtp(email, code));
+        if (!userRecord) return sendJson(response, 400, { error: 'Reset code is invalid or expired.' }, origin);
+        const passwordHash = await hashPassword(body.password);
+        setUserPasswordHash(database, userRecord.id, passwordHash);
+        deleteSessionsForUser(database, userRecord.id);
+        trackEvent(database, { userId: userRecord.id, eventType: 'password_reset_completed_otp' });
+        return sendJson(response, 200, { ok: true }, origin);
+      } catch (error) {
+        return sendJson(response, 400, { error: error.message === 'PASSWORD_LENGTH' ? 'Password must be 8–128 characters.' : 'Could not reset the password.' }, origin);
+      }
     }
 
     if (request.method === 'GET' && path === '/api/auth/reset-password') {
@@ -377,6 +523,86 @@ export function createPathPilotServer({ env = process.env, database = initialize
       const token = getBearerToken(request);
       if (token) deleteSession(database, hashToken(token));
       return sendJson(response, 200, { ok: true }, origin);
+    }
+
+    // Support Tickets & Two-Way Messaging Endpoints
+    if (request.method === 'POST' && path === '/api/support/tickets') {
+      const body = await readJson(request);
+      const user = currentUser(request);
+      const requesterName = String(body.name || user?.name || '').trim().slice(0, 80);
+      const requesterEmail = normalizeEmail(body.email || user?.email || '');
+      const subject = String(body.subject || '').trim().slice(0, 160);
+      const message = String(body.message || '').trim().slice(0, 4000);
+      if (requesterName.length < 2 || !EMAIL_PATTERN.test(requesterEmail)) {
+        return sendJson(response, 400, { error: 'Valid name and email are required.' }, origin);
+      }
+      if (subject.length < 3 || message.length < 5) {
+        return sendJson(response, 400, { error: 'Subject and message details are required.' }, origin);
+      }
+      const ticket = createSupportTicketRecord(database, {
+        userId: user?.id || null,
+        requesterName,
+        requesterEmail,
+        category: body.category,
+        priority: body.priority,
+        subject,
+        message,
+      });
+      trackEvent(database, { userId: user?.id || null, eventType: 'support_ticket_created', metadata: { ticketId: ticket.id } });
+      const emailDelivered = await dispatchTicketNotifications(ticket, message, false);
+      return sendJson(response, 201, { ok: true, ticket, emailDelivered, supportEmail }, origin);
+    }
+
+    if (request.method === 'GET' && path === '/api/support/tickets') {
+      const user = currentUser(request);
+      const queryEmail = normalizeEmail(requestUrl.searchParams.get('email') || user?.email || '');
+      const ticketId = String(requestUrl.searchParams.get('ticketId') || '').trim();
+      const tickets = listSupportTicketRecords(database, { requesterEmail: queryEmail, ticketId });
+      return sendJson(response, 200, { tickets }, origin);
+    }
+
+    if (request.method === 'POST' && path === '/api/support/tickets/reply') {
+      const body = await readJson(request);
+      const user = currentUser(request);
+      const ticketId = String(body.ticketId || '').trim();
+      const message = String(body.message || '').trim().slice(0, 4000);
+      if (!ticketId || message.length < 2) {
+        return sendJson(response, 400, { error: 'Ticket ID and reply message are required.' }, origin);
+      }
+      const target = findSupportTicketById(database, ticketId);
+      if (!target) return sendJson(response, 404, { error: 'Support ticket not found.' }, origin);
+      const isStaff = Boolean(user && (user.role === 'admin' || user.isOwner));
+      const senderEmail = normalizeEmail(body.senderEmail || user?.email || '');
+      if (!isStaff && senderEmail !== normalizeEmail(target.requester_email)) {
+        return sendJson(response, 403, { error: 'Not authorized to reply to this ticket.' }, origin);
+      }
+      const updated = appendSupportMessageRecord(database, {
+        ticketId: target.id,
+        senderRole: user?.isOwner ? 'owner' : isStaff ? 'support' : 'user',
+        senderName: isStaff ? (user.name || 'PathPilot Support') : (String(body.senderName || user?.name || target.requester_name).slice(0, 80)),
+        senderEmail: isStaff ? supportEmail : target.requester_email,
+        body: message,
+      });
+      const emailDelivered = await dispatchTicketNotifications(updated, message, isStaff);
+      return sendJson(response, 200, { ok: true, ticket: updated, emailDelivered }, origin);
+    }
+
+    if (request.method === 'GET' && path === '/api/admin/tickets') {
+      if (!requireAdmin(request, response, origin)) return;
+      return sendJson(response, 200, { tickets: listSupportTicketRecords(database, { all: true, limit: 200 }) }, origin);
+    }
+
+    if (request.method === 'POST' && path === '/api/admin/tickets/status') {
+      if (!requireAdmin(request, response, origin)) return;
+      const body = await readJson(request);
+      const ticketId = String(body.ticketId || '').trim();
+      const status = String(body.status || '').trim();
+      if (!['open', 'in_progress', 'resolved', 'closed'].includes(status)) {
+        return sendJson(response, 400, { error: 'Invalid ticket status.' }, origin);
+      }
+      const updated = setSupportTicketStatusRecord(database, ticketId, status);
+      if (!updated) return sendJson(response, 404, { error: 'Support ticket not found.' }, origin);
+      return sendJson(response, 200, { ok: true, ticket: updated }, origin);
     }
 
     if (request.method === 'POST' && path === '/api/events') {

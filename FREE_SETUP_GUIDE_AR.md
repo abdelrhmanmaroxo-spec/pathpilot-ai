@@ -1,0 +1,45 @@
+# دليل تشغيل PathPilot AI v5.0 مجاناً بالكامل (بدون Railway وبدون أي رسوم)
+
+تم فصل **Railway** نهائياً وإصلاح جميع فحوصات GitHub Actions (`CI / quality` و `Deploy to GitHub Pages`)، وربط المنصة بحساب المالك وبريد التطبيق الرسمي:
+
+- **حساب المالك المحمي (Owner & Admin):** `Abdelrhman.maroxo@gmail.com`
+- **بريد التطبيق والدعم الفني الرسمي:** `pathpilot.app00@gmail.com`
+
+---
+
+## أولاً: فصل Railway من حسابك على GitHub (عشان ميطلبش فلوس نهائياً)
+1. افتح مستودعك على GitHub: `https://github.com/abdelrhmanmaroxo-spec/pathpilot-ai`
+2. ادخل على **Settings** ⬅️ **Integrations / GitHub Apps** (أو **Webhooks**).
+3. لو لقيت تطبيق **Railway** مربوط بالمستودع، اضغط **Configure** ثم **Uninstall / Remove**، وبكده موقعك هيشتغل 100% مجاناً على **GitHub Pages** للأبد!
+
+---
+
+## ثانياً: تفعيل الإرسال التلقائي المجاني 100% من `pathpilot.app00@gmail.com` (في دقيقتين فقط)
+بدل ما تدفع لسيرفر أو خدمة بريد مدفوعة، جوجل بتديك ميزة **Google Apps Script** جوه إيميل `pathpilot.app00@gmail.com` تبعت أكواد التفعيل (OTP) وتستقبل وترد على تذاكر الدعم مجاناً للأبد بدون فيزا!
+
+### خطوات التفعيل:
+1. افتح المتصفح وسجل دخول بحساب الجيميل بتاع التطبيق: **`pathpilot.app00@gmail.com`**.
+2. افتح الرابط الرسمي من جوجل: **`https://script.google.com`** واضغط **New project** (مشروع جديد).
+3. افتح الملف الموجود جوه المشروع بتاعنا في المسار:
+   `free-integrations/google-apps-script-cloud.gs`
+   انسخ كل الكود اللي فيه، وامسح الكود الفاضي في `script.google.com` والصقه هناك واضغط حفظ (`Ctrl + S`).
+4. فوق على اليمين اضغط زر **Deploy** ⬅️ **New deployment**.
+5. اضغط علامة الترس جنب Select type واختر **Web app**:
+   - **Execute as:** `Me (pathpilot.app00@gmail.com)`
+   - **Who has access:** `Anyone` (أي شخص — مهم جداً عشان الموقع يقدر يكلمه).
+6. اضغط **Deploy**، ثم **Authorize access** ووافق على صلاحية الإيميل والشيت (لو ظهرت شاشة Google hasn't verified this app اضغط **Advanced** ثم **Go to Untitled project (unsafe)** لأنك أنت صاحب الحساب والسكربت).
+7. انسخ الرابط اللي هيظهرلك (`Web App URL` اللي بينتهي بـ `/exec`).
+
+### ربط الرابط بموقعك (بطريقتين سهلتين):
+- **الطريقة الأولى (من داخل الموقع مباشرة في ثانية):**
+  ادخل موقعك وسجل حسابك كمالك بإيميل **`Abdelrhman.maroxo@gmail.com`** ⬅️ اضغط **الدعم** من الهيدر ⬅️ تبويب **ربط البريد المجاني** ⬅️ الصق الرابط واضغط **حفظ واختبار البريد المجاني**!
+- **الطريقة الثانية (عشان يشتغل لكل الزوار على كل الأجهزة تلقائياً على GitHub Pages):**
+  في مستودعك على GitHub ادخل على:
+  **Settings** ⬅️ **Secrets and variables** ⬅️ **Actions** ⬅️ تبويب **Variables** ⬅️ اضغط **New repository variable**:
+  - الاسم (`Name`): `VITE_FREE_CLOUD_URL`
+  - القيمة (`Value`): الصق رابط الـ Web App URL اللي نسخته من `script.google.com`.
+
+بمجرد عمل ده:
+1. أي مستخدم يعمل **حساب جديد** هيوصله فوراً إيميل شيك من **`pathpilot.app00@gmail.com`** فيه **كود تفعيل من 6 أرقام** يكتبه في الموقع ويتفعل حسابه في لحظتها!
+2. أي مستخدم يواجه مشكلة يقدر يضغط **الدعم** ⬅️ **فتح تيكت جديد**، فيطلعله رقم تذكرة (`#TKT-...`) ويوصل إيميل تأكيد للمستخدم + إشعار فوري على إيميلك المالك **`Abdelrhman.maroxo@gmail.com`**!
+3. لما تفتح الموقع بحسابك **`Abdelrhman.maroxo@gmail.com`**، هتلاقي **صندوق الإدارة والرد** تقدر ترد منه على أي تذكرة، وردك هيظهر للمستخدم جوه الموقع **وكمان يتبعت لإيميله تلقائياً من `pathpilot.app00@gmail.com`**!

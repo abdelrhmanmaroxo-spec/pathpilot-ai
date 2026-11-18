@@ -1,9 +1,11 @@
-import { createSessionToken, hashToken, normalizeEmail } from './lib/auth.js';
+import { DEFAULT_OWNER_EMAIL, createSessionToken, hashToken, normalizeEmail } from './lib/auth.js';
 import {
   createPasswordReset,
   deleteSessionsForUser,
   findUserById,
   getSessionUser,
+  listSupportTicketRecords,
+  setSupportTicketStatusRecord,
   trackEvent,
 } from './lib/database.js';
 import { sendPasswordResetEmail } from './lib/email.js';
@@ -133,13 +135,52 @@ async function readJson(request) {
 }
 
 export function createAdminExtensions({ database, env = process.env, sendJson, allowedOrigins }) {
-  const ownerEmail = normalizeEmail(env.OWNER_EMAIL || env.ADMIN_EMAIL);
+  const ownerEmail = normalizeEmail(env.OWNER_EMAIL ?? env.ADMIN_EMAIL ?? (env === process.env ? DEFAULT_OWNER_EMAIL : ''));
   const resendApiKey = String(env.RESEND_API_KEY || '').trim();
+  const emailProvider = String(env.EMAIL_PROVIDER || '').trim().toLowerCase();
+  const smtp = {
+    host: String(env.SMTP_HOST || 'smtp.gmail.com').trim(),
+    port: Number(env.SMTP_PORT || 465),
+    secure: String(env.SMTP_SECURE || 'true').trim().toLowerCase() === 'true',
+    user: String(env.SMTP_USER || '').trim(),
+    pass: String(env.SMTP_PASS || '').replace(/\s+/g, ''),
+  };
+  const gmailApi = {
+    clientId: String(env.GMAIL_CLIENT_ID || '').trim(),
+    clientSecret: String(env.GMAIL_CLIENT_SECRET || '').trim(),
+    refreshToken: String(env.GMAIL_REFRESH_TOKEN || '').trim(),
+  };
   const emailFrom = String(env.EMAIL_FROM || '').trim();
-  const emailReady = Boolean(resendApiKey && emailFrom);
+  const smtpReady = ['gmail', 'smtp'].includes(emailProvider) && Boolean(smtp.host && smtp.user && smtp.pass && emailFrom);
+  const gmailApiReady = ['gmail-api', 'gmailapi'].includes(emailProvider) && Boolean(gmailApi.clientId && gmailApi.clientSecret && gmailApi.refreshToken && emailFrom);
+  const emailReady = Boolean((resendApiKey && emailFrom) || smtpReady || gmailApiReady);
   const visitRetentionDays = securityVisitRetentionDays(env.SECURITY_LOG_RETENTION_DAYS);
 
   return async function handleAdminExtension(request, response, origin, path) {
+    if (request.method === 'GET' && path === '/api/admin/tickets') {
+      if (!requireAdmin({ database, request, response, origin, allowedOrigins, sendJson })) return true;
+      sendJson(response, 200, { tickets: listSupportTicketRecords(database, { all: true, limit: 200 }) }, origin, allowedOrigins);
+      return true;
+    }
+
+    if (request.method === 'POST' && path === '/api/admin/tickets/status') {
+      if (!requireAdmin({ database, request, response, origin, allowedOrigins, sendJson })) return true;
+      const body = await readJson(request);
+      const ticketId = String(body.ticketId || '').trim();
+      const status = String(body.status || '').trim();
+      if (!['open', 'in_progress', 'resolved', 'closed'].includes(status)) {
+        sendJson(response, 400, { error: 'Invalid ticket status.' }, origin, allowedOrigins);
+        return true;
+      }
+      const updated = setSupportTicketStatusRecord(database, ticketId, status);
+      if (!updated) {
+        sendJson(response, 404, { error: 'Support ticket not found.' }, origin, allowedOrigins);
+        return true;
+      }
+      sendJson(response, 200, { ok: true, ticket: updated }, origin, allowedOrigins);
+      return true;
+    }
+
     if (request.method === 'POST' && path === '/api/security/visit') {
       const body = await readJson(request);
       const user = currentUser(database, request);
@@ -344,6 +385,9 @@ export function createAdminExtensions({ database, env = process.env, sendJson, a
           to: target.email,
           name: target.name,
           resetUrl: `${apiOrigin}/api/auth/reset-password?token=${encodeURIComponent(token)}`,
+          provider: emailProvider,
+          smtp,
+          gmailApi,
         });
       } catch {
         sendJson(response, 502, { error: 'Could not send the password reset email.' }, origin, allowedOrigins);
@@ -368,10 +412,11 @@ export function createAdminExtensions({ database, env = process.env, sendJson, a
       `).all().map((item) => decorateUser(item, ownerEmail));
       const snapshot = {
         kind: 'PathPilotOwnerDataExport',
-        version: 1,
+        version: 2,
         generatedAt: new Date().toISOString(),
         note: 'Security secrets, password hashes, sessions, and reset tokens are intentionally excluded.',
         users,
+        supportTickets: listSupportTicketRecords(database, { all: true, limit: 1000 }),
         events: database.prepare('SELECT id,user_id,anonymous_id,event_type,workspace,tool,metadata_json,created_at FROM events ORDER BY id DESC LIMIT 5000').all(),
         feedback: database.prepare('SELECT id,user_id,rating,message,workspace,tool,created_at FROM feedback ORDER BY id DESC LIMIT 5000').all(),
         aiRequests: database.prepare('SELECT id,user_id,workspace,tool,model,status,latency_ms,error_code,created_at FROM ai_requests ORDER BY id DESC LIMIT 5000').all(),

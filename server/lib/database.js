@@ -1,5 +1,5 @@
 import { DatabaseSync } from 'node:sqlite';
-import { randomUUID } from 'node:crypto';
+import { randomInt, randomUUID } from 'node:crypto';
 
 const now = () => new Date().toISOString();
 
@@ -88,10 +88,33 @@ export function initializeDatabase(filename = ':memory:') {
       created_at TEXT NOT NULL,
       accepted_at TEXT
     );
+    CREATE TABLE IF NOT EXISTS support_tickets (
+      id TEXT PRIMARY KEY,
+      user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+      requester_name TEXT NOT NULL,
+      requester_email TEXT NOT NULL,
+      category TEXT NOT NULL DEFAULT 'technical',
+      priority TEXT NOT NULL DEFAULT 'normal',
+      subject TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'open' CHECK(status IN ('open','in_progress','resolved','closed')),
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS support_messages (
+      id TEXT PRIMARY KEY,
+      ticket_id TEXT NOT NULL REFERENCES support_tickets(id) ON DELETE CASCADE,
+      sender_role TEXT NOT NULL DEFAULT 'user' CHECK(sender_role IN ('user','support','owner')),
+      sender_name TEXT NOT NULL,
+      sender_email TEXT NOT NULL,
+      body TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
     CREATE INDEX IF NOT EXISTS events_created_idx ON events(created_at);
     CREATE INDEX IF NOT EXISTS ai_created_idx ON ai_requests(created_at);
     CREATE INDEX IF NOT EXISTS verification_user_idx ON email_verifications(user_id);
     CREATE INDEX IF NOT EXISTS password_reset_user_idx ON password_resets(user_id);
+    CREATE INDEX IF NOT EXISTS support_tickets_email_idx ON support_tickets(requester_email);
+    CREATE INDEX IF NOT EXISTS support_messages_ticket_idx ON support_messages(ticket_id);
   `);
 
   // Existing accounts predate email verification. Keep them usable after the migration.
@@ -101,6 +124,8 @@ export function initializeDatabase(filename = ':memory:') {
   ensureColumn(database, 'users', 'disabled_at', 'TEXT');
   ensureColumn(database, 'users', 'disabled_reason', 'TEXT');
   ensureColumn(database, 'users', 'disabled_by', 'TEXT');
+  ensureColumn(database, 'email_verifications', 'code_hash', 'TEXT');
+  ensureColumn(database, 'password_resets', 'code_hash', 'TEXT');
   return database;
 }
 
@@ -145,12 +170,12 @@ export function setUserPasswordHash(database, userId, passwordHash) {
   return findUserById(database, userId);
 }
 
-export function createEmailVerification(database, { tokenHash, userId, hours = 24 }) {
+export function createEmailVerification(database, { tokenHash, codeHash = null, userId, hours = 24 }) {
   const createdAt = now();
   const expiresAt = new Date(Date.now() + hours * 3_600_000).toISOString();
   database.prepare('DELETE FROM email_verifications WHERE user_id = ? AND used_at IS NULL').run(userId);
-  database.prepare('INSERT INTO email_verifications (token_hash,user_id,created_at,expires_at,used_at) VALUES (?,?,?,?,NULL)')
-    .run(tokenHash, userId, createdAt, expiresAt);
+  database.prepare('INSERT INTO email_verifications (token_hash,code_hash,user_id,created_at,expires_at,used_at) VALUES (?,?,?,?,?,NULL)')
+    .run(tokenHash, codeHash, userId, createdAt, expiresAt);
   return { createdAt, expiresAt };
 }
 
@@ -166,12 +191,24 @@ export function consumeEmailVerification(database, tokenHash) {
   return findUserById(database, record.user_id);
 }
 
-export function createPasswordReset(database, { tokenHash, userId, minutes = 30 }) {
+export function consumeEmailVerificationCode(database, userId, codeHash) {
+  const record = database.prepare(`
+    SELECT token_hash,user_id FROM email_verifications
+    WHERE user_id = ? AND code_hash = ? AND used_at IS NULL AND expires_at > ?
+  `).get(userId, codeHash, now());
+  if (!record) return null;
+  const verifiedAt = now();
+  database.prepare('UPDATE email_verifications SET used_at = ? WHERE token_hash = ?').run(verifiedAt, record.token_hash);
+  database.prepare('UPDATE users SET email_verified = 1, verified_at = ? WHERE id = ?').run(verifiedAt, record.user_id);
+  return findUserById(database, record.user_id);
+}
+
+export function createPasswordReset(database, { tokenHash, codeHash = null, userId, minutes = 30 }) {
   const createdAt = now();
   const expiresAt = new Date(Date.now() + minutes * 60_000).toISOString();
   database.prepare('DELETE FROM password_resets WHERE user_id = ? AND used_at IS NULL').run(userId);
-  database.prepare('INSERT INTO password_resets (token_hash,user_id,created_at,expires_at,used_at) VALUES (?,?,?,?,NULL)')
-    .run(tokenHash, userId, createdAt, expiresAt);
+  database.prepare('INSERT INTO password_resets (token_hash,code_hash,user_id,created_at,expires_at,used_at) VALUES (?,?,?,?,?,NULL)')
+    .run(tokenHash, codeHash, userId, createdAt, expiresAt);
   return { createdAt, expiresAt };
 }
 
@@ -182,6 +219,16 @@ export function consumePasswordReset(database, tokenHash) {
   `).get(tokenHash, now());
   if (!record) return null;
   database.prepare('UPDATE password_resets SET used_at = ? WHERE token_hash = ?').run(now(), tokenHash);
+  return findUserById(database, record.user_id);
+}
+
+export function consumePasswordResetCode(database, userId, codeHash) {
+  const record = database.prepare(`
+    SELECT token_hash,user_id FROM password_resets
+    WHERE user_id = ? AND code_hash = ? AND used_at IS NULL AND expires_at > ?
+  `).get(userId, codeHash, now());
+  if (!record) return null;
+  database.prepare('UPDATE password_resets SET used_at = ? WHERE token_hash = ?').run(now(), record.token_hash);
   return findUserById(database, record.user_id);
 }
 
@@ -257,6 +304,86 @@ export function createFeedback(database, { userId = null, rating, message = '', 
     .run(userId, rating, message, workspace, tool, now());
 }
 
+// Support Tickets & Two-Way Messaging Persistence
+function hydrateSupportTicket(database, ticketRow) {
+  if (!ticketRow) return null;
+  const messages = database.prepare(`
+    SELECT id,ticket_id,sender_role,sender_name,sender_email,body,created_at
+    FROM support_messages
+    WHERE ticket_id = ?
+    ORDER BY created_at ASC
+  `).all(ticketRow.id);
+  return { ...ticketRow, messages };
+}
+
+export function createSupportTicketRecord(database, {
+  userId = null,
+  requesterName,
+  requesterEmail,
+  category = 'technical',
+  priority = 'normal',
+  subject,
+  message,
+}) {
+  const id = `TKT-${randomInt(100000, 1000000)}`;
+  const createdAt = now();
+  const safeCategory = ['technical', 'account', 'billing', 'suggestion', 'other'].includes(category) ? category : 'technical';
+  const safePriority = ['normal', 'high', 'urgent'].includes(priority) ? priority : 'normal';
+  database.prepare(`
+    INSERT INTO support_tickets (id,user_id,requester_name,requester_email,category,priority,subject,status,created_at,updated_at)
+    VALUES (?,?,?,?,?,?,?,'open',?,?)
+  `).run(id, userId, requesterName, requesterEmail, safeCategory, safePriority, subject, createdAt, createdAt);
+
+  database.prepare(`
+    INSERT INTO support_messages (id,ticket_id,sender_role,sender_name,sender_email,body,created_at)
+    VALUES (?,?,'user',?,?,?,?)
+  `).run(`MSG-${randomUUID()}`, id, requesterName, requesterEmail, message, createdAt);
+
+  return findSupportTicketById(database, id);
+}
+
+export function findSupportTicketById(database, ticketId) {
+  const row = database.prepare('SELECT * FROM support_tickets WHERE id = ?').get(ticketId);
+  return hydrateSupportTicket(database, row);
+}
+
+export function listSupportTicketRecords(database, { requesterEmail = '', ticketId = '', all = false, limit = 100 } = {}) {
+  if (all) {
+    const rows = database.prepare('SELECT * FROM support_tickets ORDER BY updated_at DESC LIMIT ?').all(limit);
+    return rows.map((row) => hydrateSupportTicket(database, row));
+  }
+  if (!requesterEmail) return [];
+  if (ticketId) {
+    const row = database.prepare('SELECT * FROM support_tickets WHERE UPPER(id) = UPPER(?) AND LOWER(requester_email) = LOWER(?)').get(ticketId, requesterEmail);
+    return row ? [hydrateSupportTicket(database, row)] : [];
+  }
+  const rows = database.prepare('SELECT * FROM support_tickets WHERE LOWER(requester_email) = LOWER(?) ORDER BY updated_at DESC LIMIT ?').all(requesterEmail, limit);
+  return rows.map((row) => hydrateSupportTicket(database, row));
+}
+
+export function appendSupportMessageRecord(database, { ticketId, senderRole = 'user', senderName, senderEmail, body }) {
+  const ticket = database.prepare('SELECT * FROM support_tickets WHERE id = ?').get(ticketId);
+  if (!ticket) return null;
+  const createdAt = now();
+  const safeRole = ['user', 'support', 'owner'].includes(senderRole) ? senderRole : 'user';
+  database.prepare(`
+    INSERT INTO support_messages (id,ticket_id,sender_role,sender_name,sender_email,body,created_at)
+    VALUES (?,?,?,?,?,?,?)
+  `).run(`MSG-${randomUUID()}`, ticketId, safeRole, senderName, senderEmail, body, createdAt);
+
+  const nextStatus = safeRole === 'user'
+    ? (ticket.status === 'resolved' ? 'open' : ticket.status)
+    : (ticket.status === 'open' ? 'in_progress' : ticket.status);
+  database.prepare('UPDATE support_tickets SET status = ?, updated_at = ? WHERE id = ?').run(nextStatus, createdAt, ticketId);
+  return findSupportTicketById(database, ticketId);
+}
+
+export function setSupportTicketStatusRecord(database, ticketId, status) {
+  if (!['open', 'in_progress', 'resolved', 'closed'].includes(status)) throw new Error('INVALID_TICKET_STATUS');
+  database.prepare('UPDATE support_tickets SET status = ?, updated_at = ? WHERE id = ?').run(status, now(), ticketId);
+  return findSupportTicketById(database, ticketId);
+}
+
 export function getAdminSummary(database, aiConfigured) {
   const since = new Date(Date.now() - 86_400_000).toISOString();
   const totalUsers = database.prepare('SELECT COUNT(*) AS count FROM users').get().count;
@@ -267,6 +394,7 @@ export function getAdminSummary(database, aiConfigured) {
   const usageRows = database.prepare("SELECT workspace,COUNT(*) AS count FROM events WHERE event_type = 'tool_request' GROUP BY workspace").all();
   const usage = Object.fromEntries(usageRows.map((row) => [row.workspace || 'unknown', row.count]));
   const totalUsage = Object.values(usage).reduce((sum, value) => sum + value, 0);
+  const openTickets = database.prepare("SELECT COUNT(*) AS count FROM support_tickets WHERE status IN ('open','in_progress')").get().count;
   return {
     totalUsers,
     verifiedUsers,
@@ -278,6 +406,7 @@ export function getAdminSummary(database, aiConfigured) {
     apiOnline: Boolean(aiConfigured),
     errors: database.prepare('SELECT COUNT(*) AS count FROM client_errors').get().count,
     feedback: database.prepare('SELECT COUNT(*) AS count FROM feedback').get().count,
+    openTickets,
   };
 }
 

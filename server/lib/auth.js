@@ -1,7 +1,10 @@
-import { createHash, randomBytes, scrypt as scryptCallback, timingSafeEqual } from 'node:crypto';
+import { createHash, randomBytes, randomInt, scrypt as scryptCallback, timingSafeEqual } from 'node:crypto';
 import { promisify } from 'node:util';
 
 const scrypt = promisify(scryptCallback);
+
+export const DEFAULT_OWNER_EMAIL = 'abdelrhman.maroxo@gmail.com';
+export const DEFAULT_SUPPORT_EMAIL = 'pathpilot.app00@gmail.com';
 
 export function normalizeEmail(value) {
   return String(value || '').trim().toLowerCase();
@@ -27,6 +30,14 @@ export function createSessionToken() {
   return randomBytes(32).toString('base64url');
 }
 
+export function createVerificationCode() {
+  return String(randomInt(100000, 1000000));
+}
+
 export function hashToken(token) {
   return createHash('sha256').update(String(token || '')).digest('hex');
+}
+
+export function hashEmailOtp(email, code) {
+  return hashToken(`${normalizeEmail(email)}:${String(code || '').trim()}`);
 }
