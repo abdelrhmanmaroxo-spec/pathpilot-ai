@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowDown,
-  Check,
   FileDown,
-  KeyRound,
+  Folder,
+  FolderPlus,
   Layers3,
   LoaderCircle,
   LockKeyhole,
@@ -16,17 +16,12 @@ import {
   Sparkles,
   Square,
   Trash2,
-  X,
 } from 'lucide-react';
 import ConversationThread from './components/ConversationThread.jsx';
 import CurriculumPdfModal from './components/CurriculumPdfModal.jsx';
 import MaterialSynthesisStudio from './components/MaterialSynthesisStudio.jsx';
 import VoiceControls from './components/VoiceControls.jsx';
-import {
-  loadAiProviderVault,
-  saveAiProviderVault,
-  streamSmartAiReply,
-} from './lib/assistant.js';
+import { streamSmartAiReply } from './lib/assistant.js';
 import {
   appendChatTurn,
   createChatSession,
@@ -43,6 +38,29 @@ import {
   translateMarkdownSync,
 } from './lib/live-content-translator.js';
 import { buildMaterialPromptEnvelope } from './lib/material-intelligence.js';
+
+const CHAT_FOLDERS_STORAGE_KEY = 'pathpilot.chat_folders.v6';
+
+function loadFolderState() {
+  try {
+    const raw = JSON.parse(globalThis.localStorage?.getItem?.(CHAT_FOLDERS_STORAGE_KEY) || '{}');
+    return {
+      folders: Array.isArray(raw?.folders) ? raw.folders.filter(Boolean).slice(0, 40) : [],
+      assignments: raw?.assignments && typeof raw.assignments === 'object' ? raw.assignments : {},
+    };
+  } catch {
+    return { folders: [], assignments: {} };
+  }
+}
+
+function saveFolderState(next) {
+  try {
+    globalThis.localStorage?.setItem?.(CHAT_FOLDERS_STORAGE_KEY, JSON.stringify(next));
+  } catch {
+    // Ignore storage quota errors
+  }
+  return next;
+}
 
 function initialChatState() {
   const stored = loadChatSessions();
@@ -67,13 +85,15 @@ export function ChatDevelopmentNotice({ language }) {
 export default function ChatWorkspace({ preferences, notify, language }) {
   const [sessions, setSessions] = useState(initialChatState);
   const [activeId, setActiveId] = useState(() => initialChatState()[0]?.id || '');
+  const [folderState, setFolderState] = useState(loadFolderState);
+  const [selectedFolder, setSelectedFolder] = useState('__all__');
+  const [newFolderOpen, setNewFolderOpen] = useState(false);
+  const [newFolderName, setNewFolderName] = useState('');
   const [sidebarOpen, setSidebarOpen] = useState(() => (typeof window !== 'undefined' ? window.innerWidth > 1120 : false));
   const [sessionFilter, setSessionFilter] = useState('');
   const [prompt, setPrompt] = useState('');
   const [materialStudioOpen, setMaterialStudioOpen] = useState(false);
   const [pdfBuilderState, setPdfBuilderState] = useState({ open: false, text: '', title: '' });
-  const [aiSetupOpen, setAiSetupOpen] = useState(false);
-  const [aiKeys, setAiKeys] = useState(loadAiProviderVault);
   const [loading, setLoading] = useState(false);
   const [streamingTurn, setStreamingTurn] = useState(null);
   const [pinnedToBottom, setPinnedToBottom] = useState(true);
@@ -90,6 +110,33 @@ export default function ChatWorkspace({ preferences, notify, language }) {
     () => sessions.find((session) => session.id === activeId) || sessions[0] || null,
     [activeId, sessions],
   );
+
+  const activeSessionFolder = activeSession ? (folderState.assignments[activeSession.id] || '') : '';
+
+  const createOrAssignFolder = useCallback((rawName, sessionIdToAssign = '') => {
+    const cleanName = String(rawName || '').trim().slice(0, 40);
+    if (!cleanName) return;
+    setFolderState((prev) => {
+      const exists = prev.folders.some((f) => f.toLowerCase() === cleanName.toLowerCase());
+      const canonical = exists
+        ? prev.folders.find((f) => f.toLowerCase() === cleanName.toLowerCase())
+        : cleanName;
+      const nextFolders = exists ? prev.folders : [...prev.folders, canonical];
+      const nextAssignments = sessionIdToAssign
+        ? { ...prev.assignments, [sessionIdToAssign]: canonical }
+        : prev.assignments;
+      return saveFolderState({ folders: nextFolders, assignments: nextAssignments });
+    });
+  }, []);
+
+  const assignSessionToFolder = (sessionId, folderName) => {
+    setFolderState((prev) => {
+      const nextAssignments = { ...prev.assignments };
+      if (!folderName) delete nextAssignments[sessionId];
+      else nextAssignments[sessionId] = folderName;
+      return saveFolderState({ ...prev, assignments: nextAssignments });
+    });
+  };
 
   useEffect(() => {
     if (!activeSession?.turns?.length) return undefined;
@@ -132,14 +179,18 @@ export default function ChatWorkspace({ preferences, notify, language }) {
     return sessions
       .map((session) => ({
         ...session,
+        folder: folderState.assignments[session.id] || '',
         displayTitle: translateMarkdownSync(session.title, targetLang),
       }))
-      .filter((session) => (
-        !q
-        || session.displayTitle.toLowerCase().includes(q)
-        || String(session.title || '').toLowerCase().includes(q)
-      ));
-  }, [sessionFilter, sessions, targetLang]);
+      .filter((session) => {
+        if (selectedFolder !== '__all__' && session.folder !== selectedFolder) return false;
+        return (
+          !q
+          || session.displayTitle.toLowerCase().includes(q)
+          || String(session.title || '').toLowerCase().includes(q)
+        );
+      });
+  }, [folderState.assignments, selectedFolder, sessionFilter, sessions, targetLang]);
 
   const visibleTurns = useMemo(() => {
     const rawTurns = activeSession?.turns || [];
@@ -151,7 +202,6 @@ export default function ChatWorkspace({ preferences, notify, language }) {
   }, [activeSession, streamingTurn, targetLang]);
 
   const lastAnswer = visibleTurns.at(-1)?.answer || '';
-  const hasCustomKey = Boolean(aiKeys.geminiKey || aiKeys.groqKey);
 
   const syncScrollPinState = useCallback(() => {
     const vp = streamViewportRef.current;
@@ -209,6 +259,9 @@ export default function ChatWorkspace({ preferences, notify, language }) {
     const next = upsertChatSession(sessions, session);
     setSessions(next);
     setActiveId(session.id);
+    if (selectedFolder !== '__all__') {
+      assignSessionToFolder(session.id, selectedFolder);
+    }
     setPrompt('');
     setStreamingTurn(null);
     setLoading(false);
@@ -285,6 +338,17 @@ export default function ChatWorkspace({ preferences, notify, language }) {
     globalThis.setTimeout(() => scrollToBottom(true), 35);
   };
 
+  const handleAddFolderForm = (event) => {
+    event.preventDefault();
+    if (!newFolderName.trim()) return;
+    const targetName = newFolderName.trim().slice(0, 40);
+    createOrAssignFolder(targetName, activeSession?.id || '');
+    setSelectedFolder(targetName);
+    setNewFolderName('');
+    setNewFolderOpen(false);
+    notify(en ? `Folder "${targetName}" created.` : `تم إنشاء مجلد «${targetName}» وتنظيم المحادثة بداخله.`);
+  };
+
   const runPrompt = async (overrideText, extraMeta = {}) => {
     const text = String(overrideText ?? prompt ?? '').trim();
     if (text.length < 1 || !activeSession) return;
@@ -322,12 +386,17 @@ export default function ChatWorkspace({ preferences, notify, language }) {
         tool: 'ask',
         preferences: { ...preferences, uiLanguage: targetLang },
         signal: controller.signal,
-        onDelta: (_delta, fullAnswer) => {
+        onDelta: (_delta, fullAnswer, liveTrace) => {
           if (controller.signal.aborted || runToken !== runTokenRef.current) return;
           streamedAnswer = fullAnswer;
           setStreamingTurn((turn) => (
             turn?.id === streamId
-              ? { ...turn, answer: fullAnswer, streaming: true }
+              ? {
+                ...turn,
+                answer: fullAnswer,
+                streaming: true,
+                ...(liveTrace ? { thinkingTrace: liveTrace } : {}),
+              }
               : turn
           ));
         },
@@ -341,12 +410,33 @@ export default function ChatWorkspace({ preferences, notify, language }) {
           source: result.source,
           tool: 'ask',
         }),
+        ...(result.thinkingTrace ? { thinkingTrace: result.thinkingTrace } : {}),
         i18n: {
           [targetLang]: { prompt: text, answer: result.answer },
         },
       };
       setSessions((current) => appendChatTurn(current, activeSession.id, turn));
       setStreamingTurn(null);
+
+      if (result.actions?.createFolder) {
+        const folderName = result.actions.createFolder;
+        createOrAssignFolder(folderName, activeSession.id);
+        setSelectedFolder(folderName);
+        setSidebarOpen(true);
+        notify(
+          en
+            ? `Created folder "${folderName}" and organized this chat.`
+            : `تم إنشاء مجلد «${folderName}» ونقل المحادثة إليه تلقائيًا.`,
+        );
+      }
+
+      if (result.actions?.openPdfTitle) {
+        setPdfBuilderState({
+          open: true,
+          text: result.answer,
+          title: result.actions.openPdfTitle,
+        });
+      }
     } catch (error) {
       if (controller.signal.aborted || runToken !== runTokenRef.current) return;
       if (streamedAnswer) {
@@ -381,14 +471,6 @@ export default function ChatWorkspace({ preferences, notify, language }) {
     setStreamingTurn(null);
   };
 
-  const saveAiKeysForm = (event) => {
-    event.preventDefault();
-    const saved = saveAiProviderVault(aiKeys);
-    setAiKeys(saved);
-    setAiSetupOpen(false);
-    notify(en ? 'AI engine settings encrypted and saved.' : 'تم تشفير وحفظ إعدادات محرك الـ AI بنجاح.');
-  };
-
   const activeDisplayTitle = translateMarkdownSync(activeSession?.title || (en ? 'New chat' : 'محادثة جديدة'), targetLang);
 
   return (
@@ -403,6 +485,15 @@ export default function ChatWorkspace({ preferences, notify, language }) {
               <button
                 type="button"
                 className="chat-utility-btn icon-only"
+                onClick={() => setNewFolderOpen((v) => !v)}
+                title={en ? 'New folder' : 'إنشاء مجلد جديد'}
+                aria-label={en ? 'New folder' : 'إنشاء مجلد جديد'}
+              >
+                <FolderPlus size={16} />
+              </button>
+              <button
+                type="button"
+                className="chat-utility-btn icon-only"
                 onClick={() => setSidebarOpen(false)}
                 title={en ? 'Hide sidebar' : 'إخفاء القائمة'}
                 aria-label={en ? 'Hide sidebar' : 'إخفاء القائمة'}
@@ -410,6 +501,45 @@ export default function ChatWorkspace({ preferences, notify, language }) {
                 <PanelLeftClose size={16} />
               </button>
             </div>
+
+            {newFolderOpen && (
+              <form onSubmit={handleAddFolderForm} style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+                <input
+                  type="text"
+                  value={newFolderName}
+                  onChange={(e) => setNewFolderName(e.target.value)}
+                  placeholder={en ? 'Folder name…' : 'اسم المجلد…'}
+                  style={{ flex: 1, minWidth: 0, padding: '6px 10px', borderRadius: 8 }}
+                />
+                <button type="submit" className="chat-utility-btn">
+                  {en ? 'Add' : 'حفظ'}
+                </button>
+              </form>
+            )}
+
+            {folderState.folders.length > 0 && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+                <button
+                  type="button"
+                  className={selectedFolder === '__all__' ? 'chat-mode active' : 'chat-mode'}
+                  onClick={() => setSelectedFolder('__all__')}
+                  style={{ fontSize: '0.78rem', padding: '4px 9px' }}
+                >
+                  {en ? 'All' : 'الكل'}
+                </button>
+                {folderState.folders.map((folderName) => (
+                  <button
+                    key={folderName}
+                    type="button"
+                    className={selectedFolder === folderName ? 'chat-mode active' : 'chat-mode'}
+                    onClick={() => setSelectedFolder(folderName)}
+                    style={{ fontSize: '0.78rem', padding: '4px 9px' }}
+                  >
+                    <Folder size={12} /> {folderName}
+                  </button>
+                ))}
+              </div>
+            )}
 
             {sessions.length > 3 && (
               <label className="chat-sidebar-search">
@@ -447,25 +577,34 @@ export default function ChatWorkspace({ preferences, notify, language }) {
                   type="button"
                   className="chat-utility-btn icon-only"
                   onClick={() => setSidebarOpen(true)}
-                  title={en ? 'Chats' : 'المحادثات'}
-                  aria-label={en ? 'Chats' : 'المحادثات'}
+                  title={en ? 'Chats & Folders' : 'المحادثات والمجلدات'}
+                  aria-label={en ? 'Chats & Folders' : 'المحادثات والمجلدات'}
                 >
                   <PanelLeftOpen size={16} />
                 </button>
               )}
               <strong className="chatgpt-session-title">{activeDisplayTitle}</strong>
+              {activeSessionFolder && (
+                <span className="chat-memory-badge">
+                  <Folder size={12} /> {activeSessionFolder}
+                </span>
+              )}
             </div>
 
             <div className="chatgpt-topbar-end">
-              <button
-                type="button"
-                className="chat-utility-btn"
-                onClick={() => setAiSetupOpen((v) => !v)}
-                title={en ? 'Live AI Engine' : 'محرك الذكاء الاصطناعي'}
-              >
-                <KeyRound size={14} />
-                <span>{hasCustomKey ? (en ? 'Pro AI Active' : 'AI فائق نشط') : (en ? 'Live AI On' : 'AI ذكي متصل')}</span>
-              </button>
+              {folderState.folders.length > 0 && activeSession && (
+                <select
+                  className="chatgpt-turn-jumper"
+                  value={activeSessionFolder}
+                  onChange={(e) => assignSessionToFolder(activeSession.id, e.target.value)}
+                  aria-label={en ? 'Assign folder' : 'نقل إلى مجلد'}
+                >
+                  <option value="">{en ? 'No folder' : 'بدون مجلد'}</option>
+                  {folderState.folders.map((f) => (
+                    <option key={f} value={f}>{f}</option>
+                  ))}
+                </select>
+              )}
               {visibleTurns.length > 0 && (
                 <button type="button" className="chat-utility-btn highlight-pdf" onClick={openSessionPdfBuilder}>
                   <FileDown size={14} /> <span>PDF</span>
@@ -482,51 +621,6 @@ export default function ChatWorkspace({ preferences, notify, language }) {
               </button>
             </div>
           </header>
-
-          {aiSetupOpen && (
-            <form
-              onSubmit={saveAiKeysForm}
-              style={{
-                margin: '10px auto 0',
-                maxWidth: 680,
-                width: 'calc(100% - 28px)',
-                padding: '14px 16px',
-                borderRadius: 14,
-                background: 'rgba(17, 24, 39, 0.92)',
-                border: '1px solid rgba(99, 102, 241, 0.35)',
-                display: 'grid',
-                gap: 10,
-              }}
-            >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <strong style={{ fontSize: '0.92rem' }}>
-                  {en ? 'Live AI Engine (Works Free Automatically — Optional Speed Key)' : 'محرك الذكاء الاصطناعي الحي (يعمل مجانًا تلقائيًا — أو أضف مفتاح مجاني للسرعة القصوى)'}
-                </strong>
-                <button type="button" className="chat-utility-btn icon-only" onClick={() => setAiSetupOpen(false)}>
-                  <X size={15} />
-                </button>
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10 }}>
-                <input
-                  type="password"
-                  value={aiKeys.geminiKey}
-                  onChange={(e) => setAiKeys((prev) => ({ ...prev, geminiKey: e.target.value }))}
-                  placeholder={en ? 'Optional Free Gemini Key (AIza...)' : 'مفتاح Gemini مجاني اختياري (AIza...)'}
-                />
-                <input
-                  type="password"
-                  value={aiKeys.groqKey}
-                  onChange={(e) => setAiKeys((prev) => ({ ...prev, groqKey: e.target.value }))}
-                  placeholder={en ? 'Optional Free Groq Key (gsk_...)' : 'مفتاح Groq مجاني اختياري (gsk_...)'}
-                />
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                <button type="submit" className="button button-primary" style={{ padding: '7px 16px' }}>
-                  <Check size={15} /> <span>{en ? 'Save Encrypted' : 'تشفير وحفظ'}</span>
-                </button>
-              </div>
-            </form>
-          )}
 
           <div
             ref={streamViewportRef}
@@ -553,16 +647,16 @@ export default function ChatWorkspace({ preferences, notify, language }) {
               ) : (
                 <div className="chat-empty-state chatgpt-welcome">
                   <div className="chatgpt-welcome-orb"><Sparkles size={24} /></div>
-                  <h2>{en ? 'What would you like to build, learn, or summarize?' : 'تحب نذاكر إيه، نلخّص إيه، أو ننشئ إيه النهارده؟'}</h2>
+                  <h2>{en ? 'What would you like to learn, organize, or build?' : 'تحب نفكر في إيه، نلخّص إيه، أو ننظم إيه النهارده؟'}</h2>
                   <div className="chat-starter-chips">
-                    <button type="button" onClick={() => { setPrompt(en ? 'Summarize these lecture notes clearly: ' : 'لخّصلي المحاضرة دي بشكل مرتب وسهل للمذاكرة: '); textareaRef.current?.focus(); }}>
-                      {en ? 'Summarize a lecture' : 'لخّصلي محاضرة بذكاء'}
+                    <button type="button" onClick={() => { setPrompt(en ? 'Create a folder for this subject and summarize: ' : 'اعمل مجلد لهذه المادة ولخّصلي الفصل ده باحترافية: '); textareaRef.current?.focus(); }}>
+                      <FolderPlus size={14} /> {en ? 'Organize in Folder & Summarize' : 'أنشئ مجلد للمادة ولخّص'}
                     </button>
-                    <button type="button" onClick={() => { setPrompt(en ? 'Solve and explain these past online exam questions: ' : 'دول أسئلة امتحان أونلاين سابقة، حلّهم واشرحلي كل فكرة: '); textareaRef.current?.focus(); }}>
-                      {en ? 'Solve past online exam' : 'حلّ أسئلة امتحان أونلاين'}
+                    <button type="button" onClick={() => { setPrompt(en ? 'Solve and explain these past online exam questions: ' : 'دول امتحانات أونلاين كانت عندنا، حلّهم واشرح الأفكار المهمة: '); textareaRef.current?.focus(); }}>
+                      {en ? 'Solve Past Online Exams' : 'حلّ امتحانات أونلاين سابقة'}
                     </button>
                     <button type="button" onClick={() => setPdfBuilderState({ open: true, text: '', title: '' })}>
-                      <FileDown size={14} /> {en ? 'Generate Reading PDF' : 'إنشاء ملخص PDF للقراءة'}
+                      <FileDown size={14} /> {en ? 'Generate Reading PDF' : 'توليد ملف PDF للقراءة'}
                     </button>
                   </div>
                 </div>
@@ -572,7 +666,7 @@ export default function ChatWorkspace({ preferences, notify, language }) {
                 <div className="chatgpt-live-indicator">
                   <div className="chat-live-status" role="status" aria-live="polite">
                     <LoaderCircle className="spin" size={15} />
-                    <span>{en ? 'PathPilot AI is thinking…' : 'PathPilot AI بيفكر ويكتب…'}</span>
+                    <span>{en ? 'Thinking…' : 'جاري التفكير وإعداد الإجابة…'}</span>
                   </div>
                 </div>
               )}
@@ -611,7 +705,7 @@ export default function ChatWorkspace({ preferences, notify, language }) {
                   id="assistant-prompt"
                   value={prompt}
                   onChange={(event) => setPrompt(event.target.value)}
-                  placeholder={en ? 'Ask anything, create content, or paste lectures…' : 'اسأل في أي حاجة، اطلب إنشاء أو تلخيص، أو اتكلم براحتك…'}
+                  placeholder={en ? 'Ask anything, ask to create a folder, or build a PDF…' : 'اسأل أي سؤال، أو اطلب إنشاء مجلد أو توليد ملف PDF…'}
                   maxLength={12000}
                   rows={1}
                   onKeyDown={(event) => {
