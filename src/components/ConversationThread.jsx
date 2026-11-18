@@ -2,11 +2,14 @@ import { useEffect, useRef, useState } from 'react';
 import {
   BrainCircuit,
   Check,
+  CheckCircle2,
   ChevronDown,
   ChevronUp,
   Copy,
   CornerUpLeft,
+  Eye,
   FileDown,
+  FileText,
   Sparkles,
   Square,
   UserRound,
@@ -20,7 +23,13 @@ import {
   splitSpeechChunks,
 } from '../lib/voice-engine.js';
 
-export default function ConversationThread({ turns = [], onReuse, onExportTurnPdf, maxTurns = 200 }) {
+export default function ConversationThread({
+  turns = [],
+  onReuse,
+  onExportTurnPdf,
+  onInspectAttachment,
+  maxTurns = 200,
+}) {
   const [lang, setLang] = useState(getDocumentLanguage);
   const [speakingTurnId, setSpeakingTurnId] = useState('');
   const [copiedTurnId, setCopiedTurnId] = useState('');
@@ -105,6 +114,7 @@ export default function ConversationThread({ turns = [], onReuse, onExportTurnPd
         const displayedPrompt = isLongPrompt && !isPromptExpanded
           ? `${promptText.slice(0, 290).trim()}…`
           : promptText;
+        const turnAtts = Array.isArray(turn.attachments) ? turn.attachments : [];
 
         return (
           <article
@@ -140,6 +150,60 @@ export default function ConversationThread({ turns = [], onReuse, onExportTurnPd
                     )}
                   </div>
                 </div>
+
+                {turnAtts.length > 0 && (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
+                    {turnAtts.map((att) => (
+                      <div
+                        key={att.id || att.name}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 8,
+                          padding: '6px 10px',
+                          borderRadius: 11,
+                          background: 'rgba(15, 23, 42, 0.72)',
+                          border: '1px solid rgba(52, 211, 153, 0.36)',
+                          maxWidth: '100%',
+                        }}
+                      >
+                        {att.thumbUrl ? (
+                          <img
+                            src={att.thumbUrl}
+                            alt={att.name}
+                            style={{ width: 38, height: 38, objectFit: 'cover', borderRadius: 7, flexShrink: 0 }}
+                          />
+                        ) : (
+                          <FileText size={18} color="#6ee7b7" />
+                        )}
+                        <div style={{ minWidth: 0, display: 'grid', gap: 2 }}>
+                          <strong style={{ fontSize: '0.8rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 210 }}>
+                            {att.name}
+                          </strong>
+                          <small style={{ fontSize: '0.72rem', color: '#6ee7b7', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                            <CheckCircle2 size={11} />
+                            <span>
+                              {en
+                                ? (att.statusEn || `${att.sizeKb || 1}KB inspected`)
+                                : (att.statusAr || `تم فحص الملف (${att.sizeKb || 1}KB)`)}
+                            </span>
+                          </small>
+                        </div>
+                        {onInspectAttachment && (att.excerpt || att.thumbUrl) && (
+                          <button
+                            type="button"
+                            className="turn-inline-action"
+                            onClick={() => onInspectAttachment(att)}
+                          >
+                            <Eye size={12} />
+                            <span>{en ? 'View' : 'معاينة'}</span>
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
                 <p>{displayedPrompt}</p>
               </div>
             </div>
@@ -195,7 +259,7 @@ export default function ConversationThread({ turns = [], onReuse, onExportTurnPd
                   <details className="thinking-trace-card">
                     <summary>
                       <BrainCircuit size={14} />
-                      <span>{en ? 'Structured Thinking & Synthesis Steps' : 'مسار التفكير والدمج المنطقي'}</span>
+                      <span>{en ? 'Structured Thinking & File Inspection Steps' : 'مسار فحص الملفات والتفكير المنطقي'}</span>
                     </summary>
                     <ol className="thinking-trace-steps">
                       {turn.thinkingTrace.steps.map((step) => (
