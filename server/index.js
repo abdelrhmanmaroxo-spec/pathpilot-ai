@@ -650,7 +650,7 @@ export function createPathPilotServer({
       const body = await readJson(request);
       const email = normalizeEmail(body.email);
       if (!EMAIL_PATTERN.test(email)) return sendJson(response, 400, { error: 'Enter a valid email address.' }, origin);
-      if (email === ownerEmail) return sendJson(response, 400, { error: 'This is already the protected owner account.' }, origin);
+      if ((ownerEmail && email === ownerEmail) || isProtectedOwnerEmail(email, env)) return sendJson(response, 400, { error: 'This is already the protected owner account.' }, origin);
       const existing = findUserByEmail(database, email);
       if (existing) {
         const user = setUserRole(database, existing.id, 'admin');
@@ -679,7 +679,7 @@ export function createPathPilotServer({
       if (!['user', 'admin'].includes(role)) return sendJson(response, 400, { error: 'Invalid role.' }, origin);
       const target = findUserById(database, String(body.userId || ''));
       if (!target) return sendJson(response, 404, { error: 'User not found.' }, origin);
-      if (ownerEmail && normalizeEmail(target.email) === ownerEmail && role !== 'admin') return sendJson(response, 400, { error: 'The owner account cannot be demoted.' }, origin);
+      if (((ownerEmail && normalizeEmail(target.email) === ownerEmail) || isProtectedOwnerEmail(target.email, env)) && role !== 'admin') return sendJson(response, 400, { error: 'The owner account cannot be demoted.' }, origin);
       const user = setUserRole(database, target.id, role);
       trackEvent(database, { userId: user.id, eventType: role === 'admin' ? 'admin_granted' : 'admin_removed' });
       return sendJson(response, 200, { user: { ...user, isOwner: isProtectedOwnerEmail(user.email, env), emailVerified: Boolean(user.email_verified) } }, origin);
@@ -691,7 +691,7 @@ export function createPathPilotServer({
       const body = await readJson(request);
       const target = findUserById(database, String(body.userId || ''));
       if (!target) return sendJson(response, 404, { error: 'User not found.' }, origin);
-      if (ownerEmail && normalizeEmail(target.email) === ownerEmail) return sendJson(response, 400, { error: 'The protected owner account cannot be deleted.' }, origin);
+      if ((ownerEmail && normalizeEmail(target.email) === ownerEmail) || isProtectedOwnerEmail(target.email, env)) return sendJson(response, 400, { error: 'The protected owner account cannot be deleted.' }, origin);
       const deleted = { id: target.id, email: target.email, name: target.name };
       deleteUser(database, target.id);
       trackEvent(database, { userId: owner.id, eventType: 'user_deleted_by_owner', metadata: { email: deleted.email } });

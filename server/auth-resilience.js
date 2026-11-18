@@ -76,7 +76,6 @@ export function createAuthResilience({
   allowedOrigins,
   emailSender = sendVerificationEmail,
 } = {}) {
-  const ownerEmail = normalizeEmail(env.OWNER_EMAIL || env.ADMIN_EMAIL || '');
   const apiKey = String(env.RESEND_API_KEY || '').trim();
   const emailFrom = String(env.EMAIL_FROM || '').trim();
   const emailProvider = String(env.EMAIL_PROVIDER || '').trim().toLowerCase();

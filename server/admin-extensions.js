@@ -90,7 +90,7 @@ function decorateUser(user, ownerEmail) {
     disabled_by: user.disabled_by || null,
     disabled_by_name: user.disabled_by_name || null,
     disabled_by_email: user.disabled_by_email || null,
-    isOwner: isProtectedOwnerEmail(user.email, env),
+    isOwner: ownerEmail ? normalizeEmail(user.email) === ownerEmail : isProtectedOwnerEmail(user.email),
   };
 }
 
