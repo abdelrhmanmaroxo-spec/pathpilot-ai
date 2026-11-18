@@ -28,10 +28,10 @@ export function extractPastOnlineExamQuestions(rawText = '') {
   const extracted = [];
   let current = null;
 
-  const questionStartRe = /^(?:س\s*\d*|Q\s*\d+|Question\s*\d+|\d+\s*[.)-\]])\s*(.+)/i;
-  const optionLineRe = /^(?:([A-Da-dأبجد1-4])\s*[)\].:-])\s*(.+)/;
+  const questionStartRe = /^(?:س\s*\d*|Q\s*\d+|Question\s*\d+|\d+\s*[.)\]:-])\s*(.+)/i;
+  const optionLineRe = /^(?:([A-Da-dأبجد])\s*[.)\]:-])\s*(.+)/;
   const answerHintRe = /^(?:الإجابة(?:\s*الصحيحة)?|الاجابة|الحل|Answer|Correct(?:\s*Answer)?)\s*[:=-]\s*(.+)/i;
-  const tfHintRe = /\((?:\s*(?:صح|خطأ|غلط|True|False)\s*[\/|،,-]\s*(?:صح|خطأ|غلط|True|False)\s*)\)/i;
+  const tfHintRe = /\((?:\s*(?:صح|خطأ|غلط|True|False)\s*(?:\/|\||،|,|-)\s*(?:صح|خطأ|غلط|True|False)\s*)\)/i;
 
   const flushCurrent = () => {
     if (!current || !current.stem || current.stem.length < 6) {

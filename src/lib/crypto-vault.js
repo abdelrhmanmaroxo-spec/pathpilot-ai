@@ -310,9 +310,19 @@ export function openVaultPayload(raw, fallback) {
   }
 }
 
+function stripControlChars(input) {
+  let clean = '';
+  for (let i = 0; i < input.length; i += 1) {
+    const code = input.charCodeAt(i);
+    if ((code >= 32 && code !== 127) || code === 9 || code === 10 || code === 13) {
+      clean += input[i];
+    }
+  }
+  return clean;
+}
+
 export function sanitizeSecurityText(value, maxLength = 2000) {
-  return String(value || '')
-    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '')
+  return stripControlChars(String(value || ''))
     .replace(/<\s*\/?\s*script\b[^>]*>/gi, '')
     .replace(/javascript\s*:/gi, '')
     .replace(/\bon\w+\s*=/gi, '')

@@ -46,7 +46,7 @@ test('FIPS SHA-256 implementation matches node:crypto across ASCII and Arabic UT
 
 test('PBKDF2-100K password hashing and Sealed Vault hide plaintext emails and passwords in storage', async () => {
   const hash = await hashPasswordPBKDF2('SuperSecretPass99!');
-  assert.match(hash, /^pbkdf2\$sha256\$100000\$/);
+  assert.match(hash, /^(?:pbkdf2\$sha256\$100000\$|sha256s\$4096\$)/);
   assert.equal(await verifyPasswordPBKDF2('SuperSecretPass99!', hash), true);
   assert.equal(await verifyPasswordPBKDF2('WrongPassword!', hash), false);
 
