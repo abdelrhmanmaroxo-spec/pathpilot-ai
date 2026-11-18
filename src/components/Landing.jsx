@@ -35,6 +35,7 @@ export default function Landing({ onSelect, onInstall, language: propLanguage })
             <button className="button button-primary" type="button" onClick={() => onSelect('chat')}>
               <MessageSquareText size={18} /> {en ? 'Open Live Chat & Voice' : 'افتح الشات الحي والصوت'} <ArrowLeft size={18} />
             </button>
+            <button className="button button-secondary" type="button" onClick={() => onSelect('exam')}>{en ? 'Interactive Exam' : 'الامتحان التفاعلي'}</button>
             <button className="button button-secondary" type="button" onClick={() => onSelect('study')}>الدراسة</button>
             <button className="button button-secondary" type="button" onClick={() => onSelect('work')}>العمل</button>
             <button className="button button-secondary" type="button" onClick={() => onSelect('general')}>اسأل أي حاجة</button>

@@ -20,7 +20,6 @@ import {
 } from 'lucide-react';
 import { getDocumentLanguage, subscribeLanguageChanges } from '../lib/language-state.js';
 import {
-  DEFAULT_OWNER_EMAIL,
   DEFAULT_SUPPORT_EMAIL,
   createSupportTicket,
   getFreeCloudConfig,
@@ -542,8 +541,8 @@ export default function SupportCenterModal({ open, onClose, user, initialTab = '
                 <BadgeCheck size={18} />
                 <span>
                   {en
-                    ? `Owner Verified (${DEFAULT_OWNER_EMAIL}) — Zero-Cost Cloud & Automatic Mailer (${supportEmail}) without Railway!`
-                    : `حساب المالك مُفعل (${DEFAULT_OWNER_EMAIL}) — تشغيل مجاني 100% بدون Railway عبر بريد التطبيق (${supportEmail})!`}
+                    ? `Owner Verified (${user?.email || 'Owner'}) — Zero-Cost Cloud & Automatic Mailer (${supportEmail}) without Railway!`
+                    : `حساب المالك مُفعل (${user?.email || 'Owner'}) — تشغيل مجاني 100% بدون Railway عبر بريد التطبيق (${supportEmail})!`}
                 </span>
               </div>
               <p className="support-lead">

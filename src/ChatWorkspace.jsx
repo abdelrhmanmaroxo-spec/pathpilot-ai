@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowDown,
   ArrowUp,
+  BookOpenCheck,
   BrainCircuit,
   ChevronDown,
   Download,
@@ -553,7 +554,15 @@ export default function ChatWorkspace({ preferences, notify, language }) {
               className="chatgpt-pdf-shortcut"
               onClick={openSessionPdfBuilder}
             >
-              <FileDown size={15} /> {en ? 'Curriculum PDF Builder' : 'مصمم ملخص المنهج PDF'}
+              <FileDown size={15} /> {en ? 'Reading & Exam PDF Builder' : 'ملخص وكتاب القراءة PDF'}
+            </button>
+
+            <button
+              type="button"
+              className="chatgpt-pdf-shortcut"
+              onClick={() => { window.location.hash = '/exam'; }}
+            >
+              <BookOpenCheck size={15} /> {en ? 'Interactive Exam Studio' : 'خانة الامتحان التفاعلي'}
             </button>
 
             <button

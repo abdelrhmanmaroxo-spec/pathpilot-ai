@@ -4,6 +4,7 @@ import AdminDashboard from './AdminDashboard.jsx';
 import AuthDialog from './AuthDialog.jsx';
 import ChatWorkspace, { ChatDevelopmentNotice } from './ChatWorkspace.jsx';
 import CommandPalette from './components/CommandPalette.jsx';
+import ExamStudio from './ExamStudio.jsx';
 import Landing from './components/Landing.jsx';
 import { Footer, Header, InstallDialog } from './components/AppChrome.jsx';
 import Workspace from './Workspace.jsx';
@@ -26,7 +27,7 @@ import {
 
 function routeFromHash() {
   const route = window.location.hash.replace('#/', '').replace('#', '');
-  return ['chat', 'study', 'work', 'general', 'admin'].includes(route) ? route : null;
+  return ['chat', 'exam', 'study', 'work', 'general', 'admin'].includes(route) ? route : null;
 }
 
 export default function App() {
@@ -157,6 +158,8 @@ export default function App() {
         <Landing onSelect={selectMode} onInstall={() => setInstallOpen(true)} language={language} />
       ) : mode === 'admin' ? (
         <AdminDashboard user={user} onBack={() => { window.location.hash = ''; }} />
+      ) : mode === 'exam' ? (
+        <ExamStudio notify={setToast} />
       ) : mode === 'chat' ? (
         canUseExperimentalChat
           ? <ChatWorkspace preferences={preferences} notify={setToast} language={language} />

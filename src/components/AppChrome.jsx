@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import {
   BadgeCheck,
   BookOpen,
+  BookOpenCheck,
   BriefcaseBusiness,
   Check,
   Code2,
@@ -41,6 +42,10 @@ export function Brand({ compact = false }) {
 
 export function Header({ mode, onInstall, installed, online, user, onAccount, onLogout }) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [uiLanguage, setUiLanguage] = useState(() => getDocumentLanguage());
+  const en = uiLanguage === 'en';
+  useEffect(() => subscribeLanguageChanges(setUiLanguage), []);
+
   const navigate = (nextMode) => {
     window.location.hash = nextMode ? `/${nextMode}` : '';
     setMenuOpen(false);
@@ -53,8 +58,11 @@ export function Header({ mode, onInstall, installed, online, user, onAccount, on
         <nav className={menuOpen ? 'main-nav is-open' : 'main-nav'} aria-label="التنقل الرئيسي">
           <button className={!mode ? 'active' : ''} type="button" onClick={() => navigate(null)}><Home size={16} /> الرئيسية</button>
           <button className={mode === 'chat' ? 'active' : ''} type="button" onClick={() => navigate('chat')}><MessageSquareText size={16} /> Chat</button>
-          <button className={mode === 'general' ? 'active' : ''} type="button" onClick={() => navigate('general')}><Sparkles size={16} /> المساعد العام</button>
+          <button className={mode === 'exam' ? 'active exam-nav-tab' : 'exam-nav-tab'} type="button" onClick={() => navigate('exam')}>
+            <BookOpenCheck size={16} /> {en ? 'Interactive Exam' : 'الامتحان التفاعلي'}
+          </button>
           <button className={mode === 'study' ? 'active' : ''} type="button" onClick={() => navigate('study')}><GraduationCap size={16} /> الدراسة</button>
+          <button className={mode === 'general' ? 'active' : ''} type="button" onClick={() => navigate('general')}><Sparkles size={16} /> المساعد العام</button>
           <button className={mode === 'work' ? 'active' : ''} type="button" onClick={() => navigate('work')}><BriefcaseBusiness size={16} /> العمل</button>
           {user?.role === 'admin' && <button className={mode === 'admin' ? 'active' : ''} type="button" onClick={() => navigate('admin')}><ShieldCheck size={16} /> الإدارة</button>}
         </nav>
