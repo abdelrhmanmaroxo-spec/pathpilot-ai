@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   BadgeCheck,
   BookOpen,
@@ -7,6 +7,7 @@ import {
   Code2,
   Download,
   GraduationCap,
+  Headphones,
   History,
   Home,
   Link,
@@ -23,6 +24,7 @@ import {
   WifiOff,
   X,
 } from 'lucide-react';
+import { getDocumentLanguage, subscribeLanguageChanges } from '../lib/language-state.js';
 import { hasPlatformBackend } from '../lib/platform.js';
 
 export function Brand({ compact = false }) {
@@ -111,18 +113,29 @@ export function InstallDialog({ open, onClose, onInstall, canInstall, installed 
 }
 
 export function Footer() {
+  const [uiLanguage, setUiLanguage] = useState(() => getDocumentLanguage());
+  const en = uiLanguage === 'en';
+  useEffect(() => subscribeLanguageChanges(setUiLanguage), []);
   const base = import.meta.env.BASE_URL || '/';
+
   return (
     <footer className="site-footer">
       <div className="page-shell footer-inner">
         <div>
           <Brand />
           <p>مساعد عربي عام للدراسة والعمل والحياة اليومية، بطبقات AI حي ومحلي وموسوعة معرفية.</p>
-          <small className="built-by">Built by Abdelrhman Essam</small>
+          <small className="built-by">Built by Abdelrhman Essam · pathpilot.app00@gmail.com</small>
           <small className="security-privacy-notice">للأمان ومنع إساءة الاستخدام: قد يُسجّل عنوان IP وبيانات الجهاز الأساسية لمدة محدودة. لا يتم جمع GPS أو كلمات السر.</small>
         </div>
         <div className="footer-meta">
           <span>PathPilot BETA</span>
+          <button
+            type="button"
+            className="footer-support-trigger"
+            onClick={() => window.dispatchEvent(new CustomEvent('pathpilot:open-support', { detail: { tab: 'new' } }))}
+          >
+            <Headphones size={18} /> {en ? 'Support & Open Ticket' : 'الدعم الفني وفتح تيكت'}
+          </button>
           <a href={`${base}updates.html`}><History size={18} /> آخر التحديثات</a>
           <a href={`${base}guide.html`}><BookOpen size={18} /> دليل الاستخدام</a>
           <a href="https://github.com/abdelrhmanmaroxo-spec" target="_blank" rel="noreferrer"><Code2 size={18} /> GitHub</a>

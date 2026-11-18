@@ -3,6 +3,8 @@ import { createPortal } from 'react-dom';
 import {
   BadgeCheck,
   ChevronDown,
+  Crown,
+  Headphones,
   KeyRound,
   LogIn,
   LogOut,
@@ -10,14 +12,19 @@ import {
   RefreshCcw,
   Settings,
   ShieldCheck,
+  Sparkles,
   Star,
   UserRound,
   X,
 } from 'lucide-react';
 import AuthDialog from './AuthDialog.jsx';
+import SupportCenterModal from './components/SupportCenterModal.jsx';
+import { getDocumentLanguage, subscribeLanguageChanges } from './lib/language-state.js';
 import {
+  DEFAULT_SUPPORT_EMAIL,
   getCurrentUser,
   getPlatformStatus,
+  getSupportEmail,
   hasPlatformBackend,
   logoutAccount,
   requestPasswordReset,
@@ -35,7 +42,7 @@ function roleLabel(user) {
   return 'User';
 }
 
-function FeedbackDialog({ open, onClose }) {
+function FeedbackDialog({ open, onClose, en }) {
   const [rating, setRating] = useState(0);
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
@@ -46,11 +53,11 @@ function FeedbackDialog({ open, onClose }) {
   const submit = async (event) => {
     event.preventDefault();
     if (!rating) {
-      setNotice('اختار تقييم من 1 إلى 5 نجوم.');
+      setNotice(en ? 'Choose a rating from 1 to 5 stars.' : 'اختار تقييم من 1 إلى 5 نجوم.');
       return;
     }
     if (message.trim().length < 2) {
-      setNotice('اكتب ملاحظتك الأول.');
+      setNotice(en ? 'Write your feedback first.' : 'اكتب ملاحظتك الأول.');
       return;
     }
     setBusy(true);
@@ -62,11 +69,11 @@ function FeedbackDialog({ open, onClose }) {
         workspace: currentWorkspace(),
         tool: 'account-feedback',
       });
-      setNotice('تم إرسال ملاحظتك للإدارة. شكرًا ✨');
+      setNotice(en ? 'Feedback sent to administration. Thank you!' : 'تم إرسال ملاحظتك للإدارة. شكرًا ✨');
       setMessage('');
       setRating(0);
     } catch (error) {
-      setNotice(error.message || 'تعذر إرسال الملاحظة حاليًا.');
+      setNotice(error.message || (en ? 'Could not send feedback right now.' : 'تعذر إرسال الملاحظة حاليًا.'));
     } finally {
       setBusy(false);
     }
@@ -75,21 +82,21 @@ function FeedbackDialog({ open, onClose }) {
   return createPortal(
     <div className="account-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
       <section className="account-panel compact-panel" role="dialog" aria-modal="true" aria-labelledby="feedback-title">
-        <button className="account-panel-close" type="button" onClick={onClose} aria-label="إغلاق"><X size={19} /></button>
+        <button className="account-panel-close" type="button" onClick={onClose} aria-label={en ? 'Close' : 'إغلاق'}><X size={19} /></button>
         <div className="account-panel-icon"><MessageSquare /></div>
-        <h2 id="feedback-title">ابعت ملاحظتك</h2>
-        <p>الملاحظة بتوصل للوحة الإدارة عشان نعرف إيه اللي محتاج يتحسن.</p>
+        <h2 id="feedback-title">{en ? 'Send Feedback' : 'ابعت ملاحظتك'}</h2>
+        <p>{en ? 'Your note goes directly to the Admin Dashboard so we can improve.' : 'الملاحظة بتوصل للوحة الإدارة عشان نعرف إيه اللي محتاج يتحسن.'}</p>
         <form onSubmit={submit} className="feedback-form">
-          <div className="feedback-stars" aria-label="التقييم">
+          <div className="feedback-stars" aria-label={en ? 'Rating' : 'التقييم'}>
             {[1, 2, 3, 4, 5].map((value) => (
-              <button className={rating >= value ? 'active' : ''} type="button" key={value} onClick={() => setRating(value)} aria-label={`${value} من 5`}>
+              <button className={rating >= value ? 'active' : ''} type="button" key={value} onClick={() => setRating(value)} aria-label={`${value} / 5`}>
                 <Star size={21} />
               </button>
             ))}
           </div>
-          <textarea value={message} onChange={(event) => setMessage(event.target.value)} placeholder="اكتب اقتراح، مشكلة، أو أي ملاحظة…" maxLength={2000} rows={5} />
+          <textarea value={message} onChange={(event) => setMessage(event.target.value)} placeholder={en ? 'Write a suggestion, issue, or note…' : 'اكتب اقتراح، مشكلة، أو أي ملاحظة…'} maxLength={2000} rows={5} />
           {notice && <div className="account-notice"><BadgeCheck size={16} /> {notice}</div>}
-          <button className="button button-primary" type="submit" disabled={busy}>{busy ? 'جاري الإرسال…' : 'إرسال الملاحظة'}</button>
+          <button className="button button-primary" type="submit" disabled={busy}>{busy ? (en ? 'Sending…' : 'جاري الإرسال…') : (en ? 'Submit Feedback' : 'إرسال الملاحظة')}</button>
         </form>
       </section>
     </div>,
@@ -97,16 +104,17 @@ function FeedbackDialog({ open, onClose }) {
   );
 }
 
-function SettingsDialog({ open, onClose, user, status, onGoogle, onForgotPassword, resetNotice, resetBusy, onFeedback }) {
+function SettingsDialog({ open, onClose, user, status, onGoogle, onForgotPassword, resetNotice, resetBusy, onFeedback, onOpenSupport, en }) {
   if (!open) return null;
+  const supportEmail = getSupportEmail() || DEFAULT_SUPPORT_EMAIL;
 
   return createPortal(
     <div className="account-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
       <section className="account-panel" role="dialog" aria-modal="true" aria-labelledby="settings-title">
-        <button className="account-panel-close" type="button" onClick={onClose} aria-label="إغلاق"><X size={19} /></button>
+        <button className="account-panel-close" type="button" onClick={onClose} aria-label={en ? 'Close' : 'إغلاق'}><X size={19} /></button>
         <div className="account-panel-heading">
           <div className="account-panel-icon"><Settings /></div>
-          <div><span>PATHPILOT ACCOUNT</span><h2 id="settings-title">الإعدادات</h2></div>
+          <div><span>PATHPILOT ACCOUNT</span><h2 id="settings-title">{en ? 'Settings' : 'الإعدادات'}</h2></div>
         </div>
 
         {user && (
@@ -119,18 +127,38 @@ function SettingsDialog({ open, onClose, user, status, onGoogle, onForgotPasswor
 
         <div className="settings-list">
           <div className="settings-row">
-            <div><strong><span className="google-g small">G</span> تسجيل الدخول بحساب Google</strong><small>{status?.googleAuthAvailable ? 'Google Sign-In جاهز على PathPilot.' : 'Google Sign-In يحتاج إعداد Google Client ID أولًا.'}</small></div>
-            <button className="button button-ghost" type="button" onClick={onGoogle} disabled={!status?.googleAuthAvailable}>{user ? 'تبديل / متابعة' : 'متابعة'}</button>
+            <div>
+              <strong><Headphones size={17} /> {en ? 'Support Tickets & Messaging' : 'تذاكر الدعم الفني والمراسلة'}</strong>
+              <small>{en ? `Open a ticket or message ${supportEmail}` : `افتح تيكت للدعم أو تواصل عبر ${supportEmail}`}</small>
+            </div>
+            <button className="button button-primary" type="button" onClick={() => { onClose(); onOpenSupport('new'); }}>
+              {en ? 'Open Support' : 'فتح الدعم'}
+            </button>
           </div>
-          {user?.email && (
+          {user?.isOwner && (
             <div className="settings-row">
-              <div><strong><KeyRound size={17} /> نسيت كلمة المرور؟</strong><small>هنبعت رابط إعادة تعيين على البريد المسجل.</small></div>
-              <button className="button button-ghost" type="button" onClick={onForgotPassword} disabled={resetBusy}>{resetBusy ? 'جاري الإرسال…' : 'إرسال الرابط'}</button>
+              <div>
+                <strong><Sparkles size={17} /> {en ? '100% Free Gmail Mailer Bridge' : 'ربط بريد التطبيق المجاني (بدون Railway)'}</strong>
+                <small>{en ? 'Connect pathpilot.app00@gmail.com automatic OTP & Ticket emails' : 'تفعيل الإرسال التلقائي للأكواد والتذاكر من pathpilot.app00@gmail.com مجانًا'}</small>
+              </div>
+              <button className="button button-ghost" type="button" onClick={() => { onClose(); onOpenSupport('cloud'); }}>
+                {en ? 'Configure' : 'ضبط الربط'}
+              </button>
             </div>
           )}
           <div className="settings-row">
-            <div><strong><MessageSquare size={17} /> الملاحظات</strong><small>اقتراح أو مشكلة تتبعت مباشرة للوحة الإدارة.</small></div>
-            <button className="button button-ghost" type="button" onClick={onFeedback}>إرسال ملاحظة</button>
+            <div><strong><span className="google-g small">G</span> {en ? 'Sign in with Google' : 'تسجيل الدخول بحساب Google'}</strong><small>{status?.googleAuthAvailable ? (en ? 'Google Sign-In is ready.' : 'Google Sign-In جاهز على PathPilot.') : (en ? 'Use email + 6-digit verification code for free.' : 'متاح التسجيل المجاني بالبريد وكود التفعيل السداسي.')}</small></div>
+            <button className="button button-ghost" type="button" onClick={onGoogle} disabled={!status?.googleAuthAvailable}>{user ? (en ? 'Switch' : 'تبديل / متابعة') : (en ? 'Continue' : 'متابعة')}</button>
+          </div>
+          {user?.email && (
+            <div className="settings-row">
+              <div><strong><KeyRound size={17} /> {en ? 'Forgot password?' : 'نسيت كلمة المرور؟'}</strong><small>{en ? 'Send a reset code to your registered email.' : 'هنبعت كود إعادة تعيين على البريد المسجل.'}</small></div>
+              <button className="button button-ghost" type="button" onClick={onForgotPassword} disabled={resetBusy}>{resetBusy ? (en ? 'Sending…' : 'جاري الإرسال…') : (en ? 'Send Code' : 'إرسال الكود')}</button>
+            </div>
+          )}
+          <div className="settings-row">
+            <div><strong><MessageSquare size={17} /> {en ? 'Quick Feedback' : 'الملاحظات'}</strong><small>{en ? 'Send a quick rating or suggestion.' : 'اقتراح أو ملاحظة سريعة للوحة الإدارة.'}</small></div>
+            <button className="button button-ghost" type="button" onClick={onFeedback}>{en ? 'Send Feedback' : 'إرسال ملاحظة'}</button>
           </div>
         </div>
         {resetNotice && <div className="account-notice"><BadgeCheck size={16} /> {resetNotice}</div>}
@@ -141,15 +169,36 @@ function SettingsDialog({ open, onClose, user, status, onGoogle, onForgotPasswor
 }
 
 export default function AccountExperience() {
+  const [uiLanguage, setUiLanguage] = useState(() => getDocumentLanguage());
+  const en = uiLanguage === 'en';
   const [user, setUser] = useState(null);
   const [status, setStatus] = useState(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [supportOpen, setSupportOpen] = useState(false);
+  const [supportTab, setSupportTab] = useState('new');
   const [authOpen, setAuthOpen] = useState(false);
   const [resetBusy, setResetBusy] = useState(false);
   const [resetNotice, setResetNotice] = useState('');
   const [targets, setTargets] = useState({ header: null, hero: null });
+
+  useEffect(() => subscribeLanguageChanges(setUiLanguage), []);
+
+  useEffect(() => {
+    const onOpenSupportEvent = (event) => {
+      const requestedTab = event?.detail?.tab || 'new';
+      setSupportTab(requestedTab);
+      setSupportOpen(true);
+    };
+    const onOpenAuthEvent = () => setAuthOpen(true);
+    window.addEventListener('pathpilot:open-support', onOpenSupportEvent);
+    window.addEventListener('pathpilot:open-auth', onOpenAuthEvent);
+    return () => {
+      window.removeEventListener('pathpilot:open-support', onOpenSupportEvent);
+      window.removeEventListener('pathpilot:open-auth', onOpenAuthEvent);
+    };
+  }, []);
 
   useEffect(() => {
     if (!hasPlatformBackend) return undefined;
@@ -185,6 +234,12 @@ export default function AccountExperience() {
 
   if (!hasPlatformBackend) return null;
 
+  const openSupport = (initialTab = 'new') => {
+    setMenuOpen(false);
+    setSupportTab(initialTab);
+    setSupportOpen(true);
+  };
+
   const handleLogout = async () => {
     setMenuOpen(false);
     await logoutAccount();
@@ -211,9 +266,9 @@ export default function AccountExperience() {
     setResetNotice('');
     try {
       await requestPasswordReset(user.email);
-      setResetNotice('لو الحساب مؤهل، اتبعت رابط إعادة تعيين للبريد. راجع Inbox وSpam.');
+      setResetNotice(en ? 'Reset code sent! Use Forgot Password in Sign In to apply it.' : 'تم إصدار كود الاستعادة! افتح نسيت كلمة المرور لإدخاله.');
     } catch (error) {
-      setResetNotice(error.message || 'تعذر إرسال رابط إعادة التعيين.');
+      setResetNotice(error.message || (en ? 'Could not send reset code.' : 'تعذر إرسال كود إعادة التعيين.'));
     } finally {
       setResetBusy(false);
     }
@@ -221,7 +276,7 @@ export default function AccountExperience() {
 
   const openGoogle = () => {
     if (!status?.googleAuthAvailable) {
-      setResetNotice('Google Sign-In لسه محتاج GOOGLE_CLIENT_ID في إعدادات السيرفر.');
+      setResetNotice(en ? 'Google Sign-In requires GOOGLE_CLIENT_ID.' : 'Google Sign-In يحتاج إعداد GOOGLE_CLIENT_ID أولًا.');
       return;
     }
     setSettingsOpen(false);
@@ -231,16 +286,25 @@ export default function AccountExperience() {
 
   const headerPortal = targets.header ? createPortal(
     <>
-      <button className="feedback-header-button" type="button" onClick={() => setFeedbackOpen(true)} title="إرسال ملاحظة" aria-label="إرسال ملاحظة">
+      <button
+        className="support-header-button"
+        type="button"
+        onClick={() => openSupport(user?.isOwner ? 'admin' : 'new')}
+        title={en ? 'Support & Tickets' : 'الدعم الفني وفتح تيكت'}
+      >
+        <Headphones size={15} />
+        <span>{en ? 'Support' : 'الدعم'}</span>
+      </button>
+      <button className="feedback-header-button" type="button" onClick={() => setFeedbackOpen(true)} title={en ? 'Send feedback' : 'إرسال ملاحظة'} aria-label={en ? 'Send feedback' : 'إرسال ملاحظة'}>
         <MessageSquare size={16} />
       </button>
       {!user ? (
-        <button className="account-center-login" type="button" onClick={() => setAuthOpen(true)}><LogIn size={16} /> دخول</button>
+        <button className="account-center-login" type="button" onClick={() => setAuthOpen(true)}><LogIn size={16} /> {en ? 'Sign In' : 'دخول'}</button>
       ) : (
         <div className="account-center-slot">
           <button className="account-center-trigger" type="button" onClick={() => setMenuOpen((open) => !open)} aria-expanded={menuOpen}>
             <UserRound size={16} />
-            <span>{user.name?.split(' ')[0] || 'حسابي'}</span>
+            <span>{user.name?.split(' ')[0] || (en ? 'Account' : 'حسابي')}</span>
             <ChevronDown size={14} />
           </button>
           {menuOpen && (
@@ -250,12 +314,21 @@ export default function AccountExperience() {
                 <div><strong>{user.name}</strong><small>{user.email}</small></div>
                 <span className="account-role">{roleLabel(user)}</span>
               </div>
-              <button type="button" onClick={() => { setMenuOpen(false); setSettingsOpen(true); }}><Settings size={17} /><span><strong>الإعدادات</strong><small>الحساب وGoogle والأمان</small></span></button>
-              <button type="button" onClick={handleSwitchAccount}><RefreshCcw size={17} /><span><strong>تبديل الحساب</strong><small>سجّل بحساب مختلف</small></span></button>
-              <button type="button" onClick={() => { setMenuOpen(false); setSettingsOpen(true); window.setTimeout(handleForgotPassword, 0); }}><KeyRound size={17} /><span><strong>نسيت كلمة المرور؟</strong><small>إرسال رابط للبريد</small></span></button>
-              <button type="button" onClick={() => { setMenuOpen(false); setFeedbackOpen(true); }}><MessageSquare size={17} /><span><strong>إرسال ملاحظة</strong><small>اقتراح أو مشكلة</small></span></button>
+              {(user.role === 'admin' || user.isOwner) && (
+                <button type="button" onClick={() => { setMenuOpen(false); window.location.hash = '#/admin'; }}>
+                  <Crown size={17} />
+                  <span><strong>{en ? 'Owner & Admin Panel' : 'لوحة المالك والإدارة'}</strong><small>{en ? 'Manage users & support tickets' : 'إدارة المستخدمين وتذاكر الدعم'}</small></span>
+                </button>
+              )}
+              <button type="button" onClick={() => openSupport(user.isOwner ? 'admin' : 'new')}>
+                <Headphones size={17} />
+                <span><strong>{en ? 'Support & Tickets' : 'الدعم الفني وتذاكر المساعدة'}</strong><small>{en ? 'Open a ticket or view replies' : 'فتح تيكت أو متابعة المحادثات'}</small></span>
+              </button>
+              <button type="button" onClick={() => { setMenuOpen(false); setSettingsOpen(true); }}><Settings size={17} /><span><strong>{en ? 'Settings' : 'الإعدادات'}</strong><small>{en ? 'Account, Free Mail & Security' : 'الحساب والبريد المجاني والأمان'}</small></span></button>
+              <button type="button" onClick={handleSwitchAccount}><RefreshCcw size={17} /><span><strong>{en ? 'Switch Account' : 'تبديل الحساب'}</strong><small>{en ? 'Sign in with another email' : 'سجّل بحساب مختلف'}</small></span></button>
+              <button type="button" onClick={() => { setMenuOpen(false); setFeedbackOpen(true); }}><MessageSquare size={17} /><span><strong>{en ? 'Send Feedback' : 'إرسال ملاحظة'}</strong><small>{en ? 'Suggestion or quick rating' : 'اقتراح أو تقييم سريع'}</small></span></button>
               <div className="account-menu-separator" />
-              <button className="danger" type="button" onClick={handleLogout}><LogOut size={17} /><span><strong>تسجيل الخروج</strong><small>إنهاء الجلسة الحالية</small></span></button>
+              <button className="danger" type="button" onClick={handleLogout}><LogOut size={17} /><span><strong>{en ? 'Sign Out' : 'تسجيل الخروج'}</strong><small>{en ? 'End current session' : 'إنهاء الجلسة الحالية'}</small></span></button>
             </div>
           )}
         </div>
@@ -267,7 +340,7 @@ export default function AccountExperience() {
   const googleHeroPortal = !user && status?.googleAuthAvailable && targets.hero ? createPortal(
     <button className="google-continue-button" type="button" onClick={() => setAuthOpen(true)}>
       <span className="google-g">G</span>
-      متابعة باستخدام Google
+      {en ? 'Continue with Google' : 'متابعة باستخدام Google'}
     </button>,
     targets.hero,
   ) : null;
@@ -286,8 +359,16 @@ export default function AccountExperience() {
         resetNotice={resetNotice}
         resetBusy={resetBusy}
         onFeedback={() => { setSettingsOpen(false); setFeedbackOpen(true); }}
+        onOpenSupport={openSupport}
+        en={en}
       />
-      <FeedbackDialog open={feedbackOpen} onClose={() => setFeedbackOpen(false)} />
+      <SupportCenterModal
+        open={supportOpen}
+        onClose={() => setSupportOpen(false)}
+        user={user}
+        initialTab={supportTab}
+      />
+      <FeedbackDialog open={feedbackOpen} onClose={() => setFeedbackOpen(false)} en={en} />
       <AuthDialog open={authOpen} onClose={() => setAuthOpen(false)} onAuthenticated={handleAuthenticated} />
     </>
   );

@@ -1,6 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AlertTriangle, CheckCircle2, KeyRound, LogIn, MailCheck, UserPlus, X } from 'lucide-react';
-import { getPlatformStatus, loginAccount, loginWithGoogleCredential, registerAccount, requestPasswordReset, resendVerification } from './lib/platform.js';
+import { AlertTriangle, CheckCircle2, KeyRound, LogIn, MailCheck, ShieldCheck, UserPlus, X } from 'lucide-react';
+import { getDocumentLanguage, subscribeLanguageChanges } from './lib/language-state.js';
+import {
+  DEFAULT_SUPPORT_EMAIL,
+  getPlatformStatus,
+  getSupportEmail,
+  loginAccount,
+  loginWithGoogleCredential,
+  registerAccount,
+  requestPasswordReset,
+  resendVerification,
+  resetPasswordWithOtpCode,
+  verifyAccountEmailCode,
+} from './lib/platform.js';
 
 let googleScriptPromise;
 
@@ -44,8 +56,17 @@ export function DirectDbAuthOption({ onAuthenticate }) {
 }
 
 export default function AuthDialog({ open, onClose, onAuthenticated }) {
+  const [uiLanguage, setUiLanguage] = useState(() => getDocumentLanguage());
+  const en = uiLanguage === 'en';
+  const supportEmail = getSupportEmail() || DEFAULT_SUPPORT_EMAIL;
+
   const [view, setView] = useState('login');
   const [form, setForm] = useState({ name: '', email: '', password: '' });
+  const [otpCode, setOtpCode] = useState('');
+  const [instantOtpHint, setInstantOtpHint] = useState('');
+  const [resetCode, setResetCode] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [resetCompleted, setResetCompleted] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [verificationEmail, setVerificationEmail] = useState('');
@@ -55,16 +76,23 @@ export default function AuthDialog({ open, onClose, onAuthenticated }) {
   const [resetSent, setResetSent] = useState(false);
   const googleButtonRef = useRef(null);
 
+  useEffect(() => subscribeLanguageChanges(setUiLanguage), []);
+
   const resetVerificationState = useCallback(() => {
     setVerificationEmail('');
     setVerificationPending(false);
     setDeliveryMode('');
+    setOtpCode('');
+    setInstantOtpHint('');
     setResent(false);
   }, []);
 
   const closeDialog = useCallback(() => {
     resetVerificationState();
     setResetSent(false);
+    setResetCode('');
+    setNewPassword('');
+    setResetCompleted(false);
     setError('');
     setLoading(false);
     setView('login');
@@ -125,6 +153,7 @@ export default function AuthDialog({ open, onClose, onAuthenticated }) {
           setVerificationEmail(result.email || form.email);
           setVerificationPending(Boolean(result.deliveryPending));
           setDeliveryMode(result.deliveryMode || '');
+          setInstantOtpHint(result.instantOtpCode || '');
           return;
         }
       } else {
@@ -145,6 +174,23 @@ export default function AuthDialog({ open, onClose, onAuthenticated }) {
     }
   };
 
+  const submitOtpVerification = async (event) => {
+    event.preventDefault();
+    setLoading(true);
+    setError('');
+    try {
+      const result = await verifyAccountEmailCode({ email: verificationEmail, code: otpCode });
+      if (result.user) {
+        onAuthenticated(result.user);
+        closeDialog();
+      }
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const resend = async () => {
     setLoading(true);
     setError('');
@@ -153,7 +199,8 @@ export default function AuthDialog({ open, onClose, onAuthenticated }) {
       const result = await resendVerification(verificationEmail);
       setVerificationPending(Boolean(result.deliveryPending));
       setDeliveryMode(result.deliveryMode || deliveryMode);
-      setResent(!result.deliveryPending);
+      setInstantOtpHint(result.instantOtpCode || '');
+      setResent(true);
     } catch (requestError) {
       setError(requestError.message);
     } finally {
@@ -166,9 +213,31 @@ export default function AuthDialog({ open, onClose, onAuthenticated }) {
     setLoading(true);
     setError('');
     setResetSent(false);
+    setResetCompleted(false);
     try {
-      await requestPasswordReset(form.email);
+      const result = await requestPasswordReset(form.email);
+      setInstantOtpHint(result?.instantOtpCode || '');
       setResetSent(true);
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const completeOtpPasswordReset = async (event) => {
+    event.preventDefault();
+    setLoading(true);
+    setError('');
+    try {
+      await resetPasswordWithOtpCode({
+        email: form.email,
+        code: resetCode,
+        newPassword,
+      });
+      setResetCompleted(true);
+      setResetSent(false);
+      setInstantOtpHint('');
     } catch (requestError) {
       setError(requestError.message);
     } finally {
@@ -179,65 +248,125 @@ export default function AuthDialog({ open, onClose, onAuthenticated }) {
   return (
     <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closeDialog(); }}>
       <section className="auth-dialog" role="dialog" aria-modal="true" aria-labelledby="auth-title">
-        <button className="dialog-close" type="button" onClick={closeDialog} aria-label="إغلاق"><X size={20} /></button>
+        <button className="dialog-close" type="button" onClick={closeDialog} aria-label={en ? 'Close' : 'إغلاق'}><X size={20} /></button>
 
         {verificationEmail ? (
-          <div style={{ textAlign: 'center', padding: '18px 6px 8px' }}>
-            <MailCheck size={46} style={{ margin: '0 auto 12px' }} />
-            <h2 id="auth-title">الحساب اتعمل ومستني التفعيل</h2>
-            {verificationPending ? (
-              <>
-                <p>حساب <strong>{verificationEmail}</strong> محفوظ بالفعل، لكن مزود البريد لم يسلّم رسالة التفعيل في المحاولة الحالية.</p>
-                <div className="auth-error" style={{ borderColor: 'rgba(245,158,11,.5)' }}>
-                  <AlertTriangle size={17} />
-                  {deliveryMode === 'sandbox'
-                    ? 'الإرسال حاليًا في وضع Resend التجريبي. الحساب لن يُحذف ويمكن إعادة المحاولة.'
-                    : deliveryMode === 'gmail-smtp'
-                      ? 'الحساب آمن ومعلّق فقط، لكن Gmail لم يؤكد تسليم رسالة التفعيل في هذه المحاولة. راجع إعدادات البريد ثم اضغط إعادة الإرسال.'
-                      : 'الحساب آمن ومعلّق فقط. اضغط إعادة الإرسال لاحقًا، ولن تحتاج لإنشاء الحساب من جديد.'}
+          <div style={{ textAlign: 'center', padding: '14px 6px 8px' }}>
+            <MailCheck size={44} style={{ margin: '0 auto 10px' }} />
+            <h2 id="auth-title">{en ? 'Verify your email with the 6-digit code' : 'تفعيل الحساب بكود البريد الإلكتروني'}</h2>
+            <p>
+              {en ? 'We sent a 6-digit verification code from' : 'تم إصدار كود تفعيل من بريد المنصة'}
+              {' '}
+              <strong>{supportEmail}</strong>
+              {' '}
+              {en ? 'to' : 'إلى'}
+              {' '}
+              <strong>{verificationEmail}</strong>.
+            </p>
+
+            {verificationPending && instantOtpHint ? (
+              <div className="auth-error" style={{ borderColor: 'rgba(99,102,241,.55)', textAlign: 'start' }}>
+                <ShieldCheck size={18} />
+                <div>
+                  <div>{en ? 'Instant Activation Code (Free Local Mode — connect Google Apps Script in Owner settings for automatic Gmail delivery):' : 'كود التفعيل الفوري (لتفعيل الإرسال التلقائي عبر الجيميل اربط سكربت Google Apps Script المجاني من إعدادات المالك):'}</div>
+                  <strong style={{ fontSize: 22, letterSpacing: 6, display: 'inline-block', marginTop: 4 }}>{instantOtpHint}</strong>
                 </div>
-              </>
+              </div>
             ) : (
-              <>
-                <p>أرسلنا رابط تفعيل إلى <strong>{verificationEmail}</strong>. افتح الرسالة واضغط Verify email، وبعدها ارجع وسجل دخولك.</p>
-                <div className="auth-error" style={{ borderColor: 'rgba(245,158,11,.45)' }}>
-                  <AlertTriangle size={17} />
-                  لو الرسالة مش ظاهرة في Inbox، راجع Spam / Junk / Promotions وابحث عن <strong>PathPilot</strong> أو <strong>pathpilot.app00@gmail.com</strong>. لو لقيتها في Spam اختار Not spam أو Move to inbox عشان الرسائل الجاية توصل طبيعي.
-                </div>
-              </>
+              <div className="auth-error" style={{ borderColor: 'rgba(245,158,11,.45)' }}>
+                <AlertTriangle size={17} />
+                <span>
+                  {en
+                    ? `Check your Inbox, Spam, or Promotions for ${supportEmail} and enter the 6-digit code below.`
+                    : `افتح البريد الوارد أو Spam / Promotions وابحث عن ${supportEmail} ثم اكتب الكود المكون من 6 أرقام بالأسفل.`}
+                </span>
+              </div>
             )}
-            {resent && <div className="auth-error" style={{ borderColor: 'rgba(34,197,94,.45)' }}><CheckCircle2 size={17} /> تم إرسال رابط جديد. راجع Inbox وSpam وPromotions.</div>}
-            {error && <div className="auth-error">{error}</div>}
-            <button className="button button-primary" type="button" onClick={resend} disabled={loading}><MailCheck size={18} /> {loading ? 'جاري الإرسال…' : 'إعادة إرسال رابط التفعيل'}</button>
-            <button className="button button-ghost" type="button" style={{ marginTop: 10 }} onClick={() => { resetVerificationState(); setView('login'); setError(''); }}>العودة لتسجيل الدخول</button>
+
+            <form onSubmit={submitOtpVerification} style={{ marginTop: 14, textAlign: 'start' }}>
+              <label>
+                <span>{en ? '6-Digit Verification Code' : 'كود التفعيل (6 أرقام)'}</span>
+                <input
+                  required
+                  inputMode="numeric"
+                  pattern="\d{6}"
+                  maxLength={6}
+                  value={otpCode}
+                  onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                  placeholder="123456"
+                  style={{ textAlign: 'center', fontSize: '1.35rem', letterSpacing: '0.45em', fontWeight: 800 }}
+                />
+              </label>
+              {resent && <div className="auth-error" style={{ borderColor: 'rgba(34,197,94,.45)' }}><CheckCircle2 size={17} /> {en ? 'A fresh 6-digit code has been generated!' : 'تم إرسال كود تفعيل جديد مكون من 6 أرقام!'}</div>}
+              {error && <div className="auth-error">{error}</div>}
+              <button className="button button-primary" type="submit" disabled={loading || otpCode.length !== 6}>
+                <CheckCircle2 size={18} /> {loading ? (en ? 'Verifying…' : 'جاري التفعيل…') : (en ? 'Verify & Sign In Now' : 'تأكيد الكود وتفعيل الحساب الآن')}
+              </button>
+            </form>
+
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap', marginTop: 10 }}>
+              <button className="button button-ghost" type="button" onClick={resend} disabled={loading}>
+                <MailCheck size={16} /> {en ? 'Resend Code' : 'إعادة إرسال الكود'}
+              </button>
+              <button className="button button-ghost" type="button" onClick={() => { resetVerificationState(); setView('login'); setError(''); }}>
+                {en ? 'Back to Sign In' : 'العودة لتسجيل الدخول'}
+              </button>
+            </div>
           </div>
         ) : view === 'forgot' ? (
           <div style={{ paddingTop: 10 }}>
             <KeyRound size={42} style={{ marginBottom: 10 }} />
-            <h2 id="auth-title">إعادة تعيين كلمة المرور</h2>
-            <p>اكتب البريد المرتبط بحسابك. لو الحساب موجود ومؤهل، هنرسل له رابط Reset صالح لمدة 30 دقيقة.</p>
-            <form onSubmit={forgotPassword}>
-              <label><span>البريد الإلكتروني</span><input required type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} autoComplete="email" /></label>
-              {resetSent && <div className="auth-error" style={{ borderColor: 'rgba(34,197,94,.45)' }}><CheckCircle2 size={17} /> لو البريد مرتبط بحساب، تم إرسال رابط إعادة التعيين. راجع Inbox وSpam وJunk وPromotions وابحث عن PathPilot.</div>}
-              {error && <div className="auth-error">{error}</div>}
-              <button className="button button-primary" type="submit" disabled={loading}><MailCheck size={18} /> {loading ? 'جاري الإرسال…' : resetSent ? 'إرسال رابط آخر' : 'إرسال رابط إعادة التعيين'}</button>
-              <button className="button button-ghost" type="button" style={{ marginTop: 10 }} onClick={() => { setView('login'); setResetSent(false); setError(''); }}>العودة لتسجيل الدخول</button>
-            </form>
+            <h2 id="auth-title">{en ? 'Reset Password' : 'إعادة تعيين كلمة المرور'}</h2>
+            <p>{en ? 'Enter your account email to receive a 6-digit reset code valid for 30 minutes.' : 'اكتب البريد المرتبط بحسابك لاستلام كود استعادة مكون من 6 أرقام صالح لمدة 30 دقيقة.'}</p>
+
+            {!resetSent ? (
+              <form onSubmit={forgotPassword}>
+                <label><span>{en ? 'Email Address' : 'البريد الإلكتروني'}</span><input required type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} autoComplete="email" /></label>
+                {resetCompleted && <div className="auth-error" style={{ borderColor: 'rgba(34,197,94,.45)' }}><CheckCircle2 size={17} /> {en ? 'Password updated! You can sign in now.' : 'تم تحديث كلمة المرور بنجاح! يمكنك تسجيل الدخول الآن.'}</div>}
+                {error && <div className="auth-error">{error}</div>}
+                <button className="button button-primary" type="submit" disabled={loading}><MailCheck size={18} /> {loading ? (en ? 'Sending…' : 'جاري الإرسال…') : (en ? 'Send 6-Digit Reset Code' : 'إرسال كود الاستعادة')}</button>
+                <button className="button button-ghost" type="button" style={{ marginTop: 10 }} onClick={() => { setView('login'); setResetSent(false); setError(''); }}>{en ? 'Back to Sign In' : 'العودة لتسجيل الدخول'}</button>
+              </form>
+            ) : (
+              <form onSubmit={completeOtpPasswordReset}>
+                {instantOtpHint && (
+                  <div className="auth-error" style={{ borderColor: 'rgba(99,102,241,.55)' }}>
+                    <ShieldCheck size={17} />
+                    <span>{en ? 'Reset Code:' : 'كود الاستعادة الفوري:'} <strong>{instantOtpHint}</strong></span>
+                  </div>
+                )}
+                <label>
+                  <span>{en ? '6-Digit Reset Code' : 'كود الاستعادة (6 أرقام)'}</span>
+                  <input required inputMode="numeric" maxLength={6} value={resetCode} onChange={(e) => setResetCode(e.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="123456" />
+                </label>
+                <label>
+                  <span>{en ? 'New Password' : 'كلمة المرور الجديدة'}</span>
+                  <input required type="password" minLength={8} maxLength={128} value={newPassword} onChange={(e) => setNewPassword(e.target.value)} autoComplete="new-password" />
+                </label>
+                {error && <div className="auth-error">{error}</div>}
+                <button className="button button-primary" type="submit" disabled={loading || resetCode.length !== 6}>
+                  <CheckCircle2 size={18} /> {loading ? (en ? 'Updating…' : 'جاري التحديث…') : (en ? 'Confirm New Password' : 'حفظ كلمة المرور الجديدة')}
+                </button>
+                <button className="button button-ghost" type="button" style={{ marginTop: 10 }} onClick={() => { setView('login'); setResetSent(false); setError(''); }}>{en ? 'Back to Sign In' : 'العودة لتسجيل الدخول'}</button>
+              </form>
+            )}
           </div>
         ) : (
           <>
-            <div className="auth-tabs"><button className={view === 'login' ? 'active' : ''} type="button" onClick={() => setView('login')}>تسجيل الدخول</button><button className={view === 'register' ? 'active' : ''} type="button" onClick={() => setView('register')}>حساب جديد</button></div>
-            <h2 id="auth-title">{view === 'login' ? 'أهلًا بعودتك.' : 'أنشئ حساب PathPilot.'}</h2>
-            <p>{view === 'register' ? 'بعد إنشاء الحساب ستحتاج لتأكيد بريدك الإلكتروني قبل أول تسجيل دخول.' : 'الحساب يحفظ نشاطك في المنصة ويفتح المزايا المتصلة بالخادم.'}</p>
-            <div ref={googleButtonRef} style={{ minHeight: 44, display: 'flex', justifyContent: 'center', margin: '14px 0' }} />
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, opacity: 0.7, margin: '10px 0' }}><span style={{ height: 1, background: 'currentColor', flex: 1 }} /><small>أو بالبريد الإلكتروني</small><span style={{ height: 1, background: 'currentColor', flex: 1 }} /></div>
+            <div className="auth-tabs">
+              <button className={view === 'login' ? 'active' : ''} type="button" onClick={() => setView('login')}>{en ? 'Sign In' : 'تسجيل الدخول'}</button>
+              <button className={view === 'register' ? 'active' : ''} type="button" onClick={() => setView('register')}>{en ? 'Create Account' : 'حساب جديد'}</button>
+            </div>
+            <h2 id="auth-title">{view === 'login' ? (en ? 'Welcome back.' : 'أهلًا بعودتك.') : (en ? 'Create your PathPilot account.' : 'أنشئ حساب PathPilot.')}</h2>
+            <p>{view === 'register' ? (en ? 'We will send a 6-digit verification code to your email to activate your account.' : 'سنرسل كود تفعيل مكونًا من 6 أرقام إلى بريدك الإلكتروني لتأكيد حسابك فورًا.') : (en ? 'Sign in to sync your activity, manage support tickets, and unlock full features.' : 'الحساب يحفظ نشاطك ويتيح لك فتح ومتابعة تذاكر الدعم والمزايا الكاملة.')}</p>
+            <div ref={googleButtonRef} style={{ minHeight: 10, display: 'flex', justifyContent: 'center', margin: '8px 0' }} />
             <form onSubmit={submit}>
-              {view === 'register' && <label><span>الاسم</span><input required minLength={2} maxLength={60} value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} autoComplete="name" /></label>}
-              <label><span>البريد الإلكتروني</span><input required type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} autoComplete="email" /></label>
-              <label><span>كلمة المرور</span><input required type="password" minLength={8} maxLength={128} value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} autoComplete={view === 'login' ? 'current-password' : 'new-password'} /></label>
-              {view === 'login' && <button type="button" className="button button-ghost" style={{ paddingInline: 0, justifyContent: 'flex-start', marginTop: -4 }} onClick={() => { setView('forgot'); setError(''); setResetSent(false); }}>نسيت كلمة المرور؟</button>}
+              {view === 'register' && <label><span>{en ? 'Full Name' : 'الاسم'}</span><input required minLength={2} maxLength={60} value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} autoComplete="name" /></label>}
+              <label><span>{en ? 'Email Address' : 'البريد الإلكتروني'}</span><input required type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} autoComplete="email" /></label>
+              <label><span>{en ? 'Password' : 'كلمة المرور'}</span><input required type="password" minLength={8} maxLength={128} value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} autoComplete={view === 'login' ? 'current-password' : 'new-password'} /></label>
+              {view === 'login' && <button type="button" className="button button-ghost" style={{ paddingInline: 0, justifyContent: 'flex-start', marginTop: -4 }} onClick={() => { setView('forgot'); setError(''); setResetSent(false); }}>{en ? 'Forgot password?' : 'نسيت كلمة المرور؟'}</button>}
               {error && <div className="auth-error">{error}</div>}
-              <button className="button button-primary" type="submit" disabled={loading}>{view === 'login' ? <LogIn size={18} /> : <UserPlus size={18} />} {loading ? 'جاري التنفيذ…' : view === 'login' ? 'دخول' : 'إنشاء الحساب'}</button>
+              <button className="button button-primary" type="submit" disabled={loading}>{view === 'login' ? <LogIn size={18} /> : <UserPlus size={18} />} {loading ? (en ? 'Working…' : 'جاري التنفيذ…') : view === 'login' ? (en ? 'Sign In' : 'دخول') : (en ? 'Create Account & Send Code' : 'إنشاء الحساب وإرسال الكود')}</button>
             </form>
           </>
         )}

@@ -7,6 +7,7 @@ import AdminErrors from './AdminErrors.jsx';
 import AdminFeedback from './AdminFeedback.jsx';
 import AdminOwnerLog from './AdminOwnerLog.jsx';
 import AdminSecurity from './AdminSecurity.jsx';
+import AdminSupportTickets from './AdminSupportTickets.jsx';
 import AdminSystemStatus from './AdminSystemStatus.jsx';
 import AdminUsers from './AdminUsers.jsx';
 
@@ -22,7 +23,7 @@ export default function AdminDashboardView({ user, onBack, controller }) {
   return (
     <main className="admin-page page-shell">
       <header className="admin-header">
-        <div><span>PATHPILOT CONTROL CENTER</span><h1>PathPilot Admin</h1><p>بيانات حقيقية من المستخدمين والطلبات، من دون أرقام تجريبية.</p></div>
+        <div><span>PATHPILOT CONTROL CENTER</span><h1>PathPilot Admin</h1><p>بيانات حقيقية من المستخدمين وتذاكر الدعم والطلبات، من دون اشتراكات مدفوعة.</p></div>
         <div>
           <button type="button" onClick={onBack}>العودة للتطبيق</button>
           {user?.isOwner && <button type="button" onClick={exportBackup} disabled={backupBusy}><Download size={16} /> {backupBusy ? 'Exporting…' : 'Owner Export'}</button>}
@@ -30,13 +31,21 @@ export default function AdminDashboardView({ user, onBack, controller }) {
         </div>
       </header>
 
-      {user?.isOwner && <div className="admin-error" style={{ borderColor: 'rgba(255,215,64,.35)', color: 'inherit' }}><Crown /> أنت مالك المنصة. إدارة المديرين، Reset Password، حذف الحسابات وOwner Account Log متاحة لك فقط. الـAdmin يقدر يعمل Ban/Unban للمستخدمين العاديين فقط، ولا يقدر يوقف Owner أو Admin آخر.</div>}
+      {user?.isOwner && <div className="admin-error" style={{ borderColor: 'rgba(255,215,64,.35)', color: 'inherit' }}><Crown /> أنت مالك المنصة ({user.email}). إدارة المديرين، تذاكر الدعم والمراسلة، Reset Password، حذف الحسابات وOwner Account Log متاحة لك بالكامل.</div>}
       {notice && <div className="admin-error" style={{ borderColor: 'rgba(34,197,94,.35)', color: 'inherit' }}><CheckCircle2 /> {notice}</div>}
       {error && <div className="admin-error"><AlertTriangle /> {error}</div>}
 
       <AdminAnalytics data={data} percentages={percentages} bannedCount={bannedUsers.length} showBreakdown={tab === 'analytics'} />
       <AdminSystemStatus status={data?.status} />
       <nav className="admin-tabs" aria-label="Admin sections">{tabs.map(([id, label]) => <button className={tab === id ? 'active' : ''} type="button" key={id} onClick={() => setTab(id)}>{label}</button>)}</nav>
+
+      {tab === 'tickets' && (
+        <AdminSupportTickets
+          user={user}
+          tickets={data?.tickets || []}
+          onRefresh={refresh}
+        />
+      )}
 
       {tab === 'users' && (
         <AdminUsers

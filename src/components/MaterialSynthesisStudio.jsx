@@ -19,9 +19,11 @@ import {
 } from '../lib/material-intelligence.js';
 import CurriculumPdfModal from './CurriculumPdfModal.jsx';
 
+let sourceItemSequence = 3;
 function newSourceItem(title = '', content = '') {
+  sourceItemSequence += 1;
   return {
-    id: globalThis.crypto?.randomUUID?.() || `src-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    id: globalThis.crypto?.randomUUID?.() || `src-item-${sourceItemSequence}`,
     title,
     content,
   };
@@ -40,9 +42,9 @@ export default function MaterialSynthesisStudio({
   const en = language === 'en';
   const [open, setOpen] = useState(!compact);
   const [pdfModalOpen, setPdfModalOpen] = useState(false);
-  const [materials, setMaterials] = useState([
-    newSourceItem(en ? 'Unit / Lecture 1' : 'الوحدة / المحاضرة 1', ''),
-    newSourceItem(en ? 'Unit / Lecture 2' : 'الوحدة / المحاضرة 2', ''),
+  const [materials, setMaterials] = useState(() => [
+    { id: 'src-item-1', title: en ? 'Unit / Lecture 1' : 'الوحدة / المحاضرة 1', content: '' },
+    { id: 'src-item-2', title: en ? 'Unit / Lecture 2' : 'الوحدة / المحاضرة 2', content: '' },
   ]);
   const [customFocus, setCustomFocus] = useState('');
   const [dragActive, setDragActive] = useState(false);

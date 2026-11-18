@@ -6,6 +6,7 @@ import {
   ChevronDown,
   Download,
   FileDown,
+  Headphones,
   Globe2,
   Layers3,
   LoaderCircle,
@@ -227,8 +228,6 @@ export default function ChatWorkspace({ preferences, notify, language }) {
     if (pinnedRef.current) {
       const vp = streamViewportRef.current;
       if (vp) vp.scrollTop = vp.scrollHeight;
-    } else {
-      setUnreadBelow(true);
     }
   }, [loading, streamingTurn?.answer, visibleTurns.length]);
 
@@ -477,7 +476,7 @@ export default function ChatWorkspace({ preferences, notify, language }) {
       setStreamingTurn(null);
       setVoiceInputUsed(false);
       setSources(Array.isArray(result.sources) ? result.sources : []);
-    } catch (error) {
+    } catch {
       if (controller.signal.aborted || runToken !== runTokenRef.current) return;
       if (!streamedAnswer && extraMeta.localPreview) {
         appendInstantTurn(text, extraMeta.localPreview, computedTrace);
@@ -554,6 +553,14 @@ export default function ChatWorkspace({ preferences, notify, language }) {
               onClick={openSessionPdfBuilder}
             >
               <FileDown size={15} /> {en ? 'Curriculum PDF Builder' : 'مصمم ملخص المنهج PDF'}
+            </button>
+
+            <button
+              type="button"
+              className="chatgpt-support-shortcut"
+              onClick={() => window.dispatchEvent(new CustomEvent('pathpilot:open-support', { detail: { tab: 'new' } }))}
+            >
+              <Headphones size={15} /> {en ? 'Support & Open Ticket' : 'الدعم الفني وفتح تيكت'}
             </button>
 
             <label className="chat-sidebar-search">

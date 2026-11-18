@@ -1,5 +1,6 @@
 const BASE_ADMIN_TABS = Object.freeze([
   ['analytics', 'Analytics'],
+  ['tickets', 'Support Tickets'],
   ['users', 'Users'],
   ['security', 'Security & Login Log'],
   ['api', 'API Usage'],
