@@ -1,3 +1,11 @@
+# Changelog
+
+## [4.0.0] — PathPilot AI Pro Platform Upgrade
+- **Custom Curriculum PDF Summary Studio (`CurriculumPdfModal` + `pdf-curriculum-exporter`)**: Export publication-grade A4 PDF curriculum summaries tailored to user preferences (Comprehensive, Exam-Night Capsule, Cornell Two-Column System, or Exam Q&A Master Bank) with selectable sections, color themes, and Arabic RTL / English LTR layouts.
+- **Full Bidirectional AR ⇄ EN Live Content Translation (`live-content-translator`)**: Switching page language translates both the UI and all generated Chat & Workspace replies, titles, and reasoning traces in both directions while preserving Markdown and code blocks.
+- **ChatGPT-Class Independent Chat Shell (`ChatWorkspace` + `chat-experience.css`)**: Single-viewport app shell with collapsible sidebar, independent smooth message stream, wheel-unlock scroll freedom during live streaming, message jump outline, collapsible long prompts, and docked auto-expanding composer.
+- **Multi-Material Merger, Deep Thinking & Pro Voice Studio**: Drag-and-drop multi-lecture synthesis without repetition, structured reasoning traces, Web Audio mic waveform, hands-free live voice chat, and sentence-chunked natural TTS reader.
+
 # PathPilot Changelog
 
 This file tracks product changes that matter to users. Internal refactors are included only when they improve reliability, speed, safety, or future maintainability.
