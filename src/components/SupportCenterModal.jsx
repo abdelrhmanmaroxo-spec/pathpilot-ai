@@ -1,20 +1,16 @@
 import { useCallback, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  BadgeCheck,
   CheckCircle2,
   Clock,
   Copy,
   ExternalLink,
   Headphones,
-  Inbox,
-  Link2,
   Mail,
   MessageSquarePlus,
   RefreshCw,
   Send,
   ShieldCheck,
-  Sparkles,
   Ticket,
   X,
 } from 'lucide-react';
@@ -22,13 +18,9 @@ import { getDocumentLanguage, subscribeLanguageChanges } from '../lib/language-s
 import {
   DEFAULT_SUPPORT_EMAIL,
   createSupportTicket,
-  getFreeCloudConfig,
   getSupportEmail,
   listSupportTickets,
   replySupportTicket,
-  saveFreeCloudConfig,
-  testFreeCloudBridge,
-  updateSupportTicketStatus,
 } from '../lib/platform.js';
 
 function statusBadgeMeta(status, en) {
@@ -51,10 +43,10 @@ function categoryLabel(category, en) {
 export default function SupportCenterModal({ open, onClose, user, initialTab = 'new' }) {
   const [uiLanguage, setUiLanguage] = useState(() => getDocumentLanguage());
   const en = uiLanguage === 'en';
-  const isStaff = Boolean(user && (user.role === 'admin' || user.isOwner));
   const supportEmail = getSupportEmail() || DEFAULT_SUPPORT_EMAIL;
 
-  const [tab, setTab] = useState(initialTab);
+  const safeInitialTab = ['new', 'mine', 'direct'].includes(initialTab) ? initialTab : 'new';
+  const [tab, setTab] = useState(safeInitialTab);
   const [form, setForm] = useState({
     name: user?.name || '',
     email: user?.email || '',
@@ -66,38 +58,26 @@ export default function SupportCenterModal({ open, onClose, user, initialTab = '
   const [lookupEmail, setLookupEmail] = useState(user?.email || '');
   const [lookupTicketId, setLookupTicketId] = useState('');
   const [myTickets, setMyTickets] = useState([]);
-  const [allTickets, setAllTickets] = useState([]);
   const [selectedTicket, setSelectedTicket] = useState(null);
   const [replyText, setReplyText] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
   const [copied, setCopied] = useState(false);
 
-  // Free Cloud Bridge Settings (Owner only)
-  const [cloudCfg, setCloudCfg] = useState(() => getFreeCloudConfig());
-  const [bridgeTestBusy, setBridgeTestBusy] = useState(false);
-  const [bridgeNotice, setBridgeNotice] = useState('');
-
   useEffect(() => subscribeLanguageChanges(setUiLanguage), []);
 
   const loadTickets = useCallback(async (targetEmail = '') => {
     const effectiveEmail = targetEmail || user?.email || lookupEmail;
+    if (!effectiveEmail) return;
     try {
-      if (effectiveEmail) {
-        const list = await listSupportTickets({ email: effectiveEmail, ticketId: lookupTicketId });
-        setMyTickets(list);
-        setSelectedTicket((prev) => (prev ? list.find((t) => t.id === prev.id) || list[0] || null : list[0] || null));
-      }
-      if (isStaff) {
-        const adminList = await listSupportTickets({ includeAll: true });
-        setAllTickets(adminList);
-      }
+      const list = await listSupportTickets({ email: effectiveEmail, ticketId: lookupTicketId });
+      setMyTickets(list);
+      setSelectedTicket((prev) => (prev ? list.find((t) => t.id === prev.id) || list[0] || null : list[0] || null));
     } catch {
       // Keep current ticket view if offline
     }
-  }, [isStaff, lookupEmail, lookupTicketId, user?.email]);
+  }, [lookupEmail, lookupTicketId, user?.email]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -110,7 +90,6 @@ export default function SupportCenterModal({ open, onClose, user, initialTab = '
         email: user?.email || prev.email,
       }));
       if (user?.email) setLookupEmail(user.email);
-      setCloudCfg(getFreeCloudConfig());
       loadTickets(user?.email || '');
     });
     return () => { active = false; };
@@ -132,8 +111,8 @@ export default function SupportCenterModal({ open, onClose, user, initialTab = '
       setForm((prev) => ({ ...prev, subject: '', message: '' }));
       setNotice(
         en
-          ? `Ticket #${created.id} created! You can track replies right here or via ${supportEmail}.`
-          : `تم فتح التذكرة رقم #${created.id} بنجاح! يمكنك متابعة الردود مباشرة هنا أو عبر بريدك.`,
+          ? `Ticket #${created.id} submitted successfully. Our support team will respond shortly.`
+          : `تم تسجيل تذكرتك رقم #${created.id} بنجاح، وسيقوم فريق الدعم بالرد عليك في أقرب وقت.`,
       );
       setTab('mine');
     } catch (err) {
@@ -159,25 +138,11 @@ export default function SupportCenterModal({ open, onClose, user, initialTab = '
       setReplyText('');
       setSelectedTicket(result.ticket);
       await loadTickets(lookupEmail);
-      setNotice(
-        result.emailDelivered
-          ? (en ? 'Reply sent in-app and delivered by email!' : 'تم إرسال الرد داخل المنصة وإشعار البريد تلقائيًا!')
-          : (en ? 'Reply saved in ticket conversation!' : 'تم إرسال الرد وحفظه في محادثة التذكرة!'),
-      );
+      setNotice(en ? 'Your reply has been sent to support.' : 'تم إرسال رسالتك إلى فريق الدعم بنجاح.');
     } catch (err) {
       setError(err?.message || (en ? 'Failed to send reply.' : 'تعذر إرسال الرد.'));
     } finally {
       setBusy(false);
-    }
-  };
-
-  const handleStatusChange = async (ticketId, nextStatus) => {
-    try {
-      const updated = await updateSupportTicketStatus(ticketId, nextStatus);
-      setSelectedTicket(updated);
-      await loadTickets(lookupEmail);
-    } catch (err) {
-      setError(err?.message || 'Status update failed.');
     }
   };
 
@@ -186,37 +151,6 @@ export default function SupportCenterModal({ open, onClose, user, initialTab = '
     setCopied(true);
     window.setTimeout(() => setCopied(false), 1800);
   };
-
-  const handleSaveCloudConfig = async (event) => {
-    event.preventDefault();
-    const saved = saveFreeCloudConfig({
-      bridgeUrl: cloudCfg.bridgeUrl,
-      geminiApiKey: cloudCfg.geminiApiKey,
-      geminiModel: cloudCfg.geminiModel,
-    });
-    setCloudCfg(saved);
-    setBridgeNotice(
-      en
-        ? 'Free Cloud settings saved! Testing connection...'
-        : 'تم حفظ إعدادات الربط المجاني! جاري اختبار الاتصال ببريد التطبيق...',
-    );
-    if (saved.bridgeUrl) {
-      setBridgeTestBusy(true);
-      const ping = await testFreeCloudBridge();
-      setBridgeTestBusy(false);
-      setBridgeNotice(
-        ping.ok
-          ? (en ? `Connected live to ${supportEmail} Free Mailer!` : `تم الاتصال بنجاح ببريد التطبيق المجاني (${supportEmail})!`)
-          : (en ? 'Saved URL, but ping failed. Check Web App access = Anyone.' : 'تم حفظ الرابط، لكن تعذر الاتصال. تأكد أن صلاحية Web App في Google Script مضبوطة على Anyone.'),
-      );
-    } else {
-      setBridgeNotice(en ? 'Settings saved locally.' : 'تم حفظ الإعدادات بنجاح.');
-    }
-  };
-
-  const activeList = tab === 'admin'
-    ? allTickets.filter((t) => (statusFilter === 'all' ? true : t.status === statusFilter))
-    : myTickets;
 
   return createPortal(
     <div
@@ -229,8 +163,8 @@ export default function SupportCenterModal({ open, onClose, user, initialTab = '
           <div className="support-header-brand">
             <span className="support-header-icon"><Headphones size={22} /></span>
             <div>
-              <span className="support-kicker">PATHPILOT SUPPORT & TICKETS</span>
-              <h2 id="support-center-title">{en ? 'Support Center & Live Ticket Desk' : 'مركز الدعم الفني وتذاكر المساعدة'}</h2>
+              <span className="support-kicker">PATHPILOT SUPPORT</span>
+              <h2 id="support-center-title">{en ? 'Help & Support Center' : 'مركز المساعدة والدعم الفني'}</h2>
             </div>
           </div>
           <button className="account-panel-close" type="button" onClick={onClose} aria-label={en ? 'Close' : 'إغلاق'}>
@@ -241,28 +175,16 @@ export default function SupportCenterModal({ open, onClose, user, initialTab = '
         <nav className="support-tabs">
           <button type="button" className={tab === 'new' ? 'active' : ''} onClick={() => { setTab('new'); setError(''); setNotice(''); }}>
             <MessageSquarePlus size={16} />
-            <span>{en ? 'Open New Ticket' : 'فتح تيكت جديد'}</span>
+            <span>{en ? 'Open New Ticket' : 'فتح تذكرة جديدة'}</span>
           </button>
           <button type="button" className={tab === 'mine' ? 'active' : ''} onClick={() => { setTab('mine'); loadTickets(); }}>
             <Ticket size={16} />
-            <span>{en ? 'My Tickets & Replies' : 'تذاكري والمراسلات'} ({myTickets.length})</span>
+            <span>{en ? 'My Tickets' : 'تذاكري ومتابعة الردود'} ({myTickets.length})</span>
           </button>
           <button type="button" className={tab === 'direct' ? 'active' : ''} onClick={() => setTab('direct')}>
             <Mail size={16} />
-            <span>{en ? 'Direct Email' : 'مراسلة البريد الرسمي'}</span>
+            <span>{en ? 'Contact Email' : 'البريد الرسمي للدعم'}</span>
           </button>
-          {isStaff && (
-            <button type="button" className={tab === 'admin' ? 'active owner-tab-btn' : 'owner-tab-btn'} onClick={() => { setTab('admin'); loadTickets(); }}>
-              <Inbox size={16} />
-              <span>{en ? 'Support Inbox (Owner)' : 'صندوق الإدارة والرد'} ({allTickets.length})</span>
-            </button>
-          )}
-          {user?.isOwner && (
-            <button type="button" className={tab === 'cloud' ? 'active owner-tab-btn' : 'owner-tab-btn'} onClick={() => setTab('cloud')}>
-              <Sparkles size={16} />
-              <span>{en ? 'Free Mail Bridge' : 'ربط البريد المجاني'}</span>
-            </button>
-          )}
         </nav>
 
         {notice && <div className="support-banner success"><CheckCircle2 size={17} /> <span>{notice}</span></div>}
@@ -273,8 +195,8 @@ export default function SupportCenterModal({ open, onClose, user, initialTab = '
             <form className="support-ticket-form" onSubmit={handleCreateTicket}>
               <p className="support-lead">
                 {en
-                  ? `Describe your issue or request below. A ticket ID will be generated immediately and routed to ${supportEmail}.`
-                  : `اشرح المشكلة أو طلبك بالأسفل، وسيتم إصدار رقم تذكرة فوري وإرساله لفريق الدعم عبر (${supportEmail}) مع إمكانية متابعة الردود هنا مباشرة.`}
+                  ? 'Tell us how we can help. You will receive a ticket number immediately to follow up on responses.'
+                  : 'اكتب تفاصيل استفسارك أو المشكلة التي تواجهك، وسيظهر لك رقم التذكرة فورًا لمتابعة رد فريق الدعم.'}
               </p>
               <div className="support-grid-2">
                 <label>
@@ -289,51 +211,51 @@ export default function SupportCenterModal({ open, onClose, user, initialTab = '
                   />
                 </label>
                 <label>
-                  <span>{en ? 'Your Email (for replies)' : 'بريدك الإلكتروني (لاستلام الرد)'}</span>
+                  <span>{en ? 'Your Email' : 'البريد الإلكتروني'}</span>
                   <input
                     required
                     type="email"
                     value={form.email}
                     onChange={(e) => setForm({ ...form, email: e.target.value })}
-                    placeholder="name@gmail.com"
+                    placeholder="name@example.com"
                   />
                 </label>
               </div>
 
               <div className="support-grid-2">
                 <label>
-                  <span>{en ? 'Category' : 'نوع المشكلة / الطلب'}</span>
+                  <span>{en ? 'Category' : 'القسم'}</span>
                   <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
-                    <option value="technical">{en ? 'Technical Issue' : 'مشكلة تقنية في المنصة'}</option>
-                    <option value="account">{en ? 'Account & Verification Code' : 'الحساب وكود التفعيل'}</option>
-                    <option value="suggestion">{en ? 'Feature Suggestion' : 'اقتراح ميزة أو تطوير'}</option>
-                    <option value="other">{en ? 'General Question' : 'استفسار عام'}</option>
+                    <option value="technical">{en ? 'Technical Issue' : 'مشكلة تقنية'}</option>
+                    <option value="account">{en ? 'Account & Sign-In' : 'الحساب وتسجيل الدخول'}</option>
+                    <option value="suggestion">{en ? 'Feature Request' : 'اقتراح تطوير'}</option>
+                    <option value="other">{en ? 'General Inquiry' : 'استفسار عام'}</option>
                   </select>
                 </label>
                 <label>
-                  <span>{en ? 'Priority' : 'الأهمية'}</span>
+                  <span>{en ? 'Priority' : 'الأولوية'}</span>
                   <select value={form.priority} onChange={(e) => setForm({ ...form, priority: e.target.value })}>
                     <option value="normal">{en ? 'Normal' : 'عادية'}</option>
-                    <option value="high">{en ? 'High' : 'مهمة'}</option>
+                    <option value="high">{en ? 'High' : 'مرتفعة'}</option>
                     <option value="urgent">{en ? 'Urgent' : 'عاجلة'}</option>
                   </select>
                 </label>
               </div>
 
               <label>
-                <span>{en ? 'Subject' : 'عنوان التذكرة'}</span>
+                <span>{en ? 'Subject' : 'عنوان الطلب'}</span>
                 <input
                   required
                   minLength={3}
                   maxLength={160}
                   value={form.subject}
                   onChange={(e) => setForm({ ...form, subject: e.target.value })}
-                  placeholder={en ? 'Brief summary of your issue...' : 'مثال: استفسار عن تفعيل الحساب أو ملخص PDF...'}
+                  placeholder={en ? 'Short summary of your request...' : 'ملخص سريع للموضوع...'}
                 />
               </label>
 
               <label>
-                <span>{en ? 'Details' : 'تفاصيل الرسالة'}</span>
+                <span>{en ? 'Message' : 'التفاصيل'}</span>
                 <textarea
                   required
                   minLength={5}
@@ -341,64 +263,49 @@ export default function SupportCenterModal({ open, onClose, user, initialTab = '
                   rows={5}
                   value={form.message}
                   onChange={(e) => setForm({ ...form, message: e.target.value })}
-                  placeholder={en ? 'Write all details so we can help quickly...' : 'اكتب كل التفاصيل هنا عشان نقدر نساعدك بأسرع وقت...'}
+                  placeholder={en ? 'Explain everything clearly so our team can assist you...' : 'اشرح التفاصيل هنا بوضوح لنتمكن من مساعدتك بأسرع وقت...'}
                 />
               </label>
 
               <div className="support-form-actions">
                 <button className="button button-primary" type="submit" disabled={busy}>
                   <Send size={16} />
-                  <span>{busy ? (en ? 'Submitting...' : 'جاري فتح التذكرة...') : (en ? 'Submit Support Ticket' : 'فتح التذكرة وإرسال للدعم')}</span>
+                  <span>{busy ? (en ? 'Sending...' : 'جاري الإرسال...') : (en ? 'Submit Ticket' : 'إرسال تذكرة الدعم')}</span>
                 </button>
               </div>
             </form>
           )}
 
-          {(tab === 'mine' || tab === 'admin') && (
+          {tab === 'mine' && (
             <div className="support-workspace">
               <aside className="support-ticket-sidebar">
-                {tab === 'mine' ? (
-                  <div className="support-lookup-box">
+                <div className="support-lookup-box">
+                  <input
+                    type="email"
+                    value={lookupEmail}
+                    onChange={(e) => setLookupEmail(e.target.value)}
+                    placeholder={en ? 'Your email address' : 'بريدك الإلكتروني لعرض تذاكرك'}
+                  />
+                  <div className="support-lookup-row">
                     <input
-                      type="email"
-                      value={lookupEmail}
-                      onChange={(e) => setLookupEmail(e.target.value)}
-                      placeholder={en ? 'Your email to find tickets' : 'بريدك الإلكتروني لعرض تذاكرك'}
+                      value={lookupTicketId}
+                      onChange={(e) => setLookupTicketId(e.target.value)}
+                      placeholder={en ? 'Ticket # (optional)' : 'رقم التذكرة (اختياري)'}
                     />
-                    <div className="support-lookup-row">
-                      <input
-                        value={lookupTicketId}
-                        onChange={(e) => setLookupTicketId(e.target.value)}
-                        placeholder={en ? 'Ticket # (optional)' : 'رقم التذكرة (اختياري)'}
-                      />
-                      <button className="button button-ghost" type="button" onClick={() => loadTickets(lookupEmail)}>
-                        <RefreshCw size={15} />
-                      </button>
-                    </div>
+                    <button className="button button-ghost" type="button" onClick={() => loadTickets(lookupEmail)}>
+                      <RefreshCw size={15} />
+                    </button>
                   </div>
-                ) : (
-                  <div className="support-filter-bar">
-                    {['all', 'open', 'in_progress', 'resolved'].map((st) => (
-                      <button
-                        key={st}
-                        type="button"
-                        className={statusFilter === st ? 'active' : ''}
-                        onClick={() => setStatusFilter(st)}
-                      >
-                        {st === 'all' ? (en ? 'All' : 'الكل') : statusBadgeMeta(st, en).label}
-                      </button>
-                    ))}
-                  </div>
-                )}
+                </div>
 
                 <div className="support-ticket-list">
-                  {activeList.length === 0 ? (
+                  {myTickets.length === 0 ? (
                     <div className="support-empty-list">
                       <Ticket size={28} />
-                      <p>{en ? 'No tickets found yet.' : 'لا توجد تذاكر مسجلة حاليًا.'}</p>
+                      <p>{en ? 'No tickets found yet.' : 'لا توجد تذاكر مسجلة لهذا البريد بعد.'}</p>
                     </div>
                   ) : (
-                    activeList.map((item) => {
+                    myTickets.map((item) => {
                       const badge = statusBadgeMeta(item.status, en);
                       return (
                         <button
@@ -412,7 +319,7 @@ export default function SupportCenterModal({ open, onClose, user, initialTab = '
                             <span className={`support-status-pill ${badge.cls}`}>{badge.label}</span>
                           </div>
                           <div className="support-ticket-subject">{item.subject}</div>
-                          <small>{item.requester_name} · {categoryLabel(item.category, en)}</small>
+                          <small>{categoryLabel(item.category, en)}</small>
                         </button>
                       );
                     })
@@ -424,8 +331,7 @@ export default function SupportCenterModal({ open, onClose, user, initialTab = '
                 {!selectedTicket ? (
                   <div className="support-empty-thread">
                     <Headphones size={36} />
-                    <h3>{en ? 'Select a ticket to view conversation' : 'اختر تذكرة لعرض المحادثة والردود'}</h3>
-                    <p>{en ? 'Or open a new ticket if you need assistance.' : 'أو اضغط (فتح تيكت جديد) لمراسلة الدعم الفني.'}</p>
+                    <h3>{en ? 'Select a ticket to view replies' : 'اختر تذكرة لعرض المحادثة والردود'}</h3>
                   </div>
                 ) : (
                   <>
@@ -439,22 +345,7 @@ export default function SupportCenterModal({ open, onClose, user, initialTab = '
                           <span>{categoryLabel(selectedTicket.category, en)}</span>
                         </div>
                         <h3>{selectedTicket.subject}</h3>
-                        <small>{selectedTicket.requester_name} ({selectedTicket.requester_email})</small>
                       </div>
-                      {isStaff && (
-                        <div className="support-staff-controls">
-                          <select
-                            value={selectedTicket.status}
-                            onChange={(e) => handleStatusChange(selectedTicket.id, e.target.value)}
-                            aria-label="Ticket status"
-                          >
-                            <option value="open">{en ? 'Open' : 'مفتوحة'}</option>
-                            <option value="in_progress">{en ? 'In Progress' : 'قيد المتابعة'}</option>
-                            <option value="resolved">{en ? 'Resolved' : 'تم الحل'}</option>
-                            <option value="closed">{en ? 'Closed' : 'مغلقة'}</option>
-                          </select>
-                        </div>
-                      )}
                     </div>
 
                     <div className="support-messages-scroll">
@@ -466,8 +357,7 @@ export default function SupportCenterModal({ open, onClose, user, initialTab = '
                               <strong>
                                 {fromSupport ? <ShieldCheck size={14} /> : null}
                                 {' '}
-                                {msg.sender_name}
-                                {fromSupport ? ` (${en ? 'Official Support' : 'الدعم الرسمي'})` : ''}
+                                {fromSupport ? (en ? 'PathPilot Support' : 'فريق دعم PathPilot') : msg.sender_name}
                               </strong>
                               <small><Clock size={12} /> {new Date(msg.created_at).toLocaleString(en ? 'en-US' : 'ar-EG')}</small>
                             </div>
@@ -483,15 +373,11 @@ export default function SupportCenterModal({ open, onClose, user, initialTab = '
                           rows={3}
                           value={replyText}
                           onChange={(e) => setReplyText(e.target.value)}
-                          placeholder={
-                            isStaff && tab === 'admin'
-                              ? (en ? `Write official support reply (auto-emails ${selectedTicket.requester_email})...` : `اكتب رد الدعم الرسمي (يُرسل للمحادثة ولبريد ${selectedTicket.requester_email})...`)
-                              : (en ? 'Write a follow-up message on this ticket...' : 'اكتب رسالة متابعة على هذه التذكرة...')
-                          }
+                          placeholder={en ? 'Write a reply...' : 'اكتب ردك أو رسالتك الإضافية...'}
                         />
                         <button className="button button-primary" type="submit" disabled={busy || !replyText.trim()}>
                           <Send size={16} />
-                          <span>{busy ? (en ? 'Sending...' : 'جاري الإرسال...') : (en ? 'Send Reply' : 'إرسال الرد')}</span>
+                          <span>{busy ? (en ? 'Sending...' : 'جاري الإرسال...') : (en ? 'Send Reply' : 'إرسال')}</span>
                         </button>
                       </form>
                     )}
@@ -504,11 +390,11 @@ export default function SupportCenterModal({ open, onClose, user, initialTab = '
           {tab === 'direct' && (
             <div className="support-direct-card">
               <div className="support-direct-badge"><Mail size={28} /></div>
-              <h3>{en ? 'Official PathPilot Support Mailbox' : 'البريد الرسمي لدعم منصة PathPilot AI'}</h3>
+              <h3>{en ? 'Official Support Email' : 'البريد الرسمي للدعم الفني'}</h3>
               <p>
                 {en
-                  ? 'You can message our support team directly by email or open an in-app ticket for structured tracking.'
-                  : 'يمكنك مراسلة فريق الدعم مباشرة عبر البريد الرسمي للتطبيق، أو فتح تذكرة من التبويب الأول لمتابعة حالة طلبك لحظة بلحظة.'}
+                  ? 'Reach out directly via email anytime or submit a ticket for faster structured follow-up.'
+                  : 'تواصل معنا مباشرة عبر البريد الرسمي في أي وقت، أو افتح تذكرة لمتابعة الردود مباشرة داخل المنصة.'}
               </p>
               <div className="support-email-pill">
                 <code>{supportEmail}</code>
@@ -525,7 +411,7 @@ export default function SupportCenterModal({ open, onClose, user, initialTab = '
                   rel="noreferrer"
                 >
                   <ExternalLink size={16} />
-                  <span>{en ? 'Compose in Gmail' : 'مراسلة عبر Gmail مباشرة'}</span>
+                  <span>{en ? 'Send via Gmail' : 'مراسلة عبر Gmail'}</span>
                 </a>
                 <a className="button button-ghost" href={`mailto:${supportEmail}?subject=${encodeURIComponent('PathPilot Support')}`}>
                   <Mail size={16} />
@@ -533,49 +419,6 @@ export default function SupportCenterModal({ open, onClose, user, initialTab = '
                 </a>
               </div>
             </div>
-          )}
-
-          {tab === 'cloud' && user?.isOwner && (
-            <form className="support-ticket-form" onSubmit={handleSaveCloudConfig}>
-              <div className="support-banner success">
-                <BadgeCheck size={18} />
-                <span>
-                  {en
-                    ? `Owner Verified (${user?.email || 'Owner'}) — Zero-Cost Cloud & Automatic Mailer (${supportEmail}) without Railway!`
-                    : `حساب المالك مُفعل (${user?.email || 'Owner'}) — تشغيل مجاني 100% بدون Railway عبر بريد التطبيق (${supportEmail})!`}
-                </span>
-              </div>
-              <p className="support-lead">
-                {en
-                  ? 'Paste your Google Apps Script Web App URL (deployed from pathpilot.app00@gmail.com using free-integrations/google-apps-script-cloud.gs) so signup OTP codes and ticket emails send automatically 100% free.'
-                  : 'الصق رابط Web App الخاص بـ Google Apps Script (من ملف free-integrations/google-apps-script-cloud.gs داخل حساب pathpilot.app00@gmail.com) ليقوم البريد بإرسال أكواد التفعيل والرد على التذاكر تلقائيًا ومجانًا بالكامل.'}
-              </p>
-              <label>
-                <span><Link2 size={15} /> {en ? 'Google Apps Script Web App URL (100% Free Mailer & Sheet DB)' : 'رابط Google Apps Script Web App (الإرسال التلقائي المجاني)'}</span>
-                <input
-                  type="url"
-                  value={cloudCfg.bridgeUrl}
-                  onChange={(e) => setCloudCfg({ ...cloudCfg, bridgeUrl: e.target.value })}
-                  placeholder="https://script.google.com/macros/s/.../exec"
-                />
-              </label>
-              <label>
-                <span>{en ? 'Optional Free Google AI Studio (Gemini) Key' : 'مفتاح Gemini المجاني من Google AI Studio (اختياري)'}</span>
-                <input
-                  type="password"
-                  value={cloudCfg.geminiApiKey}
-                  onChange={(e) => setCloudCfg({ ...cloudCfg, geminiApiKey: e.target.value })}
-                  placeholder="AIzaSy..."
-                />
-              </label>
-              {bridgeNotice && <div className="support-banner success"><span>{bridgeNotice}</span></div>}
-              <div className="support-form-actions">
-                <button className="button button-primary" type="submit" disabled={bridgeTestBusy}>
-                  <CheckCircle2 size={16} />
-                  <span>{bridgeTestBusy ? (en ? 'Testing...' : 'جاري الاختبار...') : (en ? 'Save & Test Free Mailer' : 'حفظ واختبار البريد المجاني')}</span>
-                </button>
-              </div>
-            </form>
           )}
         </div>
       </section>
