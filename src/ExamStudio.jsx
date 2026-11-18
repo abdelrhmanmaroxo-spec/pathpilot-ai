@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Award,
   BookOpenCheck,
@@ -44,27 +44,28 @@ export default function ExamStudio({ notify }) {
   const [answers, setAnswers] = useState({});
   const [flagged, setFlagged] = useState({});
   const [revealed, setRevealed] = useState({});
-  const [report, setReport] = useState(null);
+  const [manualReport, setReport] = useState(null);
   const [secondsLeft, setSecondsLeft] = useState(0);
 
   const fileInputRef = useRef(null);
 
   useEffect(() => subscribeLanguageChanges(setUiLanguage), []);
 
+  const report = useMemo(() => {
+    if (manualReport) return manualReport;
+    if (activeExam && deliveryStyle === 'timed-exam' && secondsLeft === 0) {
+      return gradeExamSubmission(activeExam, answers);
+    }
+    return null;
+  }, [activeExam, answers, deliveryStyle, manualReport, secondsLeft]);
+
   useEffect(() => {
-    if (!activeExam || report || deliveryStyle !== 'timed-exam' || secondsLeft <= 0) return undefined;
+    if (!activeExam || manualReport || deliveryStyle !== 'timed-exam' || secondsLeft <= 0) return undefined;
     const timer = window.setInterval(() => {
-      setSecondsLeft((prev) => {
-        if (prev <= 1) {
-          window.clearInterval(timer);
-          setReport(gradeExamSubmission(activeExam, answers));
-          return 0;
-        }
-        return prev - 1;
-      });
+      setSecondsLeft((prev) => (prev <= 1 ? 0 : prev - 1));
     }, 1000);
     return () => window.clearInterval(timer);
-  }, [activeExam, answers, deliveryStyle, report, secondsLeft]);
+  }, [activeExam, deliveryStyle, manualReport, secondsLeft]);
 
   const handleFileUpload = async (event) => {
     const file = event.target.files?.[0];
