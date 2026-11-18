@@ -248,7 +248,7 @@ function nextOrderedKeysFromPool() {
   const available = pool.keys.filter((k) => k.enabled && !k.isCoolingDown && k.status !== 'invalid');
   if (!available.length) return { ordered: [], preferredModel: pool.preferredModel };
 
-  let cursor = 0;
+  let cursor;
   try {
     cursor = Number(globalThis.localStorage?.getItem?.(POOL_CURSOR_KEY) || 0) || 0;
     globalThis.localStorage?.setItem?.(POOL_CURSOR_KEY, String((cursor + 1) % available.length));
