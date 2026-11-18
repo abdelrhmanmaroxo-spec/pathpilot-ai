@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import {
   BrainCircuit,
   BriefcaseBusiness,
@@ -5,6 +6,7 @@ import {
   Clock3,
   Copy,
   Download,
+  FileDown,
   GraduationCap,
   History,
   LoaderCircle,
@@ -17,6 +19,8 @@ import {
   UserRound,
 } from 'lucide-react';
 import { hasLiveAI, TOOL_LIBRARY } from '../lib/assistant.js';
+import { getDocumentLanguage, subscribeLanguageChanges } from '../lib/language-state.js';
+import { translateMarkdownSync } from '../lib/live-content-translator.js';
 import { supportsBrowserLLM } from '../lib/local-llm.js';
 import { TOOL_ICONS } from '../lib/tool-icons.js';
 import AIOrb from './AIOrb.jsx';
@@ -31,15 +35,14 @@ function sourceLabel(source) {
   return 'PathPilot Intelligence · Beta';
 }
 
-function isEnglish() {
-  return document.body?.dataset?.language === 'en';
-}
-
 export function ToolRail({ mode, selectedTool, onSelect }) {
+  const [lang, setLang] = useState(getDocumentLanguage);
+  useEffect(() => subscribeLanguageChanges(setLang), []);
+  const en = lang === 'en';
   return (
     <aside className="tool-rail">
       <div className="tool-rail-main">
-        <p className="rail-label">الأدوات</p>
+        <p className="rail-label">{en ? 'TOOLS' : 'الأدوات'}</p>
         {TOOL_LIBRARY[mode].map((tool) => {
           const Icon = TOOL_ICONS[tool.id];
           return (
@@ -56,8 +59,11 @@ export function ToolRail({ mode, selectedTool, onSelect }) {
   );
 }
 
-export function ResultCard({ answer, source, sources = [], processingSeconds, onCopy, onDownload, onShare, onRate, onRegenerate, feedbackEnabled, loading = false }) {
-  const en = isEnglish();
+export function ResultCard({ answer, source, sources = [], processingSeconds, onCopy, onDownload, onExportPdf, onShare, onRate, onRegenerate, feedbackEnabled, loading = false }) {
+  const [lang, setLang] = useState(getDocumentLanguage);
+  useEffect(() => subscribeLanguageChanges(setLang), []);
+  const en = lang === 'en';
+
   if (loading && !answer) {
     return (
       <section className="processing-card" aria-live="polite" aria-label={en ? 'PathPilot is processing your request' : 'PathPilot يعالج طلبك'}>
@@ -98,6 +104,17 @@ export function ResultCard({ answer, source, sources = [], processingSeconds, on
             <span className="response-time-badge"><Clock3 size={14} /> {en ? 'Completed in' : 'اكتمل خلال'} {Number(processingSeconds).toFixed(1)}s</span>
           )}
           <div className="result-actions">
+            {onExportPdf && (
+              <button
+                type="button"
+                className="result-pdf-btn"
+                onClick={onExportPdf}
+                title={en ? 'Export as Custom Curriculum PDF' : 'تصدير كملخص PDF مخصص'}
+                aria-label={en ? 'Export as Custom Curriculum PDF' : 'تصدير كملخص PDF مخصص'}
+              >
+                <FileDown size={16} />
+              </button>
+            )}
             {onRegenerate && <button type="button" onClick={onRegenerate} disabled={loading} title={en ? 'Regenerate answer' : 'إعادة إنشاء الإجابة'} aria-label={en ? 'Regenerate answer' : 'إعادة إنشاء الإجابة'}><RotateCcw size={17} /></button>}
             <button type="button" onClick={onCopy} title="نسخ النتيجة"><Copy size={17} /></button>
             <button type="button" onClick={onShare} title="مشاركة النتيجة"><Share2 size={17} /></button>
@@ -122,6 +139,9 @@ export function ResultCard({ answer, source, sources = [], processingSeconds, on
 }
 
 export function HistoryPanel({ items, onOpen, onClear }) {
+  const [lang, setLang] = useState(getDocumentLanguage);
+  useEffect(() => subscribeLanguageChanges(setLang), []);
+  const en = lang === 'en';
   return (
     <section className="history-panel">
       <div className="history-head">
@@ -137,7 +157,10 @@ export function HistoryPanel({ items, onOpen, onClear }) {
               <span className={`history-mode ${item.mode}`}>
                 {item.mode === 'study' ? <GraduationCap size={16} /> : item.mode === 'work' ? <BriefcaseBusiness size={16} /> : <Sparkles size={16} />}
               </span>
-              <span><strong>{item.prompt}</strong><small><Clock3 size={12} /> {new Date(item.createdAt).toLocaleDateString('ar-EG')}</small></span>
+              <span>
+                <strong>{translateMarkdownSync(item.prompt, en ? 'en' : 'ar')}</strong>
+                <small><Clock3 size={12} /> {new Date(item.createdAt).toLocaleDateString(en ? 'en-US' : 'ar-EG')}</small>
+              </span>
               <ChevronLeft size={16} />
             </button>
           ))}

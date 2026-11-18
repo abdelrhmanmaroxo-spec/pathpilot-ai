@@ -1,8 +1,6 @@
-import { BadgeCheck, Copy, ExternalLink, FileText, Globe2 } from 'lucide-react';
-
-function language() {
-  return document.body?.dataset?.language === 'en' ? 'en' : 'ar';
-}
+import { useEffect, useState } from 'react';
+import { BadgeCheck, Check, Copy, ExternalLink, FileText, Globe2 } from 'lucide-react';
+import { getDocumentLanguage, subscribeLanguageChanges } from '../lib/language-state.js';
 
 function safeExternalUrl(value) {
   try {
@@ -50,13 +48,30 @@ function InlineText({ value }) {
       const safe = safeExternalUrl(chunk);
       return safe ? <a key={`${safe}-${index}`} href={safe} target="_blank" rel="noopener noreferrer">{chunk}</a> : <span key={`${chunk}-${index}`}>{chunk}</span>;
     }
-    const bold = chunk.split(/(\*\*[^*]+\*\*)/g);
-    return bold.map((piece, pieceIndex) => (
-      /^\*\*[^*]+\*\*$/.test(piece)
-        ? <strong key={`${index}-${pieceIndex}`}>{piece.slice(2, -2)}</strong>
-        : <span key={`${index}-${pieceIndex}`}>{piece}</span>
-    ));
+    const tokens = chunk.split(/(\*\*[^*]+\*\*|`[^`]+`)/g);
+    return tokens.map((piece, pieceIndex) => {
+      if (/^\*\*[^*]+\*\*$/.test(piece)) {
+        return <strong key={`${index}-${pieceIndex}`}>{piece.slice(2, -2)}</strong>;
+      }
+      if (/^`[^`]+`$/.test(piece)) {
+        return <code className="inline-code-chip" key={`${index}-${pieceIndex}`}>{piece.slice(1, -1)}</code>;
+      }
+      return <span key={`${index}-${pieceIndex}`}>{piece}</span>;
+    });
   });
+}
+
+function parsePipeRow(line) {
+  return line
+    .trim()
+    .replace(/^\|/, '')
+    .replace(/\|$/, '')
+    .split('|')
+    .map((cell) => cell.trim());
+}
+
+function isTableSeparator(line) {
+  return /^\s*\|?(?:\s*:?-{3,}:?\s*\|)+\s*:?-{3,}:?\s*\|?\s*$/.test(line);
 }
 
 function TextBlock({ value }) {
@@ -64,6 +79,7 @@ function TextBlock({ value }) {
   const nodes = [];
   let list = [];
   let listType = '';
+  let tableBuffer = [];
 
   const flushList = () => {
     if (!list.length) return;
@@ -73,12 +89,55 @@ function TextBlock({ value }) {
     listType = '';
   };
 
+  const flushTable = () => {
+    if (!tableBuffer.length) return;
+    if (tableBuffer.length >= 2 && isTableSeparator(tableBuffer[1])) {
+      const headers = parsePipeRow(tableBuffer[0]);
+      const rows = tableBuffer.slice(2).map(parsePipeRow).filter((r) => r.some(Boolean));
+      nodes.push(
+        <div className="response-table-wrap" key={`tbl-${nodes.length}`}>
+          <table className="response-table">
+            <thead>
+              <tr>{headers.map((head, hIdx) => <th key={`th-${hIdx}`}><InlineText value={head} /></th>)}</tr>
+            </thead>
+            <tbody>
+              {rows.map((row, rIdx) => (
+                <tr key={`tr-${rIdx}`}>
+                  {headers.map((_, cIdx) => <td key={`td-${rIdx}-${cIdx}`}><InlineText value={row[cIdx] || ''} /></td>)}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>,
+      );
+    } else {
+      tableBuffer.forEach((rawLine, idx) => {
+        nodes.push(<p key={`tp-${nodes.length}-${idx}`}><InlineText value={rawLine.trim()} /></p>);
+      });
+    }
+    tableBuffer = [];
+  };
+
   lines.forEach((raw, index) => {
     const line = raw.trimEnd();
     if (!line.trim()) {
       flushList();
+      flushTable();
       return;
     }
+    if (line.includes('|') && /^\s*\|?.+\|.+\|?\s*$/.test(line)) {
+      flushList();
+      tableBuffer.push(line);
+      return;
+    }
+    flushTable();
+
+    if (/^\s*(?:---+|\*\*\*+)\s*$/.test(line)) {
+      flushList();
+      nodes.push(<hr className="response-divider" key={`hr-${index}`} />);
+      return;
+    }
+
     const ordered = line.match(/^\s*\d+[.)]\s+(.+)$/);
     const bullet = line.match(/^\s*[-*•]\s+(.+)$/);
     if (ordered || bullet) {
@@ -103,6 +162,7 @@ function TextBlock({ value }) {
     nodes.push(<p key={`p-${index}`}><InlineText value={line.trim()} /></p>);
   });
   flushList();
+  flushTable();
   return nodes;
 }
 
@@ -133,9 +193,11 @@ function sourceQuality(source, en) {
 }
 
 export function SourceList({ answer, sources = [] }) {
+  const [lang, setLang] = useState(getDocumentLanguage);
+  useEffect(() => subscribeLanguageChanges(setLang), []);
   const items = normalizeSources(answer, sources);
   if (!items.length) return null;
-  const en = language() === 'en';
+  const en = lang === 'en';
   return (
     <aside className="answer-sources" aria-label={en ? 'Sources' : 'المصادر'}>
       <div className="source-panel-heading">
@@ -164,8 +226,21 @@ export function SourceList({ answer, sources = [] }) {
 }
 
 export default function ResponseContent({ answer }) {
-  const en = language() === 'en';
-  const copyCode = async (value) => navigator.clipboard.writeText(value);
+  const [lang, setLang] = useState(getDocumentLanguage);
+  const [copiedIdx, setCopiedIdx] = useState(-1);
+  useEffect(() => subscribeLanguageChanges(setLang), []);
+  const en = lang === 'en';
+
+  const copyCode = async (value, idx) => {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopiedIdx(idx);
+      setTimeout(() => setCopiedIdx((c) => (c === idx ? -1 : c)), 1500);
+    } catch {
+      // Ignore restricted clipboard
+    }
+  };
+
   return (
     <div className="response-content">
       {splitBlocks(answer).map((block, index) => (
@@ -173,7 +248,9 @@ export default function ResponseContent({ answer }) {
           <section key={`code-${index}`} className="answer-code">
             <div className="answer-code-head">
               <small>{block.language || (en ? 'code' : 'كود')}</small>
-              <button type="button" onClick={() => copyCode(block.value)} title={en ? 'Copy code' : 'نسخ الكود'} aria-label={en ? 'Copy code' : 'نسخ الكود'}><Copy size={14} /></button>
+              <button type="button" onClick={() => copyCode(block.value, index)} title={en ? 'Copy code' : 'نسخ الكود'} aria-label={en ? 'Copy code' : 'نسخ الكود'}>
+                {copiedIdx === index ? <Check size={14} /> : <Copy size={14} />}
+              </button>
             </div>
             <pre><code>{block.value}</code></pre>
           </section>

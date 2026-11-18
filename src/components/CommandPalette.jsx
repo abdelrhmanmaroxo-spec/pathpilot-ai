@@ -8,6 +8,7 @@ import {
   History,
   Home,
   MessageSquare,
+  MessageSquareText,
   Search,
   Settings,
   ShieldCheck,
@@ -46,7 +47,7 @@ function goToPage(url) {
 
 const TOOL_ALIASES = {
   explain: 'explain explanation شرح مفهوم تبسيط lesson concept',
-  summarize: 'summary summarize تلخيص لخص notes ملاحظات',
+  summarize: 'summary summarize تلخيص لخص دمج مواد notes ملاحظات',
   plan: 'plan study schedule خطة مذاكرة جدول',
   quiz: 'quiz test questions اختبار اسئلة فهم',
   flashcards: 'flashcards cards بطاقات مراجعة سؤال جواب',
@@ -204,6 +205,7 @@ export default function CommandPalette({ user, history = [], onAccount, onInstal
   };
 
   const actions = [
+    { id: 'chat', label: en ? 'Open Live Chat & Voice Studio' : 'افتح الشات الحي واستوديو الصوت', hint: en ? 'Live chat, material merge & voice' : 'محادثة حية، دمج مواد، وتفكير وصوت', keywords: 'chat live voice merge summarize شات محادثة صوت دمج تلخيص تفكير', icon: MessageSquareText, rank: 118, run: () => navigateWorkspace('chat') },
     { id: 'home', label: en ? 'Home' : 'الرئيسية', hint: en ? 'PathPilot home page' : 'العودة للصفحة الرئيسية', keywords: 'home الرئيسية البداية', icon: Home, rank: 100, run: () => { close(); goToHash(''); } },
     { id: 'general', label: en ? 'Ask PathPilot anything' : 'اسأل PathPilot أي حاجة', hint: en ? 'General Assistant' : 'المساعد العام', keywords: 'assistant ask question chat مساعد سؤال محادثة', icon: Sparkles, rank: 110, run: () => navigateWorkspace('general') },
     { id: 'study', label: en ? 'Open Study workspace' : 'افتح مساحة الدراسة', hint: en ? 'Study tools' : 'أدوات الدراسة', keywords: 'study school learn دراسة مذاكرة تعليم', icon: GraduationCap, rank: 95, run: () => navigateWorkspace('study') },

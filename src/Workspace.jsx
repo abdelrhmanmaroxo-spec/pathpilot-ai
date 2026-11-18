@@ -1,9 +1,12 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  BrainCircuit,
   BriefcaseBusiness,
   CircleHelp,
+  FileDown,
   GraduationCap,
   LoaderCircle,
+  MessageSquareText,
   RotateCcw,
   Send,
   Sparkles,
@@ -11,12 +14,22 @@ import {
 } from 'lucide-react';
 import { getModeLabel, hasLiveAI, TOOL_LIBRARY } from './lib/assistant.js';
 import { generateRoutedAssistantResponse } from './lib/assistant-router.js';
+import { getDocumentLanguage, subscribeLanguageChanges } from './lib/language-state.js';
+import {
+  detectDominantLanguage,
+  resolveTurnForLanguage,
+  translateMarkdownAsync,
+  translateMarkdownSync,
+} from './lib/live-content-translator.js';
 import { supportsBrowserLLM } from './lib/local-llm.js';
 import { createHistoryItem } from './lib/storage.js';
 import { hasPlatformBackend, reportClientError, sendFeedback, trackUsage } from './lib/platform.js';
 import { TOOL_ICONS } from './lib/tool-icons.js';
 import { buildConversationPrompt, createConversationTurn } from './lib/conversation-context.js';
+import { buildDeepThinkingTrace, buildMaterialPromptEnvelope } from './lib/material-intelligence.js';
 import ConversationThread from './components/ConversationThread.jsx';
+import CurriculumPdfModal from './components/CurriculumPdfModal.jsx';
+import MaterialSynthesisStudio from './components/MaterialSynthesisStudio.jsx';
 import VoiceControls from './components/VoiceControls.jsx';
 import { HistoryPanel, PreferencesPanel, ResultCard, ToolRail } from './components/WorkspacePanels.jsx';
 
@@ -26,22 +39,27 @@ const MODE_CONTENT = {
   general: { eyebrow: 'UNIVERSAL WORKSPACE', title: 'اكتب أي حاجة. وابدأ من هنا.', description: 'أسئلة، مشاكل، نصوص، أفكار، قرارات، وتنظيم يومك في مساحة واحدة مرنة.', icon: Sparkles },
 };
 
-function isEnglish() {
-  return document.body?.dataset?.language === 'en';
-}
-
 function formatSeconds(value) {
   return `${Number(value || 0).toFixed(1)}s`;
 }
 
-export default function Workspace({ mode, history, preferences, onPreferencesChange, onNewHistory, onClearHistory, notify }) {
+export default function Workspace({ mode, language: propLanguage, history, preferences, onPreferencesChange, onNewHistory, onClearHistory, notify }) {
   const tools = TOOL_LIBRARY[mode];
+  const [docLang, setDocLang] = useState(getDocumentLanguage);
+  useEffect(() => subscribeLanguageChanges(setDocLang), []);
+  const language = propLanguage || docLang;
+  const en = language === 'en';
+  const targetLang = en ? 'en' : 'ar';
+
   const [selectedTool, setSelectedTool] = useState(tools[0].id);
   const [prompt, setPrompt] = useState('');
-  const [answer, setAnswer] = useState('');
+  const [rawAnswer, setRawAnswer] = useState('');
+  const [answerCacheByLang, setAnswerCacheByLang] = useState({});
   const [source, setSource] = useState('demo');
   const [sources, setSources] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [deepThink, setDeepThink] = useState(false);
+  const [pdfModalOpen, setPdfModalOpen] = useState(false);
   const [turns, setTurns] = useState([]);
   const [processingSeconds, setProcessingSeconds] = useState(0);
   const [lastProcessingSeconds, setLastProcessingSeconds] = useState(null);
@@ -52,14 +70,43 @@ export default function Workspace({ mode, history, preferences, onPreferencesCha
   const tool = tools.find((item) => item.id === selectedTool) || tools[0];
   const ModeIcon = content.icon;
   const localLlmSupported = supportsBrowserLLM();
-  const en = isEnglish();
+
+  // Translate active answer dynamically when switching page between AR <-> EN
+  const answer = useMemo(() => {
+    if (!rawAnswer) return '';
+    if (answerCacheByLang[targetLang]) return answerCacheByLang[targetLang];
+    return translateMarkdownSync(rawAnswer, targetLang);
+  }, [answerCacheByLang, rawAnswer, targetLang]);
+
+  useEffect(() => {
+    if (!rawAnswer || answerCacheByLang[targetLang]) return undefined;
+    const dom = detectDominantLanguage(rawAnswer);
+    if (dom === 'neutral' || dom === targetLang) return undefined;
+    const controller = new AbortController();
+    let cancelled = false;
+    translateMarkdownAsync(rawAnswer, targetLang, { signal: controller.signal }).then((translated) => {
+      if (!cancelled && translated) {
+        setAnswerCacheByLang((prev) => ({ ...prev, [targetLang]: translated }));
+      }
+    });
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [answerCacheByLang, rawAnswer, targetLang]);
+
+  const localizedTurns = useMemo(
+    () => turns.map((t) => resolveTurnForLanguage(t, targetLang)),
+    [targetLang, turns],
+  );
 
   const handleToolSelect = (toolId) => {
     abortRef.current?.abort();
     runTokenRef.current += 1;
     setSelectedTool(toolId);
     setPrompt('');
-    setAnswer('');
+    setRawAnswer('');
+    setAnswerCacheByLang({});
     setSources([]);
     setTurns([]);
     setLoading(false);
@@ -68,12 +115,58 @@ export default function Workspace({ mode, history, preferences, onPreferencesCha
     trackUsage({ eventType: 'tool_selected', workspace: mode, tool: toolId });
   };
 
-  const runPrompt = async (userPrompt, { replaceLast = false } = {}) => {
+  const applyInstantSynthesis = (instantOutput, thinkingTrace = null) => {
+    if (!instantOutput) return;
+    const label = en ? 'Summary & Synthesis of Attached Materials' : 'تلخيص ودمج المواد المرفقة';
+    const nextTurn = {
+      ...createConversationTurn({
+        prompt: label,
+        answer: instantOutput,
+        source: 'local-fallback',
+        tool: selectedTool,
+      }),
+      ...(thinkingTrace ? { thinkingTrace } : {}),
+      i18n: { [targetLang]: { prompt: label, answer: instantOutput } },
+    };
+    setRawAnswer(instantOutput);
+    setAnswerCacheByLang({ [targetLang]: instantOutput });
+    setSource('local-fallback');
+    setSources([]);
+    setLastProcessingSeconds(0.2);
+    setTurns((current) => [...current, nextTurn].slice(-12));
+    onNewHistory(createHistoryItem({ mode, tool: selectedTool, prompt: label, answer: instantOutput, source: 'local-fallback' }));
+  };
+
+  const generateCustomAiCurriculumSummary = async ({ materials: mats, rawText, options }) => {
+    const outLang = options.language === 'en' ? 'en' : 'ar';
+    const envelope = buildMaterialPromptEnvelope({
+      action: mats?.length >= 2 ? 'merge' : 'summarize',
+      materials: mats?.length ? mats : [{ id: 'ws-pdf', title: options.courseTitle || tool.label, content: rawText }],
+      userPrompt: options.customInstructions || '',
+      deepThink: true,
+      language: outLang,
+    });
+    const res = await generateRoutedAssistantResponse({
+      mode: 'study',
+      tool: 'summarize',
+      prompt: envelope,
+      preferences: { ...preferences, responseStyle: options.density || 'detailed', uiLanguage: outLang },
+      routeOptions: { agentMode: 'auto', deepThink: true },
+    });
+    return res?.answer || '';
+  };
+
+  const runPrompt = async (userPrompt, { replaceLast = false, deepThinkOverride, thinkingTrace } = {}) => {
     const trimmed = String(userPrompt || '').trim();
     if (trimmed.length < 4) {
-      notify('اكتب تفاصيل أكثر قبل الإرسال.');
+      notify(en ? 'Add more details before submitting.' : 'اكتب تفاصيل أكثر قبل الإرسال.');
       return;
     }
+
+    const useDeep = deepThinkOverride ?? deepThink;
+    const activeTrace = thinkingTrace || (useDeep
+      ? buildDeepThinkingTrace(trimmed, { language: targetLang, intent: selectedTool })
+      : null);
 
     abortRef.current?.abort();
     const controller = new AbortController();
@@ -87,26 +180,46 @@ export default function Workspace({ mode, history, preferences, onPreferencesCha
     setProcessingSeconds(0);
     setLastProcessingSeconds(null);
     setLoading(true);
-    setAnswer('');
+    setRawAnswer('');
+    setAnswerCacheByLang({});
     setSources([]);
     try {
       const result = await generateRoutedAssistantResponse({
         mode,
         tool: selectedTool,
         prompt: contextualPrompt,
-        preferences,
+        preferences: { ...preferences, uiLanguage: targetLang },
+        routeOptions: {
+          agentMode: 'auto',
+          deepThink: useDeep,
+        },
         signal: controller.signal,
       });
       if (controller.signal.aborted || runToken !== runTokenRef.current) return;
 
+      const finalAns = targetLang === 'en' && detectDominantLanguage(result.answer) === 'ar'
+        ? await translateMarkdownAsync(result.answer, 'en', { signal: controller.signal })
+        : result.answer;
+
       const durationSeconds = Math.max(0, (performance.now() - processingStartedRef.current) / 1000);
-      const nextTurn = createConversationTurn({
-        prompt: trimmed,
-        answer: result.answer,
-        source: result.source,
-        tool: selectedTool,
+      const nextTurn = {
+        ...createConversationTurn({
+          prompt: trimmed,
+          answer: finalAns,
+          source: result.source,
+          tool: selectedTool,
+        }),
+        ...(activeTrace ? { thinkingTrace: activeTrace } : {}),
+        i18n: {
+          [targetLang]: { prompt: trimmed, answer: finalAns },
+          ...(finalAns !== result.answer ? { ar: { prompt: trimmed, answer: result.answer } } : {}),
+        },
+      };
+      setRawAnswer(finalAns);
+      setAnswerCacheByLang({
+        [targetLang]: finalAns,
+        ...(finalAns !== result.answer ? { ar: result.answer } : {}),
       });
-      setAnswer(result.answer);
       setSource(result.source);
       setSources(Array.isArray(result.sources) ? result.sources : []);
       setLastProcessingSeconds(durationSeconds);
@@ -114,10 +227,10 @@ export default function Workspace({ mode, history, preferences, onPreferencesCha
       setTurns((current) => (
         replaceLast
           ? [...current.slice(0, -1), nextTurn]
-          : [...current, nextTurn].slice(-6)
+          : [...current, nextTurn].slice(-12)
       ));
       setPrompt('');
-      onNewHistory(createHistoryItem({ mode, tool: selectedTool, prompt: trimmed, answer: result.answer, source: result.source }));
+      onNewHistory(createHistoryItem({ mode, tool: selectedTool, prompt: trimmed, answer: finalAns, source: result.source }));
       trackUsage({
         eventType: replaceLast ? 'answer_regenerated' : 'tool_request',
         workspace: mode,
@@ -128,7 +241,7 @@ export default function Workspace({ mode, history, preferences, onPreferencesCha
       if (controller.signal.aborted || runToken !== runTokenRef.current) return;
       const durationSeconds = Math.max(0, (performance.now() - processingStartedRef.current) / 1000);
       setLastProcessingSeconds(durationSeconds);
-      notify(error.message || 'حدث خطأ غير متوقع.');
+      notify(error.message || (en ? 'An unexpected error occurred.' : 'حدث خطأ غير متوقع.'));
       reportClientError(error, `${mode}:${selectedTool}`);
     } finally {
       if (runToken === runTokenRef.current) setLoading(false);
@@ -168,7 +281,8 @@ export default function Workspace({ mode, history, preferences, onPreferencesCha
     abortRef.current?.abort();
     runTokenRef.current += 1;
     setPrompt('');
-    setAnswer('');
+    setRawAnswer('');
+    setAnswerCacheByLang({});
     setSources([]);
     setTurns([]);
     setLoading(false);
@@ -179,7 +293,7 @@ export default function Workspace({ mode, history, preferences, onPreferencesCha
 
   const copyAnswer = async () => {
     await navigator.clipboard.writeText(answer);
-    notify('تم نسخ النتيجة.');
+    notify(en ? 'Result copied.' : 'تم نسخ النتيجة.');
   };
 
   const downloadAnswer = () => {
@@ -205,15 +319,15 @@ export default function Workspace({ mode, history, preferences, onPreferencesCha
       }
     }
     await navigator.clipboard.writeText(answer);
-    notify('المشاركة غير متاحة هنا؛ تم نسخ النتيجة بدلًا منها.');
+    notify(en ? 'Sharing is unavailable here, so the result was copied instead.' : 'المشاركة غير متاحة هنا؛ تم نسخ النتيجة بدلًا منها.');
   };
 
   const rateAnswer = async (rating) => {
     try {
       await sendFeedback({ rating, workspace: mode, tool: selectedTool, message: '' });
-      notify('شكرًا، تم تسجيل تقييمك.');
+      notify(en ? 'Thanks, your rating was recorded.' : 'شكرًا، تم تسجيل تقييمك.');
     } catch (error) {
-      notify('تعذر تسجيل التقييم حاليًا.');
+      notify(en ? 'Could not record the rating right now.' : 'تعذر تسجيل التقييم حاليًا.');
       reportClientError(error, 'feedback');
     }
   };
@@ -233,7 +347,8 @@ export default function Workspace({ mode, history, preferences, onPreferencesCha
     });
     setSelectedTool(item.tool);
     setPrompt('');
-    setAnswer(item.answer);
+    setRawAnswer(item.answer);
+    setAnswerCacheByLang({});
     setSource(item.source);
     setSources([]);
     setLastProcessingSeconds(null);
@@ -254,7 +369,8 @@ export default function Workspace({ mode, history, preferences, onPreferencesCha
       });
       setSelectedTool(item.tool);
       setPrompt('');
-      setAnswer(item.answer);
+      setRawAnswer(item.answer);
+      setAnswerCacheByLang({});
       setSource(item.source);
       setSources([]);
       setLastProcessingSeconds(null);
@@ -272,7 +388,8 @@ export default function Workspace({ mode, history, preferences, onPreferencesCha
       runTokenRef.current += 1;
       setSelectedTool(toolId);
       setPrompt('');
-      setAnswer('');
+      setRawAnswer('');
+      setAnswerCacheByLang({});
       setSources([]);
       setTurns([]);
       setLoading(false);
@@ -311,31 +428,76 @@ export default function Workspace({ mode, history, preferences, onPreferencesCha
     runTokenRef.current += 1;
   }, []);
 
-  const previousTurns = answer ? turns.slice(0, -1) : turns;
+  const previousTurns = answer ? localizedTurns.slice(0, -1) : localizedTurns;
 
   return (
     <main className={`workspace-page ${mode}`}>
       <div className="page-shell workspace-heading">
         <div className="mode-icon"><ModeIcon /></div>
         <div><span>{content.eyebrow}</span><h1>{content.title}</h1><p>{content.description}</p></div>
-        <div className={hasLiveAI ? 'ai-status live' : 'ai-status demo'}><i /> {hasLiveAI ? 'Live AI متصل' : preferences.localLlmEnabled && localLlmSupported ? 'Local LLM مفعّل' : 'Local Intelligence'}</div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          <button
+            type="button"
+            className="workspace-open-chat-btn"
+            onClick={() => setPdfModalOpen(true)}
+          >
+            <FileDown size={15} /> {en ? 'Curriculum PDF' : 'ملخص PDF للمنهج'}
+          </button>
+          <button
+            type="button"
+            className="workspace-open-chat-btn"
+            onClick={() => { window.location.hash = '/chat'; }}
+          >
+            <MessageSquareText size={15} /> {en ? 'Open Live Chat' : 'افتح الشات الحي'}
+          </button>
+          <div className={hasLiveAI ? 'ai-status live' : 'ai-status demo'}><i /> {hasLiveAI ? 'Live AI متصل' : preferences.localLlmEnabled && localLlmSupported ? 'Local LLM مفعّل' : 'Local Intelligence'}</div>
+        </div>
       </div>
 
       {!hasLiveAI && (
         <div className="page-shell local-disclaimer" role="note">
           <CircleHelp size={19} />
-          <div><strong>وضع محلي</strong><span>{preferences.localLlmEnabled && localLlmSupported ? 'سيحاول PathPilot تشغيل نموذج لغوي محلي على جهازك، ثم يعود إلى الموسوعة ومحرك الاستدلال إذا تعذر.' : 'يستخدم PathPilot الموسوعة المحلية ومحرك الاستدلال. يمكنك تفعيل Local LLM من إعدادات النتيجة على الأجهزة الداعمة.'}</span></div>
+          <div><strong>{en ? 'Local Mode' : 'وضع محلي'}</strong><span>{preferences.localLlmEnabled && localLlmSupported ? 'سيحاول PathPilot تشغيل نموذج لغوي محلي على جهازك، ثم يعود إلى الموسوعة ومحرك الاستدلال إذا تعذر.' : 'يستخدم PathPilot الموسوعة المحلية ومحرك الاستدلال. يمكنك تفعيل Local LLM من إعدادات النتيجة على الأجهزة الداعمة.'}</span></div>
         </div>
       )}
 
       <div className="page-shell workspace-layout">
         <ToolRail mode={mode} selectedTool={selectedTool} onSelect={handleToolSelect} />
         <div className="assistant-column">
-          <ConversationThread turns={previousTurns} onReuse={reusePrompt} />
+          <ConversationThread
+            turns={previousTurns}
+            maxTurns={20}
+            onReuse={reusePrompt}
+            onExportTurnPdf={(turn) => {
+              setRawAnswer(turn.answer);
+              setPdfModalOpen(true);
+            }}
+          />
+
+          <MaterialSynthesisStudio
+            key={`${mode}-${selectedTool}`}
+            language={targetLang}
+            compact={!(mode === 'study' && selectedTool === 'summarize')}
+            deepThink={deepThink}
+            onToggleDeepThink={setDeepThink}
+            onRunPrompt={(envelope, meta) => runPrompt(envelope, { deepThinkOverride: meta.deepThink, thinkingTrace: meta.thinkingTrace })}
+            onGenerateCustomAiSummary={generateCustomAiCurriculumSummary}
+            onInstantAnswer={applyInstantSynthesis}
+            notify={notify}
+          />
+
           <section className="composer-card">
             <div className="composer-head">
               <div className="selected-tool-icon">{(() => { const Icon = TOOL_ICONS[tool.id]; return <Icon />; })()}</div>
-              <div><span>{getModeLabel(mode)}</span><h2>{tool.label}</h2><p>{tool.description}</p></div>
+              <div style={{ flex: 1 }}><span>{getModeLabel(mode)}</span><h2>{tool.label}</h2><p>{tool.description}</p></div>
+              <button
+                type="button"
+                className={deepThink ? 'workspace-deep-toggle active' : 'workspace-deep-toggle'}
+                aria-pressed={deepThink}
+                onClick={() => setDeepThink((val) => !val)}
+              >
+                <BrainCircuit size={15} /> {en ? 'Deep Think' : 'تفكير عميق'}
+              </button>
             </div>
             <form onSubmit={handleSubmit}>
               <PreferencesPanel preferences={preferences} onChange={onPreferencesChange} />
@@ -355,12 +517,18 @@ export default function Workspace({ mode, history, preferences, onPreferencesCha
                 }}
                 placeholder={turns.length ? (en ? 'Continue the conversation…' : 'كمّل المحادثة…') : tool.placeholder}
                 maxLength={12000}
-                rows={7}
+                rows={6}
               />
-              <VoiceControls value={prompt} onChange={setPrompt} answer={answer} notify={notify} />
+              <VoiceControls
+                value={prompt}
+                onChange={setPrompt}
+                answer={answer}
+                notify={notify}
+                onAutoSubmit={(spokenText) => runPrompt(spokenText)}
+              />
               {!turns.length && <div className="starter-row">{tool.starters.map((starter) => <button type="button" key={starter} onClick={() => setPrompt(starter)}>{starter}</button>)}</div>}
               <div className="composer-footer">
-                <span>{prompt.length.toLocaleString('ar-EG')} / ١٢٬٠٠٠{turns.length ? ` · ${en ? 'context' : 'سياق'} ${turns.length}/6` : ''}</span>
+                <span>{prompt.length.toLocaleString(en ? 'en-US' : 'ar-EG')} / {en ? '12,000' : '١٢٬٠٠٠'}{turns.length ? ` · ${en ? 'context' : 'سياق'} ${turns.length}/12` : ''}</span>
                 <div>
                   {(prompt || answer || turns.length > 0) && <button className="reset-button" type="button" onClick={newConversation}><RotateCcw size={16} /> {en ? 'New chat' : 'محادثة جديدة'}</button>}
                   {loading ? (
@@ -375,10 +543,33 @@ export default function Workspace({ mode, history, preferences, onPreferencesCha
               </div>
             </form>
           </section>
-          <ResultCard answer={answer} source={source} sources={sources} processingSeconds={lastProcessingSeconds} onCopy={copyAnswer} onDownload={downloadAnswer} onShare={shareAnswer} onRate={rateAnswer} onRegenerate={regenerateAnswer} loading={loading} feedbackEnabled={hasPlatformBackend} />
+          <ResultCard
+            answer={answer}
+            source={source}
+            sources={sources}
+            processingSeconds={lastProcessingSeconds}
+            onCopy={copyAnswer}
+            onDownload={downloadAnswer}
+            onExportPdf={() => setPdfModalOpen(true)}
+            onShare={shareAnswer}
+            onRate={rateAnswer}
+            onRegenerate={regenerateAnswer}
+            loading={loading}
+            feedbackEnabled={hasPlatformBackend}
+          />
         </div>
         <HistoryPanel items={history} onOpen={openHistory} onClear={onClearHistory} />
       </div>
+
+      <CurriculumPdfModal
+        open={pdfModalOpen}
+        onClose={() => setPdfModalOpen(false)}
+        language={targetLang}
+        rawText={answer || prompt}
+        defaultTitle={translateMarkdownSync(tool.label, targetLang)}
+        onGenerateCustomAiSummary={generateCustomAiCurriculumSummary}
+        notify={notify}
+      />
     </main>
   );
 }

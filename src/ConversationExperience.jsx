@@ -1,7 +1,79 @@
-export function QuickChatToolbar({ onAttachFile, onScrollUp, onScrollDown, onQuickTool }) { const handleFile = (e) => { const file = e.target.files?.[0]; if (!file) return; const reader = new FileReader(); reader.onload = (evt) => { const text = evt.target?.result || ''; if (onAttachFile) { onAttachFile(text, file.name); } else { const input = document.querySelector('#assistant-prompt') || document.querySelector('textarea'); if (input) { input.value = (input.value ? input.value + '\n\n' : '') + '[محتوى الملف ' + file.name + ']:\n' + text; input.dispatchEvent(new Event('input', { bubbles: true })); } } }; reader.readAsText(file); }; const scrollUp = () => { if (onScrollUp) { onScrollUp(); } else { const container = document.querySelector('.chat-thread') || document.querySelector('.conversation-thread') || window; container.scrollTo({ top: 0, behavior: 'smooth' }); } }; const scrollDown = () => { if (onScrollDown) { onScrollDown(); } else { const container = document.querySelector('.chat-thread') || document.querySelector('.conversation-thread') || document.documentElement; container.scrollTo({ top: container.scrollHeight || 99999, behavior: 'smooth' }); } }; const handleTool = (toolName) => { if (onQuickTool) { onQuickTool(toolName); } else { const input = document.querySelector('#assistant-prompt') || document.querySelector('textarea'); if (input) { input.value = (input.value ? input.value + ' ' : '') + '[أاة: ' + toolName + ']'; input.dispatchEvent(new Event('input', { bubbles: true })); } } }; return ( <div className="pp-file-upload-bar"> <label className="pp-file-btn"> 📎 إرفاق ملف <input type="file" accept=".txt,.js,.jsx,.ts,.tsx,.json,.md,.css,.html" style={{ display: 'none' }} onChange={handleFile} /> </label>label> <button type="button" className="pp-scroll-btn" onClick={scrollUp} title="تمرير للأعلى">↑</button>button> <button type="button" className="pp-scroll-btn" onClick={scrollDown} title="تمرير للأفل">↓</button>button> <button type="button" className="pp-quick-tool-chip" onClick={() => handleTool('تلخيص')}>📝 تلخيص</button>button> <button type="button" className="pp-quick-tool-chip" onClick={() => handleTool('ترجمة')}>🌐 ترجمة</button>button> <button type="button" className="pp-quick-tool-chip" onClick={() => handleTool('تحليل')}>📊 تحليل</button>button> </div>div> ); }</div> { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { MessageSquareShare, Search, Star, Trash2, X } from 'lucide-react';
 import { loadHistory, saveHistory, searchHistory, updateHistoryItem } from './lib/storage.js';
+
+function isEnglish() {
+  return document.body?.dataset?.language === 'en';
+}
+
+export function QuickChatToolbar({ onAttachFile, onScrollUp, onScrollDown, onQuickTool }) {
+  const en = isEnglish();
+
+  const handleFile = (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (loadEvent) => {
+      const text = String(loadEvent.target?.result || '');
+      if (onAttachFile) {
+        onAttachFile(text, file.name);
+      } else {
+        const input = document.querySelector('#assistant-prompt') || document.querySelector('textarea');
+        if (input) {
+          const header = en ? `[Attached file ${file.name}]:\n` : `[محتوى الملف ${file.name}]:\n`;
+          input.value = `${input.value ? `${input.value}\n\n` : ''}${header}${text}`;
+          input.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const scrollUp = () => {
+    if (onScrollUp) {
+      onScrollUp();
+      return;
+    }
+    const container = document.querySelector('.chat-thread-panel') || document.querySelector('.conversation-thread') || window;
+    container.scrollTo?.({ top: 0, behavior: 'smooth' });
+  };
+
+  const scrollDown = () => {
+    if (onScrollDown) {
+      onScrollDown();
+      return;
+    }
+    const container = document.querySelector('.chat-thread-panel') || document.querySelector('.conversation-thread') || document.documentElement;
+    container.scrollTo?.({ top: container.scrollHeight || 99999, behavior: 'smooth' });
+  };
+
+  const handleTool = (toolName) => {
+    if (onQuickTool) {
+      onQuickTool(toolName);
+      return;
+    }
+    const input = document.querySelector('#assistant-prompt') || document.querySelector('textarea');
+    if (input) {
+      input.value = `${input.value ? `${input.value} ` : ''}${toolName}: `;
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+  };
+
+  return (
+    <div className="pp-file-upload-bar">
+      <label className="pp-file-btn">
+        <span>{en ? 'Attach file' : 'إرفاق ملف'}</span>
+        <input type="file" accept=".txt,.js,.jsx,.ts,.tsx,.json,.md,.css,.html" style={{ display: 'none' }} onChange={handleFile} />
+      </label>
+      <button type="button" className="pp-scroll-btn" onClick={scrollUp} title={en ? 'Scroll to top' : 'التمرير لأول المحادثة'}>↑</button>
+      <button type="button" className="pp-scroll-btn" onClick={scrollDown} title={en ? 'Scroll to bottom' : 'التمرير لآخر المحادثة'}>↓</button>
+      <button type="button" className="pp-quick-tool-chip" onClick={() => handleTool(en ? 'Summarize' : 'لخّص المواد')}>{en ? 'Summarize' : 'لخّص المواد'}</button>
+      <button type="button" className="pp-quick-tool-chip" onClick={() => handleTool(en ? 'Merge' : 'ادمج المواد')}>{en ? 'Merge' : 'ادمج المواد'}</button>
+      <button type="button" className="pp-quick-tool-chip" onClick={() => handleTool(en ? 'Deep Think' : 'فكّر بعمق')}>{en ? 'Deep Think' : 'فكّر بعمق'}</button>
+    </div>
+  );
+}
 
 function readCurrentConversation() {
   const prompt = document.querySelector('#assistant-prompt')?.value?.trim()

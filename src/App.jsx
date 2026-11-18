@@ -117,14 +117,14 @@ export default function App() {
     if (!preferences.displayName && authenticatedUser?.name) {
       updatePreferences({ ...preferences, displayName: authenticatedUser.name });
     }
-    setToast(`أهلًا ${authenticatedUser.name}.`);
+    setToast(language === 'en' ? `Welcome, ${authenticatedUser.name}.` : `أهلًا ${authenticatedUser.name}.`);
   };
 
   const handleLogout = async () => {
     await logoutAccount();
     setUser(null);
     if (mode === 'admin') window.location.hash = '';
-    setToast('تم تسجيل الخروج.');
+    setToast(language === 'en' ? 'Signed out.' : 'تم تسجيل الخروج.');
   };
 
   const addHistory = (item) => {
@@ -132,19 +132,20 @@ export default function App() {
   };
 
   const handleClearHistory = () => {
-    if (!window.confirm('مسح سجل النتائج المحفوظ على هذا الجهاز؟')) return;
+    if (!window.confirm(language === 'en' ? 'Clear the result history saved on this device?' : 'مسح سجل النتائج المحفوظ على هذا الجهاز؟')) return;
     clearHistory();
     setHistoryItems([]);
-    setToast('تم مسح السجل.');
+    setToast(language === 'en' ? 'History cleared.' : 'تم مسح السجل.');
   };
 
   const canSeeAdminSearch = canAccessAdminSearch(user);
   const canUseExperimentalChat = canAccessExperimentalChat(user);
   const searchHistory = filterSearchHistory(historyItems, user);
   const showGlobalSearch = mode !== 'admin' || canSeeAdminSearch;
+  const isChatViewport = mode === 'chat' && canUseExperimentalChat;
 
   return (
-    <div className="app">
+    <div className={isChatViewport ? 'app app-chat-mode' : 'app'}>
       <Header mode={mode} onInstall={() => setInstallOpen(true)} installed={installed} online={online} user={user} onAccount={() => setAuthOpen(true)} onLogout={handleLogout} />
       {showGlobalSearch && <CommandPalette
         user={user}
@@ -153,7 +154,7 @@ export default function App() {
         onInstall={() => setInstallOpen(true)}
       />}
       {!mode ? (
-        <Landing onSelect={selectMode} onInstall={() => setInstallOpen(true)} />
+        <Landing onSelect={selectMode} onInstall={() => setInstallOpen(true)} language={language} />
       ) : mode === 'admin' ? (
         <AdminDashboard user={user} onBack={() => { window.location.hash = ''; }} />
       ) : mode === 'chat' ? (
@@ -163,6 +164,7 @@ export default function App() {
       ) : (
         <Workspace
           mode={mode}
+          language={language}
           history={historyItems}
           preferences={preferences}
           onPreferencesChange={updatePreferences}
@@ -172,7 +174,7 @@ export default function App() {
           key={mode}
         />
       )}
-      <Footer />
+      {!isChatViewport && <Footer />}
       <InstallDialog open={installOpen} onClose={() => setInstallOpen(false)} onInstall={handleInstall} canInstall={Boolean(installPrompt)} installed={installed} />
       <AuthDialog open={authOpen} onClose={() => setAuthOpen(false)} onAuthenticated={handleAuthenticated} />
       {toast && <div className="toast" role="status"><BadgeCheck size={18} /> {toast}</div>}
