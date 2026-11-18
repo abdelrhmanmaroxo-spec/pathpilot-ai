@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowDown,
+  CheckCircle2,
+  Eye,
   FileDown,
   FileText,
   Folder,
@@ -26,7 +28,7 @@ import ConversationThread from './components/ConversationThread.jsx';
 import CurriculumPdfModal from './components/CurriculumPdfModal.jsx';
 import MaterialSynthesisStudio from './components/MaterialSynthesisStudio.jsx';
 import VoiceControls from './components/VoiceControls.jsx';
-import { streamSmartAiReply } from './lib/assistant.js';
+import { inspectAndParseAttachmentFiles, streamSmartAiReply } from './lib/assistant.js';
 import {
   appendChatTurn,
   createChatSession,
@@ -45,7 +47,7 @@ import {
 import { buildMaterialPromptEnvelope } from './lib/material-intelligence.js';
 
 const CHAT_FOLDERS_STORAGE_KEY = 'pathpilot.chat_folders.v6';
-const TEXT_EXTENSIONS_RE = /\.(?:txt|md|markdown|csv|tsv|json|js|jsx|ts|tsx|py|java|c|cpp|cs|go|rs|php|rb|html|css|sql|xml|yml|yaml|sh|log)$/i;
+const TURN_ATTACHMENTS_STORAGE_KEY = 'pathpilot.chat_turn_attachments.v6';
 
 function loadFolderState() {
   try {
@@ -68,52 +70,40 @@ function saveFolderState(next) {
   return next;
 }
 
-function readFileAsDataUrl(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result || ''));
-    reader.onerror = () => reject(new Error('File read error'));
-    reader.readAsDataURL(file);
-  });
+function loadTurnAttachmentsMap() {
+  try {
+    const parsed = JSON.parse(globalThis.localStorage?.getItem?.(TURN_ATTACHMENTS_STORAGE_KEY) || '{}');
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
 }
 
-async function parseDroppedOrPickedFiles(fileList) {
-  const files = Array.from(fileList || []).slice(0, 8);
-  const parsed = [];
-
-  for (const file of files) {
-    if (file.size > 18 * 1024 * 1024) continue; // 18MB per-file safety cap
-    const mime = String(file.type || '').toLowerCase();
-    const isImage = mime.startsWith('image/');
-    const isPdfOrBinaryMedia = mime === 'application/pdf' || mime.startsWith('audio/');
-    const isTextLike = mime.startsWith('text/') || TEXT_EXTENSIONS_RE.test(file.name);
-
-    if (isImage || isPdfOrBinaryMedia) {
-      const dataUrl = await readFileAsDataUrl(file);
-      const commaIdx = dataUrl.indexOf(',');
-      const base64Data = commaIdx >= 0 ? dataUrl.slice(commaIdx + 1) : '';
-      parsed.push({
-        id: `att-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-        name: file.name || (isImage ? 'image.png' : 'document.pdf'),
-        mimeType: mime || (isImage ? 'image/png' : 'application/pdf'),
-        kind: isImage ? 'image' : 'binary',
-        previewUrl: isImage ? dataUrl : '',
-        base64Data,
-        sizeKb: Math.max(1, Math.round(file.size / 1024)),
-      });
-    } else if (isTextLike || !mime) {
-      const textContent = await file.text();
-      parsed.push({
-        id: `att-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-        name: file.name || 'notes.txt',
-        mimeType: mime || 'text/plain',
-        kind: 'text',
-        textContent: textContent.slice(0, 30000),
-        sizeKb: Math.max(1, Math.round(file.size / 1024)),
-      });
-    }
+function persistTurnAttachmentsMap(nextMap) {
+  try {
+    const keys = Object.keys(nextMap || {}).slice(-80);
+    const trimmed = {};
+    for (const k of keys) trimmed[k] = nextMap[k];
+    globalThis.localStorage?.setItem?.(TURN_ATTACHMENTS_STORAGE_KEY, JSON.stringify(trimmed));
+  } catch {
+    // Ignore storage quota errors
   }
-  return parsed;
+  return nextMap;
+}
+
+function toCompactAttachmentSummary(att) {
+  return {
+    id: att.id,
+    name: att.name,
+    kind: att.kind,
+    sizeKb: att.sizeKb,
+    pageCount: att.pageCount || 1,
+    wordCount: att.wordCount || 0,
+    thumbUrl: att.thumbUrl || '',
+    excerpt: String(att.excerpt || att.textContent || '').slice(0, 1200),
+    statusAr: att.statusAr || '',
+    statusEn: att.statusEn || '',
+  };
 }
 
 function initialChatState() {
@@ -140,6 +130,7 @@ export default function ChatWorkspace({ preferences, notify, language }) {
   const [sessions, setSessions] = useState(initialChatState);
   const [activeId, setActiveId] = useState(() => initialChatState()[0]?.id || '');
   const [folderState, setFolderState] = useState(loadFolderState);
+  const [turnAttachmentsMap, setTurnAttachmentsMap] = useState(loadTurnAttachmentsMap);
   const [selectedFolder, setSelectedFolder] = useState('__all__');
   const [newFolderOpen, setNewFolderOpen] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
@@ -147,6 +138,8 @@ export default function ChatWorkspace({ preferences, notify, language }) {
   const [sessionFilter, setSessionFilter] = useState('');
   const [prompt, setPrompt] = useState('');
   const [attachments, setAttachments] = useState([]);
+  const [inspectingFiles, setInspectingFiles] = useState(false);
+  const [previewAttachment, setPreviewAttachment] = useState(null);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
   const [materialStudioOpen, setMaterialStudioOpen] = useState(false);
   const [pdfBuilderState, setPdfBuilderState] = useState({ open: false, text: '', title: '' });
@@ -201,16 +194,19 @@ export default function ChatWorkspace({ preferences, notify, language }) {
 
   const ingestFiles = async (fileList) => {
     if (!fileList || !fileList.length) return;
+    setInspectingFiles(true);
     try {
-      const added = await parseDroppedOrPickedFiles(fileList);
+      const added = await inspectAndParseAttachmentFiles(fileList);
       if (!added.length) {
-        notify(en ? 'Unsupported file or exceeds 18 MB.' : 'الملف غير مدعوم أو حجمه أكبر من 18 ميجابايت.');
+        notify(en ? 'Unsupported file or exceeds 20 MB.' : 'الملف غير مدعوم أو حجمه أكبر من 20 ميجابايت.');
         return;
       }
       setAttachments((prev) => [...prev, ...added].slice(0, 8));
       textareaRef.current?.focus();
     } catch {
-      notify(en ? 'Could not read the attached file.' : 'تعذر قراءة الملف المرفق.');
+      notify(en ? 'Could not inspect the attached file.' : 'تعذر فتح وفحص الملف المرفق.');
+    } finally {
+      setInspectingFiles(false);
     }
   };
 
@@ -314,8 +310,9 @@ export default function ChatWorkspace({ preferences, notify, language }) {
     return combined.map((turn) => ({
       ...resolveTurnForLanguage(turn, targetLang),
       rawPrompt: turn.prompt,
+      attachments: turn.attachments || turnAttachmentsMap[turn.id] || [],
     }));
-  }, [activeSession, streamingTurn, targetLang]);
+  }, [activeSession, streamingTurn, targetLang, turnAttachmentsMap]);
 
   const lastAnswer = visibleTurns.at(-1)?.answer || '';
   const streamingAnswer = streamingTurn?.answer || '';
@@ -356,7 +353,7 @@ export default function ChatWorkspace({ preferences, notify, language }) {
     const el = textareaRef.current;
     if (!el) return;
     el.style.height = 'auto';
-    el.style.height = `${Math.min(168, Math.max(50, el.scrollHeight))}px`;
+    el.style.height = `${Math.min(168, Math.max(44, el.scrollHeight))}px`;
   }, [prompt]);
 
   const selectSession = (sessionId) => {
@@ -473,10 +470,12 @@ export default function ChatWorkspace({ preferences, notify, language }) {
     const rawText = String(overrideText ?? prompt ?? '').trim();
     if ((!rawText && !currentAttachments.length) || !activeSession) return;
 
-    const attachmentBadge = currentAttachments.length
-      ? `📎 (${currentAttachments.map((a) => a.name).join(', ')})\n`
-      : '';
-    const displayPrompt = `${attachmentBadge}${rawText || (en ? 'Analyze attached files' : 'حلّل المرفقات واشرح محتواها')}`.trim();
+    const compactSummaries = currentAttachments.map(toCompactAttachmentSummary);
+    const displayPrompt = rawText || (
+      en
+        ? `Inspect and explain attached file(s): ${currentAttachments.map((a) => a.name).join(', ')}`
+        : `افحص الملفات المرفقة واشرح محتواها بالتفصيل (${currentAttachments.map((a) => a.name).join(', ')})`
+    );
 
     if (extraMeta.action) setMaterialStudioOpen(false);
 
@@ -501,6 +500,7 @@ export default function ChatWorkspace({ preferences, notify, language }) {
       source: 'streaming',
       tool: 'ask',
       streaming: true,
+      attachments: compactSummaries,
     });
 
     try {
@@ -530,13 +530,22 @@ export default function ChatWorkspace({ preferences, notify, language }) {
       });
       if (controller.signal.aborted || runToken !== runTokenRef.current) return;
 
+      const createdTurn = createConversationTurn({
+        prompt: displayPrompt,
+        answer: result.answer,
+        source: result.source,
+        tool: 'ask',
+      });
+
+      if (compactSummaries.length) {
+        setTurnAttachmentsMap((prev) => persistTurnAttachmentsMap({
+          ...prev,
+          [createdTurn.id]: compactSummaries,
+        }));
+      }
+
       const turn = {
-        ...createConversationTurn({
-          prompt: displayPrompt,
-          answer: result.answer,
-          source: result.source,
-          tool: 'ask',
-        }),
+        ...createdTurn,
         ...(result.thinkingTrace ? { thinkingTrace: result.thinkingTrace } : {}),
         i18n: {
           [targetLang]: { prompt: displayPrompt, answer: result.answer },
@@ -573,6 +582,12 @@ export default function ChatWorkspace({ preferences, notify, language }) {
           source: 'interrupted-stream',
           tool: 'ask',
         });
+        if (compactSummaries.length) {
+          setTurnAttachmentsMap((prev) => persistTurnAttachmentsMap({
+            ...prev,
+            [partial.id]: compactSummaries,
+          }));
+        }
         setSessions((current) => appendChatTurn(current, activeSession.id, partial));
       }
       setStreamingTurn(null);
@@ -593,13 +608,19 @@ export default function ChatWorkspace({ preferences, notify, language }) {
         source: 'stopped-stream',
         tool: 'ask',
       });
+      if (streamingTurn.attachments?.length) {
+        setTurnAttachmentsMap((prev) => persistTurnAttachmentsMap({
+          ...prev,
+          [partialTurn.id]: streamingTurn.attachments,
+        }));
+      }
       setSessions((current) => appendChatTurn(current, streamingTurn.sessionId, partialTurn));
     }
     setStreamingTurn(null);
   };
 
   const activeDisplayTitle = translateMarkdownSync(activeSession?.title || (en ? 'New chat' : 'محادثة جديدة'), targetLang);
-  const canSend = prompt.trim().length >= 1 || attachments.length > 0;
+  const canSend = !inspectingFiles && (prompt.trim().length >= 1 || attachments.length > 0);
 
   return (
     <main
@@ -614,7 +635,7 @@ export default function ChatWorkspace({ preferences, notify, language }) {
         ref={filePickerRef}
         type="file"
         multiple
-        accept="image/*,application/pdf,.pdf,.txt,.md,.csv,.json,.js,.jsx,.ts,.tsx,.py,.html,.css,.sql,.xml,.yml,.yaml,audio/*"
+        accept="image/*,application/pdf,.pdf,.docx,.txt,.md,.csv,.json,.js,.jsx,.ts,.tsx,.py,.html,.css,.sql,.xml,.yml,.yaml,audio/*"
         style={{ display: 'none' }}
         onChange={(e) => {
           ingestFiles(e.target.files);
@@ -630,7 +651,7 @@ export default function ChatWorkspace({ preferences, notify, language }) {
             zIndex: 999,
             borderRadius: 22,
             border: '2px dashed #818cf8',
-            background: 'rgba(15, 23, 42, 0.88)',
+            background: 'rgba(15, 23, 42, 0.9)',
             backdropFilter: 'blur(8px)',
             display: 'grid',
             placeItems: 'center',
@@ -640,10 +661,10 @@ export default function ChatWorkspace({ preferences, notify, language }) {
           <div style={{ textAlign: 'center', display: 'grid', gap: 10, justifyItems: 'center' }}>
             <UploadCloud size={48} color="#818cf8" />
             <h2 style={{ margin: 0 }}>
-              {en ? 'Drop images, PDFs, or files right here' : 'أفلت الصور أو ملفات الـ PDF أو المستندات هنا مباشرة'}
+              {en ? 'Drop PDFs, Word docs, images, or files here' : 'أفلت ملفات الـ PDF أو Word أو الصور هنا مباشرة'}
             </h2>
-            <p style={{ margin: 0, opacity: 0.8 }}>
-              {en ? 'PathPilot AI will read and analyze them immediately' : 'سيقوم PathPilot AI بقراءتها وتحليلها والرد عليها فورًا'}
+            <p style={{ margin: 0, opacity: 0.85 }}>
+              {en ? 'PathPilot AI will open, inspect every page, and read them right now' : 'سيقوم PathPilot AI بفتح الملف وفحص صفحاته وقراءة كل ما بداخله فورًا'}
             </p>
           </div>
         </div>
@@ -652,8 +673,8 @@ export default function ChatWorkspace({ preferences, notify, language }) {
       <div className={sidebarOpen ? 'chatgpt-layout has-sidebar' : 'chatgpt-layout sidebar-collapsed'}>
         {sidebarOpen && (
           <aside className="chat-sidebar chatgpt-sidebar" aria-label={en ? 'Saved chats' : 'المحادثات المحفوظة'}>
-            <div className="chatgpt-sidebar-top">
-              <button className="chat-new-button" type="button" onClick={createNewChat}>
+            <div className="chatgpt-sidebar-top" style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+              <button className="chat-new-button" type="button" onClick={createNewChat} style={{ flex: 1, minWidth: 0 }}>
                 <Plus size={16} /> {en ? 'New chat' : 'محادثة جديدة'}
               </button>
               <button
@@ -662,6 +683,7 @@ export default function ChatWorkspace({ preferences, notify, language }) {
                 onClick={() => setNewFolderOpen((v) => !v)}
                 title={en ? 'New folder' : 'إنشاء مجلد جديد'}
                 aria-label={en ? 'New folder' : 'إنشاء مجلد جديد'}
+                style={{ flexShrink: 0 }}
               >
                 <FolderPlus size={16} />
               </button>
@@ -671,6 +693,7 @@ export default function ChatWorkspace({ preferences, notify, language }) {
                 onClick={() => setSidebarOpen(false)}
                 title={en ? 'Hide sidebar' : 'إخفاء القائمة'}
                 aria-label={en ? 'Hide sidebar' : 'إخفاء القائمة'}
+                style={{ flexShrink: 0 }}
               >
                 <PanelLeftClose size={16} />
               </button>
@@ -812,6 +835,7 @@ export default function ChatWorkspace({ preferences, notify, language }) {
                     setPrompt(value);
                     textareaRef.current?.focus();
                   }}
+                  onInspectAttachment={(att) => setPreviewAttachment(att)}
                   onExportTurnPdf={(turn) => setPdfBuilderState({
                     open: true,
                     text: turn.answer,
@@ -821,10 +845,10 @@ export default function ChatWorkspace({ preferences, notify, language }) {
               ) : (
                 <div className="chat-empty-state chatgpt-welcome">
                   <div className="chatgpt-welcome-orb"><Sparkles size={24} /></div>
-                  <h2>{en ? 'Ask, drop images or PDFs, or organize your subjects' : 'اسأل في أي حاجة، أو اسحب صور وملفات PDF هنا مباشرة'}</h2>
+                  <h2>{en ? 'Ask anything, or drop PDFs, Word docs & images right here' : 'اسأل في أي حاجة، أو اسحب ملفات PDF وWord وصور هنا مباشرة'}</h2>
                   <div className="chat-starter-chips">
                     <button type="button" onClick={() => filePickerRef.current?.click()}>
-                      <ImagePlus size={14} /> {en ? 'Upload Image or PDF' : 'ارفع صورة امتحان أو ملف PDF'}
+                      <ImagePlus size={14} /> {en ? 'Upload PDF, Word, or Image' : 'ارفع ملف PDF أو Word أو صورة امتحان'}
                     </button>
                     <button type="button" onClick={() => { setPrompt(en ? 'Create a folder for this subject and summarize: ' : 'اعمل مجلد لهذه المادة ولخّصلي الفصل ده باحترافية: '); textareaRef.current?.focus(); }}>
                       <FolderPlus size={14} /> {en ? 'Organize in Folder & Summarize' : 'أنشئ مجلد للمادة ولخّص'}
@@ -840,7 +864,7 @@ export default function ChatWorkspace({ preferences, notify, language }) {
                 <div className="chatgpt-live-indicator">
                   <div className="chat-live-status" role="status" aria-live="polite">
                     <LoaderCircle className="spin" size={15} />
-                    <span>{en ? 'Thinking…' : 'جاري التفكير وإعداد الإجابة…'}</span>
+                    <span>{en ? 'Inspecting & preparing response…' : 'جاري قراءة المحتوى وإعداد الإجابة…'}</span>
                   </div>
                 </div>
               )}
@@ -873,56 +897,103 @@ export default function ChatWorkspace({ preferences, notify, language }) {
                 </div>
               )}
 
+              {inspectingFiles && (
+                <div className="chat-live-status" style={{ marginBottom: 6 }}>
+                  <LoaderCircle className="spin" size={14} />
+                  <span>
+                    {en ? 'Opening and reading pages inside your attached file…' : 'جاري الدخول للملف المرفق وفحص وقراءة صفحاته بالكامل…'}
+                  </span>
+                </div>
+              )}
+
               {attachments.length > 0 && (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 6 }}>
                   {attachments.map((att) => (
                     <div
                       key={att.id}
                       style={{
                         display: 'flex',
                         alignItems: 'center',
-                        gap: 8,
-                        padding: '5px 10px',
-                        borderRadius: 10,
-                        background: 'rgba(99, 102, 241, 0.14)',
-                        border: '1px solid rgba(99, 102, 241, 0.35)',
+                        gap: 9,
+                        padding: '7px 11px',
+                        borderRadius: 12,
+                        background: 'rgba(30, 41, 59, 0.92)',
+                        border: '1px solid rgba(52, 211, 153, 0.42)',
                         fontSize: '0.82rem',
+                        maxWidth: '100%',
                       }}
                     >
                       {att.previewUrl ? (
                         <img
                           src={att.previewUrl}
                           alt={att.name}
-                          style={{ width: 30, height: 30, objectFit: 'cover', borderRadius: 6 }}
+                          style={{ width: 38, height: 38, objectFit: 'cover', borderRadius: 8, flexShrink: 0 }}
                         />
                       ) : (
-                        <FileText size={16} />
+                        <div
+                          style={{
+                            width: 36,
+                            height: 36,
+                            borderRadius: 8,
+                            background: 'rgba(16, 185, 129, 0.16)',
+                            color: '#6ee7b7',
+                            display: 'grid',
+                            placeItems: 'center',
+                            flexShrink: 0,
+                          }}
+                        >
+                          <FileText size={18} />
+                        </div>
                       )}
-                      <span style={{ maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {att.name}
-                      </span>
-                      <small style={{ opacity: 0.7 }}>{att.sizeKb}KB</small>
+                      <div style={{ minWidth: 0, display: 'grid', gap: 2 }}>
+                        <strong style={{ maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#f1f5f9' }}>
+                          {att.name}
+                        </strong>
+                        <small style={{ color: '#6ee7b7', display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.74rem' }}>
+                          <CheckCircle2 size={12} />
+                          <span>{en ? (att.statusEn || `${att.sizeKb}KB`) : (att.statusAr || `${att.sizeKb}KB`)}</span>
+                        </small>
+                      </div>
+                      {(att.textContent || att.previewUrl) && (
+                        <button
+                          type="button"
+                          className="turn-inline-action"
+                          onClick={() => setPreviewAttachment(att)}
+                          title={en ? 'Inspect extracted content' : 'معاينة ما تم قراءته من داخل الملف'}
+                        >
+                          <Eye size={13} />
+                          <span>{en ? 'Inspect' : 'فحص'}</span>
+                        </button>
+                      )}
                       <button
                         type="button"
                         onClick={() => setAttachments((prev) => prev.filter((x) => x.id !== att.id))}
-                        style={{ background: 'transparent', border: 'none', color: 'inherit', cursor: 'pointer', padding: 2 }}
+                        style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: 2 }}
                         aria-label={en ? 'Remove attachment' : 'إزالة المرفق'}
                       >
-                        <X size={14} />
+                        <X size={15} />
                       </button>
                     </div>
                   ))}
                 </div>
               )}
 
-              <div className="chatgpt-input-box">
+              <div
+                className="chatgpt-input-box"
+                style={{
+                  display: 'flex',
+                  alignItems: 'flex-end',
+                  gap: 10,
+                  width: '100%',
+                }}
+              >
                 <button
                   type="button"
                   className="chat-utility-btn icon-only"
                   onClick={() => filePickerRef.current?.click()}
-                  title={en ? 'Attach images, PDFs, or files' : 'إرفاق صور أو ملفات PDF أو مستندات'}
+                  title={en ? 'Attach PDFs, Word docs, images, or files' : 'إرفاق ملف PDF أو Word أو صور أو مستندات'}
                   aria-label={en ? 'Attach files' : 'إرفاق ملفات'}
-                  style={{ flexShrink: 0 }}
+                  style={{ flexShrink: 0, width: 38, height: 38, borderRadius: 12 }}
                 >
                   <Paperclip size={17} />
                 </button>
@@ -932,9 +1003,14 @@ export default function ChatWorkspace({ preferences, notify, language }) {
                   value={prompt}
                   onChange={(event) => setPrompt(event.target.value)}
                   onPaste={handlePasteClipboard}
-                  placeholder={en ? 'Ask anything, drop or paste images/PDFs…' : 'اسأل أي سؤال، أو اسحب والصق الصور وملفات الـ PDF هنا…'}
+                  placeholder={en ? 'Ask anything, or drop / paste PDFs & images…' : 'اكتب سؤالك هنا، أو اسحب والصق الصور وملفات الـ PDF…'}
                   maxLength={12000}
                   rows={1}
+                  style={{
+                    flex: '1 1 auto',
+                    minWidth: 0,
+                    width: '100%',
+                  }}
                   onKeyDown={(event) => {
                     if (event.key === 'Enter' && !event.shiftKey && !loading) {
                       event.preventDefault();
@@ -947,11 +1023,26 @@ export default function ChatWorkspace({ preferences, notify, language }) {
                   }}
                 />
                 {loading ? (
-                  <button className="chatgpt-send-btn stop" type="button" onClick={stopGeneration} title={en ? 'Stop' : 'إيقاف'} aria-label={en ? 'Stop' : 'إيقاف'}>
+                  <button
+                    className="chatgpt-send-btn stop"
+                    type="button"
+                    onClick={stopGeneration}
+                    title={en ? 'Stop' : 'إيقاف'}
+                    aria-label={en ? 'Stop' : 'إيقاف'}
+                    style={{ flexShrink: 0 }}
+                  >
                     <Square size={16} />
                   </button>
                 ) : (
-                  <button className="chatgpt-send-btn" type="button" disabled={!canSend} onClick={() => runPrompt()} title={en ? 'Send' : 'إرسال'} aria-label={en ? 'Send' : 'إرسال'}>
+                  <button
+                    className="chatgpt-send-btn"
+                    type="button"
+                    disabled={!canSend}
+                    onClick={() => runPrompt()}
+                    title={en ? 'Send' : 'إرسال'}
+                    aria-label={en ? 'Send' : 'إرسال'}
+                    style={{ flexShrink: 0 }}
+                  >
                     <Send size={17} />
                   </button>
                 )}
@@ -960,7 +1051,7 @@ export default function ChatWorkspace({ preferences, notify, language }) {
               <div className="chatgpt-controls-bar">
                 <div className="chat-mode-row">
                   <button type="button" className="chat-mode" onClick={() => filePickerRef.current?.click()}>
-                    <ImagePlus size={14} /> {en ? 'Attach Files / Images' : 'صور وملفات'}
+                    <ImagePlus size={14} /> {en ? 'Attach PDF / Images' : 'ارفع PDF أو صور'}
                   </button>
                   <button
                     type="button"
@@ -987,6 +1078,65 @@ export default function ChatWorkspace({ preferences, notify, language }) {
           </section>
         </section>
       </div>
+
+      {previewAttachment && (
+        <div
+          className="pdf-modal-backdrop"
+          role="presentation"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setPreviewAttachment(null);
+          }}
+        >
+          <section className="pdf-modal-card" role="dialog" aria-modal="true" style={{ maxWidth: 740 }}>
+            <header className="pdf-modal-head">
+              <div className="pdf-modal-title">
+                <span className="pdf-modal-icon"><FileText size={20} /></span>
+                <div>
+                  <h3 style={{ margin: 0 }}>{previewAttachment.name}</h3>
+                  <small style={{ color: '#6ee7b7' }}>
+                    {(en ? previewAttachment.statusEn : previewAttachment.statusAr) || (en ? 'Inspected file' : 'تم فحص الملف')}
+                  </small>
+                </div>
+              </div>
+              <button type="button" className="pdf-modal-close" onClick={() => setPreviewAttachment(null)}>
+                <X size={18} />
+              </button>
+            </header>
+            <div className="pdf-modal-body" style={{ maxHeight: '65vh', overflowY: 'auto' }}>
+              {(previewAttachment.previewUrl || previewAttachment.thumbUrl) && (
+                <div style={{ textAlign: 'center', marginBottom: 12 }}>
+                  <img
+                    src={previewAttachment.previewUrl || previewAttachment.thumbUrl}
+                    alt={previewAttachment.name}
+                    style={{ maxWidth: '100%', maxHeight: 380, borderRadius: 12 }}
+                  />
+                </div>
+              )}
+              {(previewAttachment.textContent || previewAttachment.excerpt) ? (
+                <pre
+                  style={{
+                    whiteSpace: 'pre-wrap',
+                    fontFamily: 'inherit',
+                    fontSize: '0.88rem',
+                    lineHeight: 1.75,
+                    padding: 14,
+                    borderRadius: 12,
+                    background: 'rgba(3, 8, 20, 0.72)',
+                    border: '1px solid rgba(148, 163, 184, 0.18)',
+                    margin: 0,
+                  }}
+                >
+                  {String(previewAttachment.textContent || previewAttachment.excerpt).slice(0, 8000)}
+                </pre>
+              ) : !previewAttachment.previewUrl && !previewAttachment.thumbUrl ? (
+                <p style={{ margin: 0, opacity: 0.85 }}>
+                  {en ? 'This file is inspected visually via multimodal AI Vision.' : 'يتم فحص هذا الملف بصريًا عبر محرك الرؤية الذكي (AI Vision).'}
+                </p>
+              ) : null}
+            </div>
+          </section>
+        </div>
+      )}
 
       <CurriculumPdfModal
         open={pdfBuilderState.open}
