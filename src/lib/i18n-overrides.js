@@ -174,6 +174,13 @@ const EXTRA_AR_TO_EN = {
   'Prompts مثبتة': 'Pinned prompts',
   'المصادر': 'Sources',
   'مراجع مختارة': 'selected references',
+  'استوديو تلخيص ودمج المواد والتفكير': 'Summarize, Merge & Deep Think Studio',
+  'لخّص المواد بذكاء': 'Summarize Materials Smartly',
+  'ادمج المواد في ملخص موحد': 'Merge Materials into One Guide',
+  'فكّر بعمق واستخرج الروابط': 'Deep Think & Extract Connections',
+  'حوار صوتي حي': 'Live Voice Chat',
+  'تحدث بالصوت بمرونة': 'Flexible Voice Input',
+  'مسار التفكير والدمج المنطقي': 'Structured Thinking & Synthesis Path',
 };
 
 const EXTRA_EN_TO_AR = Object.fromEntries(Object.entries(EXTRA_AR_TO_EN).map(([ar, en]) => [en, ar]));

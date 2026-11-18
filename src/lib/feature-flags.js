@@ -3,9 +3,9 @@ const IDENTITY_KEY = 'pathpilot.rollout-id.v1';
 
 export const FEATURE_FLAGS = Object.freeze({
   pwaUpdatePrompt: { rollout: 100 },
-  conversationV2: { rollout: 0 },
-  streamingResponses: { rollout: 0 },
-  indexedLocalRag: { rollout: 0 },
+  conversationV2: { rollout: 100 },
+  streamingResponses: { rollout: 100 },
+  indexedLocalRag: { rollout: 100 },
 });
 
 function hash(value) {
