@@ -18,6 +18,7 @@ import {
   Search,
   Send,
   Settings2,
+  Sparkles,
   Square,
   Trash2,
   WandSparkles,
@@ -476,7 +477,7 @@ export default function ChatWorkspace({ preferences, notify, language }) {
       setStreamingTurn(null);
       setVoiceInputUsed(false);
       setSources(Array.isArray(result.sources) ? result.sources : []);
-    } catch {
+    } catch (error) {
       if (controller.signal.aborted || runToken !== runTokenRef.current) return;
       if (!streamedAnswer && extraMeta.localPreview) {
         appendInstantTurn(text, extraMeta.localPreview, computedTrace);

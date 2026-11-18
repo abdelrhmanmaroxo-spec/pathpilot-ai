@@ -2,7 +2,7 @@ name: Deploy to GitHub Pages
 
 on:
   push:
-    branches: [main]
+    branches: ["main"]
   workflow_dispatch:
 
 permissions:
@@ -11,7 +11,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: pages
+  group: "pages"
   cancel-in-progress: true
 
 jobs:
@@ -26,20 +26,22 @@ jobs:
       - run: npm ci
       - run: npm run check
         env:
-          VITE_PLATFORM_API_URL: https://pathpilot-ai-production.up.railway.app
-          VITE_AI_API_URL: https://pathpilot-ai-production.up.railway.app/api/research
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v4
+          VITE_PLATFORM_API_URL: ${{ vars.VITE_PLATFORM_API_URL || '' }}
+          VITE_AI_API_URL: ${{ vars.VITE_AI_API_URL || '' }}
+          VITE_FREE_CLOUD_URL: ${{ vars.VITE_FREE_CLOUD_URL || '' }}
+          VITE_OWNER_EMAIL: ${{ vars.VITE_OWNER_EMAIL || 'Abdelrhman.maroxo@gmail.com' }}
+          VITE_SUPPORT_EMAIL: ${{ vars.VITE_SUPPORT_EMAIL || 'pathpilot.app00@gmail.com' }}
+      - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
 
   deploy:
+    needs: build
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
-    needs: build
     steps:
-      - name: Deploy
+      - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4

@@ -94,7 +94,7 @@ export function cleanTextForSpeech(rawText) {
     .replace(/__([^_]+)__/g, '$1')
     .replace(/(^|\s)\*([^*\n]+)\*(?=\s|$)/g, '$1$2')
     .replace(/^\s*[-*•]\s+/gm, '• ')
-    .replace(/[🌐🧠⚠️🔄✨📎📝📊🔗]/gu, '')
+    .replace(/(?:🌐|🧠|⚠️|🔄|✨|📎|📝|📊|🔗)/gu, '')
     .replace(/[ \t]+/g, ' ')
     .replace(/\n{3,}/g, '\n\n')
     .trim();

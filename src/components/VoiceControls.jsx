@@ -159,57 +159,61 @@ export default function VoiceControls({ value, onChange, answer, notify, onAutoS
     setCurrentSpokenText('');
   }, []);
 
-  const speakChunkAt = useCallback((index, sessionId, customSettings = settings) => {
-    if (!readAloudSupported || sessionId !== speechSessionIdRef.current) return;
-    const chunks = activeChunksRef.current;
-    if (!chunks.length || index < 0 || index >= chunks.length) {
-      setSpeaking(false);
-      setPaused(false);
-      setCurrentSpokenText('');
-      return;
-    }
-
-    activeChunkIndexRef.current = index;
-    const chunk = chunks[index];
-    setChunkIndex(index + 1);
-    setChunkTotal(chunks.length);
-    setCurrentSpokenText(chunk.text);
-
-    globalThis.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(chunk.text);
-    const chosenVoice = pickBestVoice(voices, chunk.lang, customSettings);
-    if (chosenVoice) {
-      utterance.voice = chosenVoice;
-      utterance.lang = chosenVoice.lang || chunk.lang;
-    } else {
-      utterance.lang = chunk.lang;
-    }
-    utterance.rate = customSettings.rate || 1;
-    utterance.pitch = customSettings.pitch || 1;
-
-    utterance.onstart = () => {
-      if (sessionId !== speechSessionIdRef.current) return;
-      setSpeaking(true);
-      setPaused(false);
-    };
-    utterance.onend = () => {
-      if (sessionId !== speechSessionIdRef.current) return;
-      if (index + 1 < chunks.length) {
-        speakChunkAt(index + 1, sessionId, customSettings);
-      } else {
+  const speakChunkAt = useCallback((initialIndex, sessionId, customSettings = settings) => {
+    function playChunkAt(index) {
+      if (!readAloudSupported || sessionId !== speechSessionIdRef.current) return;
+      const chunks = activeChunksRef.current;
+      if (!chunks.length || index < 0 || index >= chunks.length) {
         setSpeaking(false);
         setPaused(false);
         setCurrentSpokenText('');
+        return;
       }
-    };
-    utterance.onerror = () => {
-      if (sessionId !== speechSessionIdRef.current) return;
-      setSpeaking(false);
-      setPaused(false);
-      setCurrentSpokenText('');
-    };
 
-    globalThis.speechSynthesis.speak(utterance);
+      activeChunkIndexRef.current = index;
+      const chunk = chunks[index];
+      setChunkIndex(index + 1);
+      setChunkTotal(chunks.length);
+      setCurrentSpokenText(chunk.text);
+
+      globalThis.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(chunk.text);
+      const chosenVoice = pickBestVoice(voices, chunk.lang, customSettings);
+      if (chosenVoice) {
+        utterance.voice = chosenVoice;
+        utterance.lang = chosenVoice.lang || chunk.lang;
+      } else {
+        utterance.lang = chunk.lang;
+      }
+      utterance.rate = customSettings.rate || 1;
+      utterance.pitch = customSettings.pitch || 1;
+
+      utterance.onstart = () => {
+        if (sessionId !== speechSessionIdRef.current) return;
+        setSpeaking(true);
+        setPaused(false);
+      };
+      utterance.onend = () => {
+        if (sessionId !== speechSessionIdRef.current) return;
+        if (index + 1 < chunks.length) {
+          playChunkAt(index + 1);
+        } else {
+          setSpeaking(false);
+          setPaused(false);
+          setCurrentSpokenText('');
+        }
+      };
+      utterance.onerror = () => {
+        if (sessionId !== speechSessionIdRef.current) return;
+        setSpeaking(false);
+        setPaused(false);
+        setCurrentSpokenText('');
+      };
+
+      globalThis.speechSynthesis.speak(utterance);
+    }
+
+    playChunkAt(initialIndex);
   }, [readAloudSupported, settings, voices]);
 
   const startSpeakingText = useCallback((rawText, overrideSettings = settings) => {
@@ -283,7 +287,7 @@ export default function VoiceControls({ value, onChange, answer, notify, onAutoS
     }, settings.silenceSubmitMs || 2200);
   };
 
-  const startRecognitionCycle = () => {
+  function startRecognitionCycle() {
     if (!Recognition || !shouldListenRef.current) return;
     const recognition = new Recognition();
     recognition.lang = resolveRecognitionLanguage(settings, en ? 'en' : 'ar');
@@ -344,7 +348,7 @@ export default function VoiceControls({ value, onChange, answer, notify, onAutoS
         if (shouldListenRef.current) startRecognitionCycle();
       }, 320);
     }
-  };
+  }
 
   const toggleListening = () => {
     if (!voiceInputSupported) {
