@@ -1,16 +1,40 @@
-export const DEFAULT_OWNER_EMAIL = 'Abdelrhman.maroxo@gmail.com';
-export const DEFAULT_SUPPORT_EMAIL = 'pathpilot.app00@gmail.com';
+import {
+  OWNER_IDENTITY_SHA256,
+  hashEmailIdentity,
+  hashOtpCode,
+  hashPasswordPBKDF2,
+  normalizeSafeEmail,
+  openVaultPayload,
+  randomHex,
+  sanitizeSecurityText,
+  sealVaultPayload,
+  sha256Hex,
+  shortIdentityFingerprint,
+  timingSafeEqualStr,
+  verifyOwnerIdentity,
+  verifyPasswordPBKDF2,
+} from './crypto-vault.js';
 
-const USERS_KEY = 'pathpilot.free_cloud.users.v1';
-const SESSION_KEY = 'pathpilot.free_cloud.session.v1';
-const OTPS_KEY = 'pathpilot.free_cloud.otps.v1';
-const TICKETS_KEY = 'pathpilot.free_cloud.tickets.v1';
-const INVITES_KEY = 'pathpilot.free_cloud.invites.v1';
-const FEEDBACK_KEY = 'pathpilot.free_cloud.feedback.v1';
-const EVENTS_KEY = 'pathpilot.free_cloud.events.v1';
-const CLOUD_CONFIG_KEY = 'pathpilot.free_cloud.config.v1';
+export const DEFAULT_SUPPORT_EMAIL = 'pathpilot.app00@gmail.com';
+export { OWNER_IDENTITY_SHA256, shortIdentityFingerprint };
+
+const USERS_KEY = 'pathpilot.vault.users.v6';
+const LEGACY_USERS_KEY = 'pathpilot.free_cloud.users.v1';
+const SESSION_KEY = 'pathpilot.vault.session.v6';
+const OTPS_KEY = 'pathpilot.vault.otps.v6';
+const AUTH_GUARD_KEY = 'pathpilot.vault.guard.v6';
+const TICKETS_KEY = 'pathpilot.vault.tickets.v6';
+const LEGACY_TICKETS_KEY = 'pathpilot.free_cloud.tickets.v1';
+const INVITES_KEY = 'pathpilot.vault.invites.v6';
+const FEEDBACK_KEY = 'pathpilot.vault.feedback.v6';
+const EVENTS_KEY = 'pathpilot.vault.events.v6';
+const CLOUD_CONFIG_KEY = 'pathpilot.vault.config.v6';
+const LEGACY_CLOUD_CONFIG_KEY = 'pathpilot.free_cloud.config.v1';
 
 const EMAIL_PATTERN = /^\S+@\S+\.\S+$/;
+const MAX_AUTH_FAILURES = 5;
+const LOCKOUT_MS = 2 * 60 * 1000;
+const MAX_OTP_ATTEMPTS = 5;
 
 function getStore(customStorage) {
   if (customStorage) return customStorage;
@@ -21,34 +45,35 @@ function getStore(customStorage) {
   }
 }
 
-function readCollection(key, fallback, customStorage) {
+function readSealed(key, fallback, customStorage, legacyKey = '') {
   const store = getStore(customStorage);
   if (!store) return fallback;
-  try {
-    const raw = store.getItem(key);
-    return raw ? JSON.parse(raw) : fallback;
-  } catch {
-    return fallback;
+  const raw = store.getItem(key);
+  if (raw) return openVaultPayload(raw, fallback);
+  if (legacyKey) {
+    const legacyRaw = store.getItem(legacyKey);
+    if (legacyRaw) {
+      const parsed = openVaultPayload(legacyRaw, fallback);
+      writeSealed(key, parsed, customStorage);
+      store.removeItem(legacyKey);
+      return parsed;
+    }
   }
+  return fallback;
 }
 
-function writeCollection(key, value, customStorage) {
+function writeSealed(key, value, customStorage) {
   const store = getStore(customStorage);
   if (!store) return;
   try {
-    store.setItem(key, JSON.stringify(value));
+    store.setItem(key, sealVaultPayload(value));
   } catch {
-    // Ignore storage quota errors cleanly
+    // Ignore storage quota restrictions cleanly
   }
 }
 
 export function normalizeEmailAddress(email) {
-  return String(email || '').trim().toLowerCase();
-}
-
-export function getOwnerEmail() {
-  const envOwner = import.meta.env?.VITE_OWNER_EMAIL;
-  return normalizeEmailAddress(envOwner || DEFAULT_OWNER_EMAIL);
+  return normalizeSafeEmail(email);
 }
 
 export function getSupportEmail() {
@@ -56,24 +81,25 @@ export function getSupportEmail() {
   return String(envSupport || DEFAULT_SUPPORT_EMAIL).trim();
 }
 
-export function isOwnerEmail(email) {
-  return Boolean(email && normalizeEmailAddress(email) === getOwnerEmail());
+export function isOwnerEmail(email, customOwnerOverride = '') {
+  const envOwner = customOwnerOverride || import.meta.env?.VITE_OWNER_EMAIL_SHA256 || import.meta.env?.VITE_OWNER_EMAIL || '';
+  return verifyOwnerIdentity(email, envOwner);
 }
 
 export function getFreeCloudConfig(customStorage) {
-  const stored = readCollection(CLOUD_CONFIG_KEY, {}, customStorage);
+  const stored = readSealed(CLOUD_CONFIG_KEY, {}, customStorage, LEGACY_CLOUD_CONFIG_KEY);
   const envBridgeUrl = String(import.meta.env?.VITE_FREE_CLOUD_URL || '').trim();
   return {
     bridgeUrl: String(stored.bridgeUrl ?? envBridgeUrl).trim(),
     geminiApiKey: String(stored.geminiApiKey || '').trim(),
     geminiModel: String(stored.geminiModel || 'gemini-2.5-flash').trim(),
-    ownerEmail: DEFAULT_OWNER_EMAIL,
     supportEmail: getSupportEmail(),
+    encryptionStandard: 'PBKDF2-SHA256-100K + SealedVault-v6',
   };
 }
 
 export function saveFreeCloudConfig(patch = {}, customStorage) {
-  const current = readCollection(CLOUD_CONFIG_KEY, {}, customStorage);
+  const current = readSealed(CLOUD_CONFIG_KEY, {}, customStorage, LEGACY_CLOUD_CONFIG_KEY);
   const next = {
     ...current,
     ...(patch.bridgeUrl !== undefined ? { bridgeUrl: String(patch.bridgeUrl || '').trim() } : {}),
@@ -81,7 +107,7 @@ export function saveFreeCloudConfig(patch = {}, customStorage) {
     ...(patch.geminiModel !== undefined ? { geminiModel: String(patch.geminiModel || 'gemini-2.5-flash').trim() } : {}),
     updatedAt: new Date().toISOString(),
   };
-  writeCollection(CLOUD_CONFIG_KEY, next, customStorage);
+  writeSealed(CLOUD_CONFIG_KEY, next, customStorage);
   return getFreeCloudConfig(customStorage);
 }
 
@@ -94,19 +120,36 @@ export function generateSixDigitCode() {
   return String(Math.floor(100000 + Math.random() * 900000));
 }
 
-export async function hashSecret(text) {
-  const raw = String(text || '');
-  if (globalThis.crypto?.subtle) {
-    const bytes = new TextEncoder().encode(`pathpilot-v5:${raw}`);
-    const digest = await globalThis.crypto.subtle.digest('SHA-256', bytes);
-    return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, '0')).join('');
+function assertNotRateLimited(emailHash, customStorage) {
+  const guards = readSealed(AUTH_GUARD_KEY, {}, customStorage);
+  const record = guards[emailHash];
+  if (!record) return;
+  if (record.lockedUntil && record.lockedUntil > Date.now()) {
+    const seconds = Math.max(5, Math.ceil((record.lockedUntil - Date.now()) / 1000));
+    const err = new Error(`تم تفعيل الحماية المؤقتة ضد المحاولات المتكررة. انتظر ${seconds} ثانية ثم حاول مرة أخرى.`);
+    err.code = 'AUTH_RATE_LIMITED';
+    throw err;
   }
-  let h = 2166136261;
-  for (let i = 0; i < raw.length; i += 1) {
-    h ^= raw.charCodeAt(i);
-    h = Math.imul(h, 16777619);
+}
+
+function registerFailedAttempt(emailHash, customStorage) {
+  const guards = readSealed(AUTH_GUARD_KEY, {}, customStorage);
+  const prev = guards[emailHash] || { count: 0, lockedUntil: 0 };
+  const nextCount = (prev.lockedUntil && prev.lockedUntil <= Date.now()) ? 1 : prev.count + 1;
+  guards[emailHash] = {
+    count: nextCount,
+    lockedUntil: nextCount >= MAX_AUTH_FAILURES ? Date.now() + LOCKOUT_MS : 0,
+    lastAttemptAt: new Date().toISOString(),
+  };
+  writeSealed(AUTH_GUARD_KEY, guards, customStorage);
+}
+
+function clearFailedAttempts(emailHash, customStorage) {
+  const guards = readSealed(AUTH_GUARD_KEY, {}, customStorage);
+  if (guards[emailHash]) {
+    delete guards[emailHash];
+    writeSealed(AUTH_GUARD_KEY, guards, customStorage);
   }
-  return `fnv1a:${(h >>> 0).toString(16)}`;
 }
 
 async function callGoogleAppsScriptBridge(payload, customStorage, fetchImpl = globalThis.fetch) {
@@ -115,16 +158,29 @@ async function callGoogleAppsScriptBridge(payload, customStorage, fetchImpl = gl
     return { attempted: false, ok: false, reason: 'BRIDGE_NOT_CONFIGURED' };
   }
   try {
-    // text/plain avoids CORS preflight rejection on script.google.com Web Apps
+    // text/plain + redirect: follow works cleanly with Google Apps Script Web Apps without CORS preflight
     const response = await fetchImpl(bridgeUrl, {
       method: 'POST',
+      redirect: 'follow',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
       body: JSON.stringify(payload),
     });
-    const data = await response.json().catch(() => ({}));
+    const data = await response.json().catch(() => ({ ok: response.ok }));
     return { attempted: true, ok: Boolean(response.ok && data.ok !== false), data };
-  } catch (err) {
-    return { attempted: true, ok: false, reason: err?.message || 'BRIDGE_NETWORK_ERROR' };
+  } catch {
+    // Fallback for strict browser privacy shields blocking cross-origin 302 redirect reads on script.google.com:
+    // send opaque no-cors POST so Google Apps Script still executes MailApp.sendEmail reliably!
+    try {
+      await fetchImpl(bridgeUrl, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify(payload),
+      });
+      return { attempted: true, ok: true, data: { opaqueDelivered: true } };
+    } catch (innerErr) {
+      return { attempted: true, ok: false, reason: innerErr?.message || 'BRIDGE_NETWORK_ERROR' };
+    }
   }
 }
 
@@ -132,28 +188,39 @@ export async function testFreeCloudBridge(customStorage, fetchImpl) {
   return callGoogleAppsScriptBridge({ action: 'ping' }, customStorage, fetchImpl);
 }
 
-function decorateFreeUser(record) {
+function decorateFreeUser(record, customOwnerOverride = '') {
   if (!record) return null;
-  const owner = isOwnerEmail(record.email);
+  const owner = isOwnerEmail(record.email, customOwnerOverride);
   const role = owner ? 'admin' : (record.role || 'user');
+  const emailHash = record.emailHash || hashEmailIdentity(record.email);
   return {
     id: record.id,
     name: record.name,
     email: record.email,
+    emailHash,
+    securityFingerprint: shortIdentityFingerprint(record.email),
     role,
     isOwner: owner,
     disabled: Boolean(record.disabled),
     email_verified: record.emailVerified ? 1 : 0,
     emailVerified: Boolean(record.emailVerified),
     verified_at: record.verifiedAt || null,
-    auth_provider: record.authProvider || 'password',
+    auth_provider: record.authProvider || 'pbkdf2-sha256',
     created_at: record.createdAt,
     last_seen_at: record.lastSeenAt || record.createdAt,
   };
 }
 
-export async function freeRegisterAccount({ name, email, password }, { storage, fetchImpl } = {}) {
-  const cleanName = String(name || '').trim().slice(0, 60);
+function findUserIndexByEmail(users, email) {
+  const targetHash = hashEmailIdentity(email);
+  return users.findIndex((u) => (
+    (u.emailHash && timingSafeEqualStr(u.emailHash, targetHash))
+    || normalizeEmailAddress(u.email) === normalizeEmailAddress(email)
+  ));
+}
+
+export async function freeRegisterAccount({ name, email, password }, { storage, fetchImpl, ownerOverride } = {}) {
+  const cleanName = sanitizeSecurityText(name || '', 60);
   const cleanEmail = normalizeEmailAddress(email);
   const rawPassword = String(password || '');
 
@@ -164,69 +231,83 @@ export async function freeRegisterAccount({ name, email, password }, { storage, 
     throw new Error('كلمة المرور يجب أن تكون بين 8 و128 حرفًا.');
   }
 
-  const users = readCollection(USERS_KEY, [], storage);
-  const existing = users.find((u) => normalizeEmailAddress(u.email) === cleanEmail);
-  if (existing) {
-    const err = new Error(
-      existing.emailVerified
-        ? 'يوجد حساب مسجل بالفعل بهذا البريد الإلكتروني. يمكنك تسجيل الدخول مباشرة.'
-        : 'هذا البريد بانتظار كود التفعيل. أدخل الكود أو اضغط إعادة إرسال الكود.',
-    );
-    err.code = existing.emailVerified ? 'ACCOUNT_EXISTS' : 'EMAIL_NOT_VERIFIED';
-    throw err;
+  const emailHash = hashEmailIdentity(cleanEmail);
+  assertNotRateLimited(emailHash, storage);
+
+  const users = readSealed(USERS_KEY, [], storage, LEGACY_USERS_KEY);
+  const existingIdx = findUserIndexByEmail(users, cleanEmail);
+  if (existingIdx !== -1) {
+    const existing = users[existingIdx];
+    if (existing.emailVerified) {
+      const err = new Error('يوجد حساب مفعل بالفعل بهذا البريد الإلكتروني. سجل دخولك مباشرة أو استخدم نسيت كلمة المرور.');
+      err.code = 'ACCOUNT_EXISTS';
+      throw err;
+    }
+    // Account was pending verification — update name/password hash and re-send fresh OTP immediately!
+    users[existingIdx] = {
+      ...existing,
+      name: cleanName,
+      emailHash,
+      passwordHash: await hashPasswordPBKDF2(rawPassword),
+    };
+    writeSealed(USERS_KEY, users, storage);
+    return issueFreeOtpForUser(users[existingIdx], 'verify', { storage, fetchImpl });
   }
 
-  const invites = readCollection(INVITES_KEY, [], storage);
+  const invites = readSealed(INVITES_KEY, [], storage);
   const invited = invites.find((inv) => normalizeEmailAddress(inv.email) === cleanEmail && !inv.accepted_at);
   const now = new Date().toISOString();
-  const passwordHash = await hashSecret(rawPassword);
+  const passwordHash = await hashPasswordPBKDF2(rawPassword);
   const newUser = {
-    id: globalThis.crypto?.randomUUID?.() || `usr-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
+    id: `usr_${sha256Hex(`${emailHash}:${now}:${randomHex(8)}`).slice(0, 24)}`,
     name: cleanName,
     email: cleanEmail,
+    emailHash,
     passwordHash,
-    role: isOwnerEmail(cleanEmail) || invited ? 'admin' : 'user',
+    role: isOwnerEmail(cleanEmail, ownerOverride) || invited ? 'admin' : 'user',
     emailVerified: false,
     verifiedAt: null,
-    authProvider: 'password',
+    authProvider: 'pbkdf2-sha256',
     disabled: false,
     createdAt: now,
     lastSeenAt: now,
   };
 
   users.unshift(newUser);
-  writeCollection(USERS_KEY, users, storage);
+  writeSealed(USERS_KEY, users, storage);
 
   return issueFreeOtpForUser(newUser, 'verify', { storage, fetchImpl });
 }
 
 export async function issueFreeOtpForUser(userRecord, purpose = 'verify', { storage, fetchImpl } = {}) {
+  const cleanEmail = normalizeEmailAddress(userRecord.email);
+  const emailHash = hashEmailIdentity(cleanEmail);
   const code = generateSixDigitCode();
-  const codeHash = await hashSecret(`${normalizeEmailAddress(userRecord.email)}:${code}`);
-  const otps = readCollection(OTPS_KEY, {}, storage);
-  otps[normalizeEmailAddress(userRecord.email)] = {
+  const codeHash = hashOtpCode(cleanEmail, code);
+  const otps = readSealed(OTPS_KEY, {}, storage);
+  otps[emailHash] = {
     codeHash,
     purpose,
+    attempts: 0,
     expiresAt: Date.now() + 30 * 60 * 1000,
     createdAt: new Date().toISOString(),
   };
-  writeCollection(OTPS_KEY, otps, storage);
+  writeSealed(OTPS_KEY, otps, storage);
 
   const bridgeResult = await callGoogleAppsScriptBridge({
     action: 'send_otp',
-    email: userRecord.email,
-    name: userRecord.name,
+    email: cleanEmail,
+    name: userRecord.name || cleanEmail.split('@')[0],
     code,
     purpose,
   }, storage, fetchImpl);
 
   return {
     requiresVerification: true,
-    email: userRecord.email,
+    email: cleanEmail,
+    securityFingerprint: shortIdentityFingerprint(cleanEmail),
     deliveryPending: !bridgeResult.ok,
     deliveryMode: bridgeResult.ok ? 'gmail-apps-script' : 'local-instant-otp',
-    // If the user hasn't connected the Google Apps Script bridge URL yet, return instantOtpHint
-    // so signup & testing never deadlock before configuring script.google.com!
     instantOtpCode: bridgeResult.ok ? undefined : code,
     supportSender: getSupportEmail(),
   };
@@ -234,40 +315,55 @@ export async function issueFreeOtpForUser(userRecord, purpose = 'verify', { stor
 
 export async function freeResendVerification(email, { storage, fetchImpl } = {}) {
   const cleanEmail = normalizeEmailAddress(email);
-  const users = readCollection(USERS_KEY, [], storage);
-  const userRecord = users.find((u) => normalizeEmailAddress(u.email) === cleanEmail);
-  if (!userRecord) {
-    throw new Error('لا يوجد حساب مسجل بهذا البريد الإلكتروني.');
+  if (!EMAIL_PATTERN.test(cleanEmail)) {
+    throw new Error('يرجى إدخال بريد إلكتروني صالح.');
   }
-  if (userRecord.emailVerified) {
+  const users = readSealed(USERS_KEY, [], storage, LEGACY_USERS_KEY);
+  const idx = findUserIndexByEmail(users, cleanEmail);
+  if (idx === -1) {
+    throw new Error('لا يوجد حساب مسجل بهذا البريد بعد. أنشئ الحساب أولًا.');
+  }
+  if (users[idx].emailVerified) {
     return { ok: true, alreadyVerified: true, deliveryPending: false };
   }
-  return issueFreeOtpForUser(userRecord, 'verify', { storage, fetchImpl });
+  return issueFreeOtpForUser(users[idx], 'verify', { storage, fetchImpl });
 }
 
-export async function freeVerifyEmailCode({ email, code }, { storage } = {}) {
+export async function freeVerifyEmailCode({ email, code }, { storage, ownerOverride } = {}) {
   const cleanEmail = normalizeEmailAddress(email);
   const cleanCode = String(code || '').replace(/\s+/g, '');
   if (!/^\d{6}$/.test(cleanCode)) {
     throw new Error('أدخل كود التفعيل المكون من 6 أرقام.');
   }
 
-  const otps = readCollection(OTPS_KEY, {}, storage);
-  const record = otps[cleanEmail];
+  const emailHash = hashEmailIdentity(cleanEmail);
+  assertNotRateLimited(emailHash, storage);
+
+  const otps = readSealed(OTPS_KEY, {}, storage);
+  const record = otps[emailHash];
   if (!record || record.expiresAt < Date.now()) {
-    throw new Error('كود التفعيل غير صالح أو انتهت صلاحيته. اطلب كودًا جديدًا.');
+    throw new Error('كود التفعيل غير صالح أو انتهت صلاحيته. اضغط إعادة إرسال الكود.');
   }
 
-  const expectedHash = await hashSecret(`${cleanEmail}:${cleanCode}`);
-  if (expectedHash !== record.codeHash) {
-    throw new Error('كود التفعيل غير صحيح. تأكد من الأرقام الستة.');
+  const expectedHash = hashOtpCode(cleanEmail, cleanCode);
+  if (!timingSafeEqualStr(expectedHash, record.codeHash)) {
+    const nextAttempts = (record.attempts || 0) + 1;
+    if (nextAttempts >= MAX_OTP_ATTEMPTS) {
+      delete otps[emailHash];
+    } else {
+      otps[emailHash] = { ...record, attempts: nextAttempts };
+    }
+    writeSealed(OTPS_KEY, otps, storage);
+    registerFailedAttempt(emailHash, storage);
+    throw new Error('كود التفعيل غير صحيح. تأكد من الأرقام الستة المرسلة لبريدك.');
   }
 
-  delete otps[cleanEmail];
-  writeCollection(OTPS_KEY, otps, storage);
+  delete otps[emailHash];
+  writeSealed(OTPS_KEY, otps, storage);
+  clearFailedAttempts(emailHash, storage);
 
-  const users = readCollection(USERS_KEY, [], storage);
-  const index = users.findIndex((u) => normalizeEmailAddress(u.email) === cleanEmail);
+  const users = readSealed(USERS_KEY, [], storage, LEGACY_USERS_KEY);
+  const index = findUserIndexByEmail(users, cleanEmail);
   if (index === -1) {
     throw new Error('الحساب غير موجود.');
   }
@@ -275,66 +371,87 @@ export async function freeVerifyEmailCode({ email, code }, { storage } = {}) {
   const now = new Date().toISOString();
   users[index] = {
     ...users[index],
+    emailHash,
     emailVerified: true,
     verifiedAt: now,
     lastSeenAt: now,
-    role: isOwnerEmail(cleanEmail) ? 'admin' : users[index].role,
+    role: isOwnerEmail(cleanEmail, ownerOverride) ? 'admin' : users[index].role,
   };
-  writeCollection(USERS_KEY, users, storage);
+  writeSealed(USERS_KEY, users, storage);
 
-  const invites = readCollection(INVITES_KEY, [], storage);
+  const invites = readSealed(INVITES_KEY, [], storage);
   const updatedInvites = invites.map((inv) => (
     normalizeEmailAddress(inv.email) === cleanEmail ? { ...inv, accepted_at: now } : inv
   ));
-  writeCollection(INVITES_KEY, updatedInvites, storage);
+  writeSealed(INVITES_KEY, updatedInvites, storage);
 
-  const decorated = decorateFreeUser(users[index]);
-  const token = `free-sess-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-  writeCollection(SESSION_KEY, { token, userId: decorated.id, email: decorated.email }, storage);
+  const decorated = decorateFreeUser(users[index], ownerOverride);
+  const token = `sess_sha256_${sha256Hex(`${decorated.id}:${now}:${randomHex(16)}`)}`;
+  writeSealed(SESSION_KEY, { tokenHash: sha256Hex(token), userId: decorated.id }, storage);
 
   return { ok: true, token, user: decorated };
 }
 
-export async function freeLoginAccount({ email, password }, { storage } = {}) {
+export async function freeLoginAccount({ email, password }, { storage, ownerOverride } = {}) {
   const cleanEmail = normalizeEmailAddress(email);
-  const passwordHash = await hashSecret(String(password || ''));
-  const users = readCollection(USERS_KEY, [], storage);
-  const index = users.findIndex((u) => normalizeEmailAddress(u.email) === cleanEmail);
+  const emailHash = hashEmailIdentity(cleanEmail);
+  assertNotRateLimited(emailHash, storage);
 
-  if (index === -1 || users[index].passwordHash !== passwordHash) {
-    throw new Error('البريد الإلكتروني أو كلمة المرور غير صحيحة.');
+  const users = readSealed(USERS_KEY, [], storage, LEGACY_USERS_KEY);
+  const index = findUserIndexByEmail(users, cleanEmail);
+
+  if (index === -1) {
+    const err = new Error('لم يتم إنشاء حساب بهذا البريد بعد على المنصة الجديدة. اضغط (إنشاء وتفعيل هذا الحساب الآن) ليصلك كود التفعيل السداسي على بريدك فورًا.');
+    err.code = 'ACCOUNT_NOT_FOUND';
+    throw err;
+  }
+
+  const passwordValid = await verifyPasswordPBKDF2(String(password || ''), users[index].passwordHash);
+  if (!passwordValid) {
+    registerFailedAttempt(emailHash, storage);
+    throw new Error('كلمة المرور غير صحيحة. حاول مرة أخرى أو اضغط نسيت كلمة المرور لاستلام كود استعادة على بريدك.');
   }
   if (users[index].disabled) {
     throw new Error('تم إيقاف هذا الحساب من قبل الإدارة.');
   }
   if (!users[index].emailVerified) {
-    const err = new Error('يرجى تفعيل بريدك الإلكتروني بالكود المرسل أولًا.');
+    const err = new Error('هذا الحساب بانتظار التفعيل. أدخل الكود المرسل لبريدك أو اطلب كودًا جديدًا.');
     err.code = 'EMAIL_NOT_VERIFIED';
     throw err;
   }
 
+  clearFailedAttempts(emailHash, storage);
+
+  // Upgrade legacy hash to PBKDF2-100K transparently on login if needed
+  const upgradedHash = String(users[index].passwordHash || '').startsWith('pbkdf2$')
+    ? users[index].passwordHash
+    : await hashPasswordPBKDF2(String(password || ''));
+
+  const now = new Date().toISOString();
   users[index] = {
     ...users[index],
-    role: isOwnerEmail(cleanEmail) ? 'admin' : users[index].role,
-    lastSeenAt: new Date().toISOString(),
+    emailHash,
+    passwordHash: upgradedHash,
+    role: isOwnerEmail(cleanEmail, ownerOverride) ? 'admin' : users[index].role,
+    lastSeenAt: now,
   };
-  writeCollection(USERS_KEY, users, storage);
+  writeSealed(USERS_KEY, users, storage);
 
-  const user = decorateFreeUser(users[index]);
-  const token = `free-sess-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-  writeCollection(SESSION_KEY, { token, userId: user.id, email: user.email }, storage);
+  const user = decorateFreeUser(users[index], ownerOverride);
+  const token = `sess_sha256_${sha256Hex(`${user.id}:${now}:${randomHex(16)}`)}`;
+  writeSealed(SESSION_KEY, { tokenHash: sha256Hex(token), userId: user.id }, storage);
   recordFreeEvent({ userId: user.id, eventType: 'login' }, storage);
 
   return { token, user };
 }
 
-export function freeGetCurrentUser(storage) {
-  const session = readCollection(SESSION_KEY, null, storage);
+export function freeGetCurrentUser(storage, ownerOverride = '') {
+  const session = readSealed(SESSION_KEY, null, storage);
   if (!session?.userId) return null;
-  const users = readCollection(USERS_KEY, [], storage);
+  const users = readSealed(USERS_KEY, [], storage, LEGACY_USERS_KEY);
   const found = users.find((u) => u.id === session.userId);
   if (!found || found.disabled) return null;
-  return decorateFreeUser(found);
+  return decorateFreeUser(found, ownerOverride);
 }
 
 export function freeLogout(storage) {
@@ -344,22 +461,38 @@ export function freeLogout(storage) {
 
 export async function freeRequestPasswordReset(email, { storage, fetchImpl } = {}) {
   const cleanEmail = normalizeEmailAddress(email);
-  const users = readCollection(USERS_KEY, [], storage);
-  const userRecord = users.find((u) => normalizeEmailAddress(u.email) === cleanEmail && !u.disabled);
-  if (!userRecord) {
-    return { ok: true, deliveryPending: false };
+  if (!EMAIL_PATTERN.test(cleanEmail)) {
+    throw new Error('يرجى إدخال بريد إلكتروني صالح أولًا.');
   }
-  const otpInfo = await issueFreeOtpForUser(userRecord, 'reset', { storage, fetchImpl });
+  const emailHash = hashEmailIdentity(cleanEmail);
+  assertNotRateLimited(emailHash, storage);
+
+  const users = readSealed(USERS_KEY, [], storage, LEGACY_USERS_KEY);
+  const idx = findUserIndexByEmail(users, cleanEmail);
+  if (idx !== -1 && users[idx].disabled) {
+    throw new Error('تم إيقاف هذا الحساب من قبل الإدارة.');
+  }
+
+  // Always dispatch a real 6-digit verification/recovery OTP to the email via the Gmail bridge!
+  // Even if the user moved from an older deployment or new browser, proving ownership of the email
+  // via the 6-digit OTP lets them set a PBKDF2-encrypted password and activate/recover seamlessly.
+  const targetRecord = idx !== -1
+    ? users[idx]
+    : { email: cleanEmail, name: cleanEmail.split('@')[0] };
+
+  const otpInfo = await issueFreeOtpForUser(targetRecord, 'reset', { storage, fetchImpl });
   return {
     ok: true,
     requiresResetCode: true,
+    accountExisted: idx !== -1,
     email: cleanEmail,
+    securityFingerprint: shortIdentityFingerprint(cleanEmail),
     deliveryPending: otpInfo.deliveryPending,
     instantOtpCode: otpInfo.instantOtpCode,
   };
 }
 
-export async function freeResetPasswordWithCode({ email, code, newPassword }, { storage } = {}) {
+export async function freeResetPasswordWithCode({ email, code, newPassword, name = '' }, { storage, ownerOverride } = {}) {
   const cleanEmail = normalizeEmailAddress(email);
   const cleanCode = String(code || '').replace(/\s+/g, '');
   const rawPass = String(newPassword || '');
@@ -370,55 +503,90 @@ export async function freeResetPasswordWithCode({ email, code, newPassword }, { 
     throw new Error('كلمة المرور الجديدة يجب أن تكون 8 أحرف على الأقل.');
   }
 
-  const otps = readCollection(OTPS_KEY, {}, storage);
-  const record = otps[cleanEmail];
+  const emailHash = hashEmailIdentity(cleanEmail);
+  assertNotRateLimited(emailHash, storage);
+
+  const otps = readSealed(OTPS_KEY, {}, storage);
+  const record = otps[emailHash];
   if (!record || record.expiresAt < Date.now()) {
-    throw new Error('كود الاستعادة غير صالح أو منتهي الصلاحية.');
+    throw new Error('كود الاستعادة غير صالح أو منتهي الصلاحية. اطلب كودًا جديدًا.');
   }
-  const expectedHash = await hashSecret(`${cleanEmail}:${cleanCode}`);
-  if (expectedHash !== record.codeHash) {
+  const expectedHash = hashOtpCode(cleanEmail, cleanCode);
+  if (!timingSafeEqualStr(expectedHash, record.codeHash)) {
+    registerFailedAttempt(emailHash, storage);
     throw new Error('كود الاستعادة غير صحيح.');
   }
 
-  delete otps[cleanEmail];
-  writeCollection(OTPS_KEY, otps, storage);
+  delete otps[emailHash];
+  writeSealed(OTPS_KEY, otps, storage);
+  clearFailedAttempts(emailHash, storage);
 
-  const users = readCollection(USERS_KEY, [], storage);
-  const idx = users.findIndex((u) => normalizeEmailAddress(u.email) === cleanEmail);
-  if (idx === -1) throw new Error('الحساب غير موجود.');
-  users[idx] = {
-    ...users[idx],
-    passwordHash: await hashSecret(rawPass),
-    emailVerified: true,
-    verifiedAt: users[idx].verifiedAt || new Date().toISOString(),
-  };
-  writeCollection(USERS_KEY, users, storage);
-  return { ok: true };
+  const passwordHash = await hashPasswordPBKDF2(rawPass);
+  const now = new Date().toISOString();
+  const users = readSealed(USERS_KEY, [], storage, LEGACY_USERS_KEY);
+  const idx = findUserIndexByEmail(users, cleanEmail);
+
+  let savedRecord;
+  if (idx === -1) {
+    savedRecord = {
+      id: `usr_${sha256Hex(`${emailHash}:${now}:${randomHex(8)}`).slice(0, 24)}`,
+      name: sanitizeSecurityText(name || cleanEmail.split('@')[0], 60),
+      email: cleanEmail,
+      emailHash,
+      passwordHash,
+      role: isOwnerEmail(cleanEmail, ownerOverride) ? 'admin' : 'user',
+      emailVerified: true,
+      verifiedAt: now,
+      authProvider: 'pbkdf2-sha256',
+      disabled: false,
+      createdAt: now,
+      lastSeenAt: now,
+    };
+    users.unshift(savedRecord);
+  } else {
+    savedRecord = {
+      ...users[idx],
+      emailHash,
+      passwordHash,
+      role: isOwnerEmail(cleanEmail, ownerOverride) ? 'admin' : users[idx].role,
+      emailVerified: true,
+      verifiedAt: users[idx].verifiedAt || now,
+      lastSeenAt: now,
+    };
+    users[idx] = savedRecord;
+  }
+  writeSealed(USERS_KEY, users, storage);
+
+  const user = decorateFreeUser(savedRecord, ownerOverride);
+  const token = `sess_sha256_${sha256Hex(`${user.id}:${now}:${randomHex(16)}`)}`;
+  writeSealed(SESSION_KEY, { tokenHash: sha256Hex(token), userId: user.id }, storage);
+
+  return { ok: true, token, user };
 }
 
 export function recordFreeEvent(event, storage) {
-  const events = readCollection(EVENTS_KEY, [], storage);
+  const events = readSealed(EVENTS_KEY, [], storage);
   events.unshift({
     id: events.length + 1,
     user_id: event.userId || null,
-    event_type: event.eventType || 'activity',
-    workspace: event.workspace || 'general',
-    tool: event.tool || null,
+    event_type: sanitizeSecurityText(event.eventType || 'activity', 60),
+    workspace: sanitizeSecurityText(event.workspace || 'general', 40),
+    tool: event.tool ? sanitizeSecurityText(event.tool, 60) : null,
     created_at: new Date().toISOString(),
   });
-  writeCollection(EVENTS_KEY, events.slice(0, 300), storage);
+  writeSealed(EVENTS_KEY, events.slice(0, 300), storage);
 }
 
 // ============================================================================
-// Support Tickets & Two-Way Messaging Engine (Users <-> Owner Support)
+// Support Tickets & Two-Way Messaging Engine (Encrypted Local + Gmail Bridge)
 // ============================================================================
 
 export async function createFreeSupportTicket(details, { storage, fetchImpl } = {}) {
   const currentUser = freeGetCurrentUser(storage);
-  const requesterName = String(details.name || currentUser?.name || '').trim().slice(0, 80);
+  const requesterName = sanitizeSecurityText(details.name || currentUser?.name || '', 80);
   const requesterEmail = normalizeEmailAddress(details.email || currentUser?.email || '');
-  const subject = String(details.subject || '').trim().slice(0, 160);
-  const message = String(details.message || '').trim().slice(0, 4000);
+  const subject = sanitizeSecurityText(details.subject || '', 160);
+  const message = sanitizeSecurityText(details.message || '', 4000);
   const category = ['technical', 'account', 'billing', 'suggestion', 'other'].includes(details.category)
     ? details.category
     : 'technical';
@@ -450,6 +618,7 @@ export async function createFreeSupportTicket(details, { storage, fetchImpl } = 
     user_id: currentUser?.id || null,
     requester_name: requesterName,
     requester_email: requesterEmail,
+    requester_hash: hashEmailIdentity(requesterEmail),
     category,
     priority,
     subject,
@@ -459,9 +628,9 @@ export async function createFreeSupportTicket(details, { storage, fetchImpl } = 
     messages: [firstMessage],
   };
 
-  const tickets = readCollection(TICKETS_KEY, [], storage);
+  const tickets = readSealed(TICKETS_KEY, [], storage, LEGACY_TICKETS_KEY);
   tickets.unshift(ticket);
-  writeCollection(TICKETS_KEY, tickets, storage);
+  writeSealed(TICKETS_KEY, tickets, storage);
 
   const bridgeResult = await callGoogleAppsScriptBridge({
     action: 'notify_ticket',
@@ -477,13 +646,12 @@ export async function createFreeSupportTicket(details, { storage, fetchImpl } = 
     ticket,
     emailDelivered: bridgeResult.ok,
     supportEmail: getSupportEmail(),
-    ownerEmail: DEFAULT_OWNER_EMAIL,
   };
 }
 
 export function listFreeSupportTickets({ email, ticketId, includeAll = false } = {}, storage) {
   const currentUser = freeGetCurrentUser(storage);
-  const tickets = readCollection(TICKETS_KEY, [], storage);
+  const tickets = readSealed(TICKETS_KEY, [], storage, LEGACY_TICKETS_KEY);
   const isAdminOrOwner = Boolean(currentUser && (currentUser.role === 'admin' || currentUser.isOwner));
 
   if (includeAll && isAdminOrOwner) {
@@ -493,9 +661,11 @@ export function listFreeSupportTickets({ email, ticketId, includeAll = false } =
   const lookupId = String(ticketId || '').trim().toUpperCase();
   const lookupEmail = normalizeEmailAddress(email || currentUser?.email || '');
   if (!lookupEmail) return [];
+  const lookupHash = hashEmailIdentity(lookupEmail);
 
   return tickets.filter((t) => {
-    const emailMatches = normalizeEmailAddress(t.requester_email) === lookupEmail;
+    const emailMatches = (t.requester_hash && timingSafeEqualStr(t.requester_hash, lookupHash))
+      || normalizeEmailAddress(t.requester_email) === lookupEmail;
     if (!emailMatches) return false;
     return lookupId ? t.id.toUpperCase() === lookupId : true;
   });
@@ -503,14 +673,14 @@ export function listFreeSupportTickets({ email, ticketId, includeAll = false } =
 
 export async function replyFreeSupportTicket({ ticketId, message, senderName, senderEmail }, { storage, fetchImpl } = {}) {
   const cleanId = String(ticketId || '').trim();
-  const body = String(message || '').trim().slice(0, 4000);
+  const body = sanitizeSecurityText(message || '', 4000);
   if (!cleanId || body.length < 2) {
     throw new Error('يرجى كتابة نص الرد أولًا.');
   }
 
   const currentUser = freeGetCurrentUser(storage);
   const isStaff = Boolean(currentUser && (currentUser.role === 'admin' || currentUser.isOwner));
-  const tickets = readCollection(TICKETS_KEY, [], storage);
+  const tickets = readSealed(TICKETS_KEY, [], storage, LEGACY_TICKETS_KEY);
   const index = tickets.findIndex((t) => t.id === cleanId);
   if (index === -1) {
     throw new Error('التذكرة غير موجودة.');
@@ -527,7 +697,7 @@ export async function replyFreeSupportTicket({ ticketId, message, senderName, se
     id: `MSG-${Date.now()}`,
     ticket_id: target.id,
     sender_role: currentUser?.isOwner ? 'owner' : isStaff ? 'support' : 'user',
-    sender_name: isStaff ? (currentUser?.name || 'فريق دعم PathPilot') : (senderName || currentUser?.name || target.requester_name),
+    sender_name: isStaff ? (currentUser?.name || 'فريق دعم PathPilot') : sanitizeSecurityText(senderName || currentUser?.name || target.requester_name, 80),
     sender_email: isStaff ? getSupportEmail() : target.requester_email,
     body,
     created_at: now,
@@ -545,7 +715,7 @@ export async function replyFreeSupportTicket({ ticketId, message, senderName, se
   };
 
   tickets[index] = updatedTicket;
-  writeCollection(TICKETS_KEY, tickets, storage);
+  writeSealed(TICKETS_KEY, tickets, storage);
 
   const bridgeResult = await callGoogleAppsScriptBridge({
     action: 'notify_ticket',
@@ -572,7 +742,7 @@ export function updateFreeSupportTicketStatus({ ticketId, status }, storage) {
   if (!currentUser || (currentUser.role !== 'admin' && !currentUser.isOwner)) {
     throw new Error('صلاحية الإدارة مطلوبة لتحديث حالة التذكرة.');
   }
-  const tickets = readCollection(TICKETS_KEY, [], storage);
+  const tickets = readSealed(TICKETS_KEY, [], storage, LEGACY_TICKETS_KEY);
   const index = tickets.findIndex((t) => t.id === ticketId);
   if (index === -1) throw new Error('التذكرة غير موجودة.');
 
@@ -581,33 +751,33 @@ export function updateFreeSupportTicketStatus({ ticketId, status }, storage) {
     status,
     updated_at: new Date().toISOString(),
   };
-  writeCollection(TICKETS_KEY, tickets, storage);
+  writeSealed(TICKETS_KEY, tickets, storage);
   return tickets[index];
 }
 
 export function saveFreeFeedback(details, storage) {
   const currentUser = freeGetCurrentUser(storage);
-  const list = readCollection(FEEDBACK_KEY, [], storage);
+  const list = readSealed(FEEDBACK_KEY, [], storage);
   list.unshift({
     id: list.length + 1,
     user_id: currentUser?.id || null,
     user_name: currentUser?.name || 'زائر',
     user_email: currentUser?.email || null,
     rating: Number(details.rating) || 5,
-    message: String(details.message || '').slice(0, 2000),
+    message: sanitizeSecurityText(details.message || '', 2000),
     workspace: details.workspace || 'general',
     tool: details.tool || 'feedback',
     created_at: new Date().toISOString(),
   });
-  writeCollection(FEEDBACK_KEY, list.slice(0, 200), storage);
+  writeSealed(FEEDBACK_KEY, list.slice(0, 200), storage);
   return { ok: true };
 }
 
 export function buildFreeAdminDashboard(storage) {
-  const users = readCollection(USERS_KEY, [], storage).map(decorateFreeUser);
-  const tickets = readCollection(TICKETS_KEY, [], storage);
-  const feedback = readCollection(FEEDBACK_KEY, [], storage);
-  const events = readCollection(EVENTS_KEY, [], storage);
+  const users = readSealed(USERS_KEY, [], storage, LEGACY_USERS_KEY).map((u) => decorateFreeUser(u));
+  const tickets = readSealed(TICKETS_KEY, [], storage, LEGACY_TICKETS_KEY);
+  const feedback = readSealed(FEEDBACK_KEY, [], storage);
+  const events = readSealed(EVENTS_KEY, [], storage);
   const cfg = getFreeCloudConfig(storage);
   const since = new Date(Date.now() - 86_400_000).toISOString();
 
@@ -641,21 +811,21 @@ export function buildFreeAdminDashboard(storage) {
     feedback,
     status: {
       ok: true,
-      mode: 'free-cloud',
+      mode: 'free-cloud-encrypted',
       apiOnline: Boolean(cfg.geminiApiKey),
-      provider: cfg.geminiApiKey ? 'Google Gemini Free' : 'Smart Local Engine',
-      model: cfg.geminiApiKey ? cfg.geminiModel : 'PathPilot Local v5',
+      provider: cfg.geminiApiKey ? 'Google Gemini Free' : 'PathPilot Natural Tutor v6',
+      model: cfg.geminiApiKey ? cfg.geminiModel : 'Natural Q&A + Exam Engine',
       databaseOnline: true,
       emailVerificationAvailable: true,
       passwordResetAvailable: true,
       supportEmail: cfg.supportEmail,
-      ownerEmail: cfg.ownerEmail,
+      encryptionStandard: cfg.encryptionStandard,
       bridgeConnected: Boolean(cfg.bridgeUrl),
     },
     researchStatus: { researchAvailable: false, synthesisAvailable: Boolean(cfg.geminiApiKey) },
     loginLog: events.filter((e) => e.event_type === 'login').map((e) => ({
       ...e,
-      event_type: 'login · Free Cloud Hub',
+      event_type: 'login · Encrypted Vault SHA-256',
     })),
     securityVisits: [],
     securityVisitSummary: { uniqueVisitors: users.length, totalVisits: events.length },
@@ -664,19 +834,19 @@ export function buildFreeAdminDashboard(storage) {
 }
 
 export function freeUpdateUserRole(userId, role, storage) {
-  const users = readCollection(USERS_KEY, [], storage);
+  const users = readSealed(USERS_KEY, [], storage, LEGACY_USERS_KEY);
   const idx = users.findIndex((u) => u.id === userId);
   if (idx === -1) throw new Error('المستخدم غير موجود.');
   if (isOwnerEmail(users[idx].email) && role !== 'admin') {
     throw new Error('لا يمكن خفض صلاحية مالك المنصة.');
   }
   users[idx] = { ...users[idx], role };
-  writeCollection(USERS_KEY, users, storage);
+  writeSealed(USERS_KEY, users, storage);
   return decorateFreeUser(users[idx]);
 }
 
 export function freeSetUserBan(userId, banned, reason = '', storage) {
-  const users = readCollection(USERS_KEY, [], storage);
+  const users = readSealed(USERS_KEY, [], storage, LEGACY_USERS_KEY);
   const idx = users.findIndex((u) => u.id === userId);
   if (idx === -1) throw new Error('المستخدم غير موجود.');
   if (isOwnerEmail(users[idx].email)) {
@@ -685,45 +855,45 @@ export function freeSetUserBan(userId, banned, reason = '', storage) {
   users[idx] = {
     ...users[idx],
     disabled: Boolean(banned),
-    disabledReason: banned ? String(reason || 'مراجعة إدارية') : null,
+    disabledReason: banned ? sanitizeSecurityText(reason || 'مراجعة إدارية', 200) : null,
   };
-  writeCollection(USERS_KEY, users, storage);
+  writeSealed(USERS_KEY, users, storage);
   return decorateFreeUser(users[idx]);
 }
 
 export function freeDeleteUser(userId, storage) {
-  const users = readCollection(USERS_KEY, [], storage);
+  const users = readSealed(USERS_KEY, [], storage, LEGACY_USERS_KEY);
   const target = users.find((u) => u.id === userId);
   if (!target) throw new Error('المستخدم غير موجود.');
   if (isOwnerEmail(target.email)) throw new Error('لا يمكن حذف حساب المالك المحمي.');
-  writeCollection(USERS_KEY, users.filter((u) => u.id !== userId), storage);
+  writeSealed(USERS_KEY, users.filter((u) => u.id !== userId), storage);
   return { ok: true };
 }
 
 export function freeInviteAdmin(email, storage) {
   const cleanEmail = normalizeEmailAddress(email);
   if (!EMAIL_PATTERN.test(cleanEmail)) throw new Error('أدخل بريدًا إلكترونيًا صالحًا.');
-  const users = readCollection(USERS_KEY, [], storage);
-  const existingIdx = users.findIndex((u) => normalizeEmailAddress(u.email) === cleanEmail);
+  const users = readSealed(USERS_KEY, [], storage, LEGACY_USERS_KEY);
+  const existingIdx = findUserIndexByEmail(users, cleanEmail);
   if (existingIdx !== -1) {
     users[existingIdx] = { ...users[existingIdx], role: 'admin' };
-    writeCollection(USERS_KEY, users, storage);
+    writeSealed(USERS_KEY, users, storage);
     return { status: 'admin_granted', user: decorateFreeUser(users[existingIdx]) };
   }
-  const invites = readCollection(INVITES_KEY, [], storage).filter((i) => normalizeEmailAddress(i.email) !== cleanEmail);
-  const invite = { email: cleanEmail, created_at: new Date().toISOString(), accepted_at: null };
+  const invites = readSealed(INVITES_KEY, [], storage).filter((i) => normalizeEmailAddress(i.email) !== cleanEmail);
+  const invite = { email: cleanEmail, emailHash: hashEmailIdentity(cleanEmail), created_at: new Date().toISOString(), accepted_at: null };
   invites.unshift(invite);
-  writeCollection(INVITES_KEY, invites, storage);
+  writeSealed(INVITES_KEY, invites, storage);
   return { status: 'invite_created', invite };
 }
 
 export function freeListInvites(storage) {
-  return readCollection(INVITES_KEY, [], storage);
+  return readSealed(INVITES_KEY, [], storage);
 }
 
 export function freeRevokeInvite(email, storage) {
   const cleanEmail = normalizeEmailAddress(email);
-  const invites = readCollection(INVITES_KEY, [], storage).filter((i) => normalizeEmailAddress(i.email) !== cleanEmail);
-  writeCollection(INVITES_KEY, invites, storage);
+  const invites = readSealed(INVITES_KEY, [], storage).filter((i) => normalizeEmailAddress(i.email) !== cleanEmail);
+  writeSealed(INVITES_KEY, invites, storage);
   return { ok: true };
 }

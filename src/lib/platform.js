@@ -1,6 +1,7 @@
 import { createApiClient } from './api-client.js';
 import {
-  DEFAULT_OWNER_EMAIL,
+  OWNER_IDENTITY_SHA256,
+  shortIdentityFingerprint,
   DEFAULT_SUPPORT_EMAIL,
   buildFreeAdminDashboard,
   createFreeSupportTicket,
@@ -37,7 +38,8 @@ export const hasRemoteBackend = Boolean(PLATFORM_API_URL);
 export const hasPlatformBackend = true;
 
 export {
-  DEFAULT_OWNER_EMAIL,
+  OWNER_IDENTITY_SHA256,
+  shortIdentityFingerprint,
   DEFAULT_SUPPORT_EMAIL,
   getFreeCloudConfig,
   getSupportEmail,
@@ -181,7 +183,9 @@ export async function requestPasswordReset(email) {
 
 export async function resetPasswordWithOtpCode({ email, code, newPassword }) {
   if (!hasRemoteBackend) {
-    return freeResetPasswordWithCode({ email, code, newPassword });
+    const result = await freeResetPasswordWithCode({ email, code, newPassword });
+    if (result.token) setSessionToken(result.token);
+    return result;
   }
   return request('/api/auth/reset-password-code', {
     method: 'POST',
@@ -234,7 +238,7 @@ export async function getPlatformStatus() {
       otpVerificationAvailable: true,
       supportTicketsAvailable: true,
       supportEmail: cfg.supportEmail,
-      ownerEmail: cfg.ownerEmail,
+      encryptionStandard: cfg.encryptionStandard,
       bridgeConnected: Boolean(cfg.bridgeUrl),
     };
   }

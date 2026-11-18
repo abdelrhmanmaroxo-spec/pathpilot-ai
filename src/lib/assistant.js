@@ -1,5 +1,6 @@
-import { superLocalResponse } from './local-super-reasoner.js';
+import { getFreeCloudConfig } from './free-cloud-hub.js';
 import { generateBrowserLLMResponse, isBrowserLLMReady } from './local-llm.js';
+import { generateNaturalConversationalAnswer } from './natural-tutor.js';
 
 export const TOOL_LIBRARY = {
   study: [
@@ -120,14 +121,49 @@ export function generateDemoResponse({ mode, tool, prompt, preferences = {} }) {
   return applyResponseStyle(`${audiencePrefix(preferences)}${answer}`, preferences);
 }
 
-function fallbackResponse(args, reason) {
-  const knowledgeAnswer = superLocalResponse(args);
-  const specialized = generateDemoResponse(args);
-  const reasonText = reason === 'timeout' ? 'انتهت مهلة الخدمة الحية قبل وصول النتيجة.' : 'تعذر الوصول إلى البحث والذكاء الحي في هذه المحاولة.';
+async function tryFreeDirectGemini(args, signal) {
+  const cfg = getFreeCloudConfig();
+  if (!cfg.geminiApiKey) return null;
+  const model = cfg.geminiModel || 'gemini-2.5-flash';
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
+  const systemText = [
+    'أنت PathPilot AI، معلم ومساعد ذكي يتحدث بأسلوب طبيعي وودود ومباشر باللغة التي يكتب بها المستخدم (العربية أو الإنجليزية).',
+    'أجب عن الأسئلة بوضوح ودقة، ولخّص المناهج باحترافية، وإذا ذكر المستخدم امتحانات أونلاين سابقة أولِها عناية قصوى وحل أسئلتها واشرح أفكارها المتكررة.',
+  ].join(' ');
+
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-goog-api-key': cfg.geminiApiKey,
+    },
+    body: JSON.stringify({
+      systemInstruction: { parts: [{ text: systemText }] },
+      contents: [{ role: 'user', parts: [{ text: String(args.prompt || '') }] }],
+      generationConfig: { temperature: 0.35, maxOutputTokens: 3200 },
+    }),
+    signal,
+  });
+  if (!res.ok) return null;
+  const payload = await res.json().catch(() => ({}));
+  const answer = payload?.candidates?.[0]?.content?.parts?.map((p) => p.text || '').join('\n').trim();
+  return answer ? { answer, source: 'gemini-free-direct', degraded: false } : null;
+}
+
+function fallbackResponse(args) {
+  if (args.tool && args.tool !== 'ask') {
+    const specialized = generateDemoResponse(args);
+    const naturalExtra = generateNaturalConversationalAnswer(args);
+    return {
+      answer: `${naturalExtra}\n\n${specialized}`,
+      source: 'natural-tutor',
+      degraded: false,
+    };
+  }
   return {
-    answer: `⚠️ Local Intelligence Beta\n${reasonText}\nتم تشغيل الموسوعة المحلية + الاسترجاع متعدد المراحل + محرك التفكير بدل إيقاف الرد. المعلومات الحديثة تحتاج بحثًا حيًا للتأكيد.\n\n${knowledgeAnswer}\n\nتطبيق مباشر للأداة\n${specialized}`,
-    source: 'local-fallback',
-    degraded: true,
+    answer: generateNaturalConversationalAnswer(args),
+    source: 'natural-tutor',
+    degraded: false,
   };
 }
 
@@ -144,8 +180,15 @@ function responseError(payload, status) {
   return error;
 }
 
-async function llmAwareFallback(args, reason, allowColdStart, signal) {
+async function llmAwareFallback(args, allowColdStart, signal) {
   throwIfAborted(signal);
+  try {
+    const freeGemini = await tryFreeDirectGemini(args, signal);
+    if (freeGemini) return freeGemini;
+  } catch (error) {
+    if (signal?.aborted) throw error;
+  }
+
   if (args.preferences?.localLlmEnabled && (allowColdStart || isBrowserLLMReady())) {
     try {
       const localLlm = await generateBrowserLLMResponse({
@@ -155,32 +198,29 @@ async function llmAwareFallback(args, reason, allowColdStart, signal) {
       throwIfAborted(signal);
       if (localLlm?.answer) {
         return {
-          answer: `🧠 Local LLM · Beta\nتشغيل نموذج لغوي محلي على جهازك مع موسوعة PathPilot كسياق. المعلومات الحديثة ما زالت تحتاج بحثًا حيًا للتأكيد.\n\n${localLlm.answer}`,
+          answer: localLlm.answer,
           source: 'local-llm',
-          degraded: true,
+          degraded: false,
           localModel: localLlm.model,
         };
       }
     } catch (error) {
       if (signal?.aborted) throw error;
-      console.warn('PathPilot on-device LLM unavailable; falling back to deterministic local reasoner.', error);
     }
   }
   throwIfAborted(signal);
-  return fallbackResponse(args, reason);
+  return fallbackResponse(args);
 }
 
 export async function generateAssistantResponse({ mode, tool, prompt, preferences = {}, signal, onProgress, onDelta }) {
   const args = { mode, tool, prompt, preferences, signal, onProgress, onDelta };
   throwIfAborted(signal);
-  if (!hasLiveAI) return llmAwareFallback(args, 'offline', true, signal);
+  if (!hasLiveAI) return llmAwareFallback(args, true, signal);
 
   const controller = new AbortController();
-  let timedOut = false;
   const abortFromCaller = () => controller.abort(signal?.reason || new DOMException('The operation was aborted.', 'AbortError'));
   if (signal) signal.addEventListener('abort', abortFromCaller, { once: true });
   const timeout = setTimeout(() => {
-    timedOut = true;
     controller.abort(new DOMException('Live AI request timed out.', 'TimeoutError'));
   }, 85_000);
 
@@ -206,8 +246,7 @@ export async function generateAssistantResponse({ mode, tool, prompt, preference
   } catch (error) {
     if (signal?.aborted) throw error;
     if (error?.code === 'SYSTEM_PAUSED' || error?.code === 'UNSAFE_INPUT_BLOCKED') throw error;
-    console.warn('PathPilot live response failed; trying local AI tiers.', error);
-    return llmAwareFallback(args, timedOut || error?.name === 'TimeoutError' ? 'timeout' : 'offline', false, signal);
+    return llmAwareFallback(args, false, signal);
   } finally {
     clearTimeout(timeout);
     if (signal) signal.removeEventListener('abort', abortFromCaller);

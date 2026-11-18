@@ -1,10 +1,11 @@
 import { extractMaterialKeywords, parseMaterialSources } from './material-intelligence.js';
+import { extractPastOnlineExamQuestions, hasOnlineExamSignal } from './exam-generator.js';
 import { detectDominantLanguage, translateMarkdownSync } from './live-content-translator.js';
 
 export const DEFAULT_PDF_OPTIONS = Object.freeze({
   courseTitle: '',
   subtitle: '',
-  template: 'comprehensive', // 'comprehensive' | 'exam-night' | 'cornell' | 'qna-bank'
+  template: 'reading-book', // 'reading-book' | 'comprehensive' | 'exam-night' | 'cornell' | 'qna-bank'
   theme: 'indigo', // 'indigo' | 'emerald' | 'minimal'
   language: 'auto', // 'auto' | 'ar' | 'en'
   density: 'detailed', // 'concise' | 'balanced' | 'detailed'
@@ -153,7 +154,16 @@ export function buildCurriculumSummaryData({
       : []),
   ];
 
-  const examQuestions = keywords.slice(0, cfg.template === 'qna-bank' ? 6 : 4).map((kw, idx) => {
+  const onlineExamDetected = hasOnlineExamSignal(combinedInput, cfg.customInstructions);
+  const extractedOnlineQs = extractPastOnlineExamQuestions(combinedInput).map((pq) => ({
+    q: pq.stem,
+    a: Array.isArray(pq.options) && pq.options[pq.correctIndex]
+      ? `${pq.options[pq.correctIndex]} — ${pq.explanation}`
+      : (pq.modelAnswer || pq.explanation),
+    fromOnlineExam: true,
+  }));
+
+  const generatedExamQuestions = keywords.slice(0, cfg.template === 'qna-bank' ? 6 : 4).map((kw, idx) => {
     const contextHint = termRows[idx]?.explanation || overviewPoints[0] || '';
     if (idx % 2 === 0) {
       return {
@@ -195,7 +205,8 @@ export function buildCurriculumSummaryData({
     units,
     termRows,
     rulesAndPitfalls,
-    examQuestions,
+    onlineExamDetected,
+    examQuestions: [...extractedOnlineQs, ...generatedExamQuestions].slice(0, 14),
     checklist,
     options: cfg,
   };
@@ -242,6 +253,7 @@ export function renderCurriculumPdfHtml(summaryData) {
   const baseFontPt = cfg.fontScale === 'large' ? '12.2pt' : '10.8pt';
 
   const templateLabel = {
+    'reading-book': en ? 'PROFESSIONAL READING & STUDY BOOK' : 'كتاب قراءة ومذاكرة منهجية احترافية',
     comprehensive: en ? 'COMPREHENSIVE CURRICULUM GUIDE' : 'ملخص منهج شامل ومتكامل',
     'exam-night': en ? 'EXAM-NIGHT CAPSULE' : 'كبسولة مراجعة ليلة الامتحان',
     cornell: en ? 'CORNELL ACADEMIC STUDY SYSTEM' : 'ملخص بنظام كورنيل الأكاديمي',
@@ -249,6 +261,20 @@ export function renderCurriculumPdfHtml(summaryData) {
   }[cfg.template] || (en ? 'CURRICULUM SUMMARY' : 'ملخص المنهج');
 
   const unitsHtml = data.units.map((unit) => {
+    if (cfg.template === 'reading-book') {
+      return `
+        <section class="card unit-card">
+          <div class="unit-head">
+            <span class="unit-num">${en ? `Chapter ${unit.index}` : `الفصل ${unit.index}`}</span>
+            <h3>${escapeHtml(unit.title)}</h3>
+          </div>
+          <div style="line-height:1.95; text-align:justify;">
+            ${unit.points.map((pt) => `<p style="margin:0 0 10px;">${formatInlineHtml(pt)}</p>`).join('')}
+          </div>
+          ${unit.keywords.length ? `<div class="kw-row" style="margin-top:10px;">${unit.keywords.map((k) => `<span class="kw-chip">${escapeHtml(k)}</span>`).join('')}</div>` : ''}
+        </section>
+      `;
+    }
     if (cfg.template === 'cornell') {
       return `
         <section class="card unit-card cornell-grid">
@@ -648,7 +674,7 @@ export function renderCurriculumPdfHtml(summaryData) {
 
     ${cfg.includeExamBank && data.examQuestions.length ? `
       <section class="section-block">
-        <h2 class="section-title">✦ ${en ? 'Expected Exam Questions & Model Answer Keys' : 'بنك الأسئلة المتوقعة وإرشادات الإجابة النموذجية'}</h2>
+        <h2 class="section-title">✦ ${data.onlineExamDetected ? (en ? 'Past Online Exam Questions & High-Yield Answer Keys' : 'أسئلة الامتحانات الأونلاين السابقة وبنك الحلول النموذجية') : (en ? 'Expected Exam Questions & Model Answer Keys' : 'بنك الأسئلة المتوقعة وإرشادات الإجابة النموذجية')}</h2>
         ${data.examQuestions.map((item, idx) => `
           <div class="qa-item">
             <strong>${en ? `Q${idx + 1}:` : `س${idx + 1}:`} ${escapeHtml(item.q)}</strong>
