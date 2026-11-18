@@ -32,8 +32,13 @@ export const TOOL_LIBRARY = {
   ],
 };
 
+const MODE_LABELS = { study: 'مساحة الدراسة', work: 'مساحة العمل', general: 'المساعد العام' };
 const AUDIENCE_LABELS = { self: 'استخدام شخصي', teacher: 'مدرس أو مشرف', recruiter: 'مسؤول توظيف', team: 'فريق عمل' };
 export const hasLiveAI = true;
+
+export function getModeLabel(mode) {
+  return MODE_LABELS[mode] || MODE_LABELS.general;
+}
 
 export function loadAiProviderVault() {
   try {
