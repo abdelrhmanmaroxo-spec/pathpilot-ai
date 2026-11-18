@@ -1,4 +1,4 @@
-import { extractMaterialKeywords, mergeMaterials, parseMaterialSources, summarizeMaterials } from './material-intelligence.js';
+import { extractMaterialKeywords, parseMaterialSources } from './material-intelligence.js';
 import { detectDominantLanguage, translateMarkdownSync } from './live-content-translator.js';
 
 export const DEFAULT_PDF_OPTIONS = Object.freeze({
@@ -681,7 +681,7 @@ export function renderCurriculumPdfHtml(summaryData) {
   <script>
     window.addEventListener('load', function () {
       setTimeout(function () {
-        try { window.focus(); window.print(); } catch (e) {}
+        try { window.focus(); window.print(); } catch {}
       }, 420);
     });
   </script>

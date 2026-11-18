@@ -1,9 +1,49 @@
 import { createApiClient } from './api-client.js';
+import {
+  DEFAULT_OWNER_EMAIL,
+  DEFAULT_SUPPORT_EMAIL,
+  buildFreeAdminDashboard,
+  createFreeSupportTicket,
+  freeDeleteUser,
+  freeGetCurrentUser,
+  freeInviteAdmin,
+  freeListInvites,
+  freeLoginAccount,
+  freeLogout,
+  freeRegisterAccount,
+  freeRequestPasswordReset,
+  freeResendVerification,
+  freeResetPasswordWithCode,
+  freeRevokeInvite,
+  freeSetUserBan,
+  freeUpdateUserRole,
+  freeVerifyEmailCode,
+  getFreeCloudConfig,
+  getSupportEmail,
+  listFreeSupportTickets,
+  recordFreeEvent,
+  replyFreeSupportTicket,
+  saveFreeCloudConfig,
+  saveFreeFeedback,
+  testFreeCloudBridge,
+  updateFreeSupportTicketStatus,
+} from './free-cloud-hub.js';
 
 const explicitBase = import.meta.env?.VITE_PLATFORM_API_URL?.trim();
 const aiUrl = import.meta.env?.VITE_AI_API_URL?.trim();
-export const PLATFORM_API_URL = explicitBase || aiUrl?.replace(/\/api\/assistant\/?$/, '') || '';
-export const hasPlatformBackend = Boolean(PLATFORM_API_URL);
+export const PLATFORM_API_URL = explicitBase || aiUrl?.replace(/\/api\/(?:assistant|research)\/?$/, '') || '';
+export const hasRemoteBackend = Boolean(PLATFORM_API_URL);
+// Free Cloud Hub keeps accounts, OTP verification, Support Tickets, and Owner Admin live even with zero paid servers!
+export const hasPlatformBackend = true;
+
+export {
+  DEFAULT_OWNER_EMAIL,
+  DEFAULT_SUPPORT_EMAIL,
+  getFreeCloudConfig,
+  getSupportEmail,
+  saveFreeCloudConfig,
+  testFreeCloudBridge,
+};
 
 const TOKEN_KEY = 'pathpilot.session.v1';
 const ANONYMOUS_KEY = 'pathpilot.anonymous.v1';
@@ -78,6 +118,7 @@ function setVisitMarker(value) {
 }
 
 async function reportLoginDevice() {
+  if (!hasRemoteBackend) return undefined;
   return request('/api/security/login-device', {
     method: 'POST',
     body: JSON.stringify(loginDeviceDetails()),
@@ -85,7 +126,7 @@ async function reportLoginDevice() {
 }
 
 export async function reportSecurityVisit({ force = false } = {}) {
-  if (!hasPlatformBackend) return undefined;
+  if (!hasRemoteBackend) return undefined;
   const identity = getSessionToken() ? 'signed-in' : 'guest';
   const marker = visitMarker();
   if (!force && marker?.identity === identity && Date.now() - Number(marker.recordedAt || 0) < VISIT_REPORT_INTERVAL_MS) return undefined;
@@ -98,18 +139,62 @@ export async function reportSecurityVisit({ force = false } = {}) {
 }
 
 export async function registerAccount(details) {
+  if (!hasRemoteBackend) {
+    return freeRegisterAccount(details);
+  }
   return request('/api/auth/register', { method: 'POST', body: JSON.stringify(details) });
 }
 
+export async function verifyAccountEmailCode({ email, code }) {
+  if (!hasRemoteBackend) {
+    const result = await freeVerifyEmailCode({ email, code });
+    if (result.token) setSessionToken(result.token);
+    return result;
+  }
+  const payload = await request('/api/auth/verify-code', {
+    method: 'POST',
+    body: JSON.stringify({ email, code }),
+  });
+  if (payload.token) {
+    setSessionToken(payload.token);
+    await Promise.all([
+      reportLoginDevice().catch(() => undefined),
+      reportSecurityVisit({ force: true }).catch(() => undefined),
+    ]);
+  }
+  return payload;
+}
+
 export async function resendVerification(email) {
+  if (!hasRemoteBackend) {
+    return freeResendVerification(email);
+  }
   return request('/api/auth/resend-verification', { method: 'POST', body: JSON.stringify({ email }) });
 }
 
 export async function requestPasswordReset(email) {
+  if (!hasRemoteBackend) {
+    return freeRequestPasswordReset(email);
+  }
   return request('/api/auth/forgot-password', { method: 'POST', body: JSON.stringify({ email }) });
 }
 
+export async function resetPasswordWithOtpCode({ email, code, newPassword }) {
+  if (!hasRemoteBackend) {
+    return freeResetPasswordWithCode({ email, code, newPassword });
+  }
+  return request('/api/auth/reset-password-code', {
+    method: 'POST',
+    body: JSON.stringify({ email, code, password: newPassword }),
+  });
+}
+
 export async function loginAccount(details) {
+  if (!hasRemoteBackend) {
+    const result = await freeLoginAccount(details);
+    setSessionToken(result.token);
+    return result.user;
+  }
   const payload = await request('/api/auth/login', { method: 'POST', body: JSON.stringify(details) });
   setSessionToken(payload.token);
   await Promise.all([
@@ -120,6 +205,9 @@ export async function loginAccount(details) {
 }
 
 export async function loginWithGoogleCredential(credential) {
+  if (!hasRemoteBackend) {
+    throw new Error('تسجيل الدخول السريع عبر Google يتطلب إعداد GOOGLE_CLIENT_ID. يمكنك التسجيل بالبريد الإلكتروني وكود التفعيل مجانًا.');
+  }
   const payload = await request('/api/auth/google', { method: 'POST', body: JSON.stringify({ credential }) });
   setSessionToken(payload.token);
   await Promise.all([
@@ -130,23 +218,58 @@ export async function loginWithGoogleCredential(credential) {
 }
 
 export async function getPlatformStatus() {
+  if (!hasRemoteBackend) {
+    const cfg = getFreeCloudConfig();
+    return {
+      ok: true,
+      mode: 'free-cloud',
+      apiOnline: Boolean(cfg.geminiApiKey),
+      provider: cfg.geminiApiKey ? 'Google Gemini Free' : 'Smart Local Engine',
+      model: cfg.geminiApiKey ? cfg.geminiModel : null,
+      databaseOnline: true,
+      googleAuthAvailable: false,
+      googleClientId: null,
+      emailVerificationAvailable: true,
+      passwordResetAvailable: true,
+      otpVerificationAvailable: true,
+      supportTicketsAvailable: true,
+      supportEmail: cfg.supportEmail,
+      ownerEmail: cfg.ownerEmail,
+      bridgeConnected: Boolean(cfg.bridgeUrl),
+    };
+  }
   return request('/api/status');
 }
 
 export async function getSystemStatus() {
+  if (!hasRemoteBackend) {
+    return { paused: false, reason: '', updatedAt: null };
+  }
   return request('/api/system/status');
 }
 
 export async function getResearchStatus() {
+  if (!hasRemoteBackend) {
+    const cfg = getFreeCloudConfig();
+    return { researchAvailable: false, synthesisAvailable: Boolean(cfg.geminiApiKey), fallbackAvailable: true };
+  }
   return request('/api/research/status');
 }
 
 export async function logoutAccount() {
+  if (!hasRemoteBackend) {
+    freeLogout();
+    setSessionToken('');
+    return;
+  }
   try { await request('/api/auth/logout', { method: 'POST' }); } finally { setSessionToken(''); }
 }
 
 export async function getCurrentUser() {
-  if (!hasPlatformBackend || !getSessionToken()) return null;
+  if (!hasRemoteBackend) {
+    return freeGetCurrentUser();
+  }
+  if (!getSessionToken()) return null;
   try {
     const payload = await request('/api/auth/me');
     return payload.user;
@@ -157,7 +280,10 @@ export async function getCurrentUser() {
 }
 
 export function trackUsage({ eventType, workspace, tool, metadata }) {
-  if (!hasPlatformBackend) return Promise.resolve();
+  if (!hasRemoteBackend) {
+    recordFreeEvent({ eventType, workspace, tool, metadata });
+    return Promise.resolve();
+  }
   return request('/api/events', {
     method: 'POST',
     body: JSON.stringify({ anonymousId: anonymousId(), eventType, workspace, tool, metadata }),
@@ -165,11 +291,14 @@ export function trackUsage({ eventType, workspace, tool, metadata }) {
 }
 
 export function sendFeedback(details) {
+  if (!hasRemoteBackend) {
+    return Promise.resolve(saveFreeFeedback(details));
+  }
   return request('/api/feedback', { method: 'POST', body: JSON.stringify(details) });
 }
 
 export function reportClientError(error, context = '') {
-  if (!hasPlatformBackend) return Promise.resolve();
+  if (!hasRemoteBackend) return Promise.resolve();
   return request('/api/client-errors', {
     method: 'POST',
     body: JSON.stringify({
@@ -181,58 +310,153 @@ export function reportClientError(error, context = '') {
   }).catch(() => undefined);
 }
 
+// Support Ticket & Two-Way Messaging APIs
+export async function createSupportTicket(details) {
+  if (!hasRemoteBackend) {
+    return createFreeSupportTicket(details);
+  }
+  return request('/api/support/tickets', { method: 'POST', body: JSON.stringify(details) });
+}
+
+export async function listSupportTickets({ email = '', ticketId = '', includeAll = false } = {}) {
+  if (!hasRemoteBackend) {
+    return listFreeSupportTickets({ email, ticketId, includeAll });
+  }
+  if (includeAll) {
+    const payload = await request('/api/admin/tickets');
+    return payload.tickets || [];
+  }
+  const params = new URLSearchParams();
+  if (email) params.set('email', email);
+  if (ticketId) params.set('ticketId', ticketId);
+  const query = params.toString() ? `?${params.toString()}` : '';
+  const payload = await request(`/api/support/tickets${query}`);
+  return payload.tickets || [];
+}
+
+export async function replySupportTicket(details) {
+  if (!hasRemoteBackend) {
+    return replyFreeSupportTicket(details);
+  }
+  return request('/api/support/tickets/reply', { method: 'POST', body: JSON.stringify(details) });
+}
+
+export async function updateSupportTicketStatus(ticketId, status) {
+  if (!hasRemoteBackend) {
+    return updateFreeSupportTicketStatus({ ticketId, status });
+  }
+  const payload = await request('/api/admin/tickets/status', {
+    method: 'POST',
+    body: JSON.stringify({ ticketId, status }),
+  });
+  return payload.ticket;
+}
+
+// Admin & Owner APIs
 export async function updateUserRole(userId, role) {
+  if (!hasRemoteBackend) {
+    return freeUpdateUserRole(userId, role);
+  }
   const payload = await request('/api/admin/users/role', { method: 'POST', body: JSON.stringify({ userId, role }) });
   return payload.user;
 }
 
 export async function deleteUserAccount(userId) {
+  if (!hasRemoteBackend) {
+    return freeDeleteUser(userId);
+  }
   return request('/api/admin/users/delete', { method: 'POST', body: JSON.stringify({ userId }) });
 }
 
 export async function setUserBan(userId, banned, reason = '') {
+  if (!hasRemoteBackend) {
+    return freeSetUserBan(userId, banned, reason);
+  }
   const payload = await request('/api/admin/users/ban', { method: 'POST', body: JSON.stringify({ userId, banned, reason }) });
   return payload.user;
 }
 
 export async function sendOwnerPasswordReset(userId) {
+  if (!hasRemoteBackend) {
+    const dash = buildFreeAdminDashboard();
+    const target = dash.users.find((u) => u.id === userId);
+    if (!target) throw new Error('المستخدم غير موجود.');
+    return freeRequestPasswordReset(target.email);
+  }
   return request('/api/admin/users/reset-password', { method: 'POST', body: JSON.stringify({ userId }) });
 }
 
 export async function inviteAdminByEmail(email) {
+  if (!hasRemoteBackend) {
+    return freeInviteAdmin(email);
+  }
   return request('/api/admin/invites', { method: 'POST', body: JSON.stringify({ email }) });
 }
 
 export async function loadAdminInvites() {
+  if (!hasRemoteBackend) {
+    return freeListInvites();
+  }
   const payload = await request('/api/admin/invites');
   return payload.invites;
 }
 
 export async function revokeAdminInvite(email) {
+  if (!hasRemoteBackend) {
+    return freeRevokeInvite(email);
+  }
   return request('/api/admin/invites/revoke', { method: 'POST', body: JSON.stringify({ email }) });
 }
 
 export async function loadAdminLoginLog() {
+  if (!hasRemoteBackend) {
+    return buildFreeAdminDashboard().loginLog;
+  }
   const payload = await request('/api/admin/login-log');
   return payload.logins || [];
 }
 
 export async function loadOwnerAccountLog() {
+  if (!hasRemoteBackend) {
+    return buildFreeAdminDashboard().users.map((u) => ({
+      ...u,
+      loginCount: 1,
+      lastLoginAt: u.last_seen_at,
+    }));
+  }
   const payload = await request('/api/admin/account-log');
   return payload.accounts || [];
 }
 
 export async function exportOwnerData() {
+  if (!hasRemoteBackend) {
+    const dash = buildFreeAdminDashboard();
+    return {
+      kind: 'PathPilotOwnerDataExport',
+      version: 5,
+      mode: 'free-cloud',
+      generatedAt: new Date().toISOString(),
+      users: dash.users,
+      tickets: dash.tickets,
+      feedback: dash.feedback,
+    };
+  }
   const payload = await request('/api/admin/export');
   return payload.snapshot;
 }
 
 export async function loadSystemControl() {
+  if (!hasRemoteBackend) {
+    return { paused: false, reason: '', updatedAt: null };
+  }
   const payload = await request('/api/admin/system-control');
   return payload.control;
 }
 
 export async function setSystemPause(paused, reason = '') {
+  if (!hasRemoteBackend) {
+    return { paused: Boolean(paused), reason: String(reason || ''), updatedAt: new Date().toISOString() };
+  }
   const payload = await request('/api/admin/system-control', {
     method: 'POST',
     body: JSON.stringify({ paused: Boolean(paused), reason: String(reason || '').slice(0, 500) }),
@@ -241,12 +465,16 @@ export async function setSystemPause(paused, reason = '') {
 }
 
 export async function loadSecurityEvents() {
+  if (!hasRemoteBackend) return [];
   const payload = await request('/api/admin/security-events');
   return payload.events || [];
 }
 
 export async function loadAdminDashboard() {
-  const [summary, users, apiUsage, errors, feedback, status, researchStatus, loginLog, securityVisits, securityEvents] = await Promise.all([
+  if (!hasRemoteBackend) {
+    return buildFreeAdminDashboard();
+  }
+  const [summary, users, apiUsage, errors, feedback, status, researchStatus, loginLog, securityVisits, securityEvents, ticketsPayload] = await Promise.all([
     request('/api/admin/summary'),
     request('/api/admin/users'),
     request('/api/admin/api-usage'),
@@ -257,10 +485,12 @@ export async function loadAdminDashboard() {
     request('/api/admin/login-log'),
     request('/api/admin/security-visits'),
     request('/api/admin/security-events').catch(() => ({ events: [] })),
+    request('/api/admin/tickets').catch(() => ({ tickets: [] })),
   ]);
   return {
     summary: summary.summary,
     users: users.users,
+    tickets: ticketsPayload.tickets || [],
     apiUsage: apiUsage.requests,
     errors: errors.errors,
     feedback: feedback.feedback,
