@@ -1,9 +1,11 @@
-import { openVaultPayload, sealVaultPayload } from './crypto-vault.js';
+import { openVaultPayload, sealVaultPayload, sha256Hex } from './crypto-vault.js';
 import { getFreeCloudConfig } from './free-cloud-hub.js';
 import { generateBrowserLLMResponse, isBrowserLLMReady } from './local-llm.js';
 import { generateNaturalConversationalAnswer } from './natural-tutor.js';
 
-const AI_VAULT_STORAGE_KEY = 'pathpilot.ai.vault.v6';
+export const MAX_GOOGLE_AI_KEYS = 200;
+const GOOGLE_KEY_POOL_VAULT = 'pathpilot.google_key_pool.v6';
+const POOL_CURSOR_KEY = 'pathpilot.google_key_cursor.v6';
 
 export const TOOL_LIBRARY = {
   study: [
@@ -40,31 +42,225 @@ export function getModeLabel(mode) {
   return MODE_LABELS[mode] || MODE_LABELS.general;
 }
 
-export function loadAiProviderVault() {
+function maskApiKey(key) {
+  const k = String(key || '').trim();
+  if (k.length <= 12) return '••••••••';
+  return `${k.slice(0, 7)}••••••${k.slice(-4)}`;
+}
+
+function readRawKeyPool() {
   try {
-    const raw = globalThis.localStorage?.getItem?.(AI_VAULT_STORAGE_KEY);
-    const saved = openVaultPayload(raw, {}) || {};
-    const freeCfg = getFreeCloudConfig();
-    return {
-      geminiKey: String(saved.geminiKey || import.meta.env?.VITE_GEMINI_API_KEY || freeCfg.geminiApiKey || '').trim(),
-      groqKey: String(saved.groqKey || import.meta.env?.VITE_GROQ_API_KEY || '').trim(),
-    };
+    const raw = globalThis.localStorage?.getItem?.(GOOGLE_KEY_POOL_VAULT);
+    const parsed = openVaultPayload(raw, { keys: [], preferredModel: 'auto' });
+    return Array.isArray(parsed?.keys) ? parsed : { keys: [], preferredModel: 'auto' };
   } catch {
-    return { geminiKey: '', groqKey: '' };
+    return { keys: [], preferredModel: 'auto' };
   }
 }
 
-export function saveAiProviderVault({ geminiKey = '', groqKey = '' } = {}) {
+function writeRawKeyPool(state) {
   try {
-    const clean = {
-      geminiKey: String(geminiKey || '').trim(),
-      groqKey: String(groqKey || '').trim(),
-    };
-    globalThis.localStorage?.setItem?.(AI_VAULT_STORAGE_KEY, sealVaultPayload(clean));
-    return clean;
+    const cleanKeys = (Array.isArray(state?.keys) ? state.keys : []).slice(0, MAX_GOOGLE_AI_KEYS);
+    globalThis.localStorage?.setItem?.(
+      GOOGLE_KEY_POOL_VAULT,
+      sealVaultPayload({
+        keys: cleanKeys,
+        preferredModel: state?.preferredModel || 'auto',
+      }),
+    );
   } catch {
-    return { geminiKey: '', groqKey: '' };
+    // Ignore storage write failure
   }
+}
+
+export function loadGoogleAiKeyPool() {
+  const state = readRawKeyPool();
+  const existingMap = new Map();
+  for (const item of state.keys) {
+    if (item?.key) existingMap.set(item.key, item);
+  }
+
+  const envList = [
+    ...String(import.meta.env?.VITE_GEMINI_API_KEYS || '').split(/[\n,\s;]+/),
+    String(import.meta.env?.VITE_GEMINI_API_KEY || ''),
+    String(getFreeCloudConfig()?.geminiApiKey || ''),
+  ]
+    .map((k) => k.trim())
+    .filter((k) => k.length >= 20);
+
+  for (const envKey of envList) {
+    if (!existingMap.has(envKey) && existingMap.size < MAX_GOOGLE_AI_KEYS) {
+      const id = `gkey-${sha256Hex(envKey).slice(0, 10)}`;
+      existingMap.set(envKey, {
+        id,
+        key: envKey,
+        maskedKey: maskApiKey(envKey),
+        label: `Google Key #${existingMap.size + 1}`,
+        enabled: true,
+        uses: 0,
+        failures: 0,
+        cooldownUntil: 0,
+        lastUsedAt: null,
+        status: 'ready',
+      });
+    }
+  }
+
+  const now = Date.now();
+  const keys = [...existingMap.values()].slice(0, MAX_GOOGLE_AI_KEYS).map((item, idx) => ({
+    ...item,
+    index: idx + 1,
+    maskedKey: maskApiKey(item.key),
+    isCoolingDown: Number(item.cooldownUntil || 0) > now,
+  }));
+
+  return {
+    keys,
+    preferredModel: state.preferredModel || 'auto',
+    maxCapacity: MAX_GOOGLE_AI_KEYS,
+    totalCount: keys.length,
+    activeCount: keys.filter((k) => k.enabled && !k.isCoolingDown && k.status !== 'invalid').length,
+    totalUses: keys.reduce((sum, k) => sum + Number(k.uses || 0), 0),
+  };
+}
+
+export function addGoogleAiKeysBulk(rawInput = '', labelPrefix = 'Google Key') {
+  const tokens = String(rawInput || '')
+    .split(/[\n,\r\t ;]+/)
+    .map((s) => s.trim())
+    .filter((s) => s.length >= 20);
+
+  const state = readRawKeyPool();
+  const map = new Map(state.keys.map((item) => [item.key, item]));
+  let added = 0;
+
+  for (const token of tokens) {
+    if (map.size >= MAX_GOOGLE_AI_KEYS) break;
+    if (map.has(token)) continue;
+    const nextNum = map.size + 1;
+    map.set(token, {
+      id: `gkey-${sha256Hex(token).slice(0, 10)}`,
+      key: token,
+      maskedKey: maskApiKey(token),
+      label: `${labelPrefix} #${nextNum}`,
+      enabled: true,
+      uses: 0,
+      failures: 0,
+      cooldownUntil: 0,
+      lastUsedAt: null,
+      status: 'ready',
+    });
+    added += 1;
+  }
+
+  writeRawKeyPool({ ...state, keys: [...map.values()] });
+  return { added, pool: loadGoogleAiKeyPool() };
+}
+
+export function toggleGoogleAiKey(id) {
+  const state = readRawKeyPool();
+  const nextKeys = state.keys.map((k) => (k.id === id ? { ...k, enabled: !k.enabled, cooldownUntil: 0, status: 'ready' } : k));
+  writeRawKeyPool({ ...state, keys: nextKeys });
+  return loadGoogleAiKeyPool();
+}
+
+export function removeGoogleAiKey(id) {
+  const state = readRawKeyPool();
+  const nextKeys = state.keys.filter((k) => k.id !== id);
+  writeRawKeyPool({ ...state, keys: nextKeys });
+  return loadGoogleAiKeyPool();
+}
+
+export function clearGoogleAiKeyPool() {
+  writeRawKeyPool({ keys: [], preferredModel: 'auto' });
+  return loadGoogleAiKeyPool();
+}
+
+export function setGooglePoolPreferredModel(preferredModel = 'auto') {
+  const state = readRawKeyPool();
+  writeRawKeyPool({ ...state, preferredModel });
+  return loadGoogleAiKeyPool();
+}
+
+function recordKeyOutcome(keyValue, outcome) {
+  const state = readRawKeyPool();
+  const now = Date.now();
+  const idx = state.keys.findIndex((k) => k.key === keyValue);
+  if (idx === -1) return;
+  const target = { ...state.keys[idx] };
+  if (outcome === 'ok') {
+    target.uses = Number(target.uses || 0) + 1;
+    target.status = 'healthy';
+    target.cooldownUntil = 0;
+    target.lastUsedAt = new Date(now).toISOString();
+  } else if (outcome === 'rate_limit') {
+    target.failures = Number(target.failures || 0) + 1;
+    target.status = 'cooldown';
+    target.cooldownUntil = now + 65_000;
+  } else if (outcome === 'invalid') {
+    target.failures = Number(target.failures || 0) + 1;
+    target.status = 'invalid';
+  }
+  const nextKeys = [...state.keys];
+  nextKeys[idx] = target;
+  writeRawKeyPool({ ...state, keys: nextKeys });
+}
+
+export async function testGoogleAiKeyById(id) {
+  const pool = loadGoogleAiKeyPool();
+  const item = pool.keys.find((k) => k.id === id);
+  if (!item) throw new Error('المفتاح غير موجود.');
+
+  for (const model of ['gemini-3.8-flash', 'gemini-2.5-flash-lite', 'gemini-2.5-flash']) {
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-goog-api-key': item.key,
+      },
+      body: JSON.stringify({
+        contents: [{ role: 'user', parts: [{ text: 'Reply with OK' }] }],
+        generationConfig: { maxOutputTokens: 12 },
+      }),
+    });
+    if (res.ok) {
+      recordKeyOutcome(item.key, 'ok');
+      return { ok: true, model, pool: loadGoogleAiKeyPool() };
+    }
+    if (res.status === 429) {
+      recordKeyOutcome(item.key, 'rate_limit');
+      return { ok: false, reason: 'وصل للحد المؤقت (429) — سيتم التبديل التلقائي لغيره', pool: loadGoogleAiKeyPool() };
+    }
+    if (res.status === 400 || res.status === 403) {
+      const errJson = await res.json().catch(() => ({}));
+      const msg = JSON.stringify(errJson);
+      if (/API_KEY_INVALID|invalid api key/i.test(msg)) {
+        recordKeyOutcome(item.key, 'invalid');
+        return { ok: false, reason: 'المفتاح غير صالح (API_KEY_INVALID)', pool: loadGoogleAiKeyPool() };
+      }
+    }
+  }
+  return { ok: false, reason: 'تعذر الاتصال بالنموذج حاليًا', pool: loadGoogleAiKeyPool() };
+}
+
+function nextOrderedKeysFromPool() {
+  const pool = loadGoogleAiKeyPool();
+  const available = pool.keys.filter((k) => k.enabled && !k.isCoolingDown && k.status !== 'invalid');
+  if (!available.length) return { ordered: [], preferredModel: pool.preferredModel };
+
+  let cursor = 0;
+  try {
+    cursor = Number(globalThis.localStorage?.getItem?.(POOL_CURSOR_KEY) || 0) || 0;
+    globalThis.localStorage?.setItem?.(POOL_CURSOR_KEY, String((cursor + 1) % available.length));
+  } catch {
+    cursor = 0;
+  }
+
+  const ordered = [];
+  for (let i = 0; i < available.length; i += 1) {
+    ordered.push(available[(cursor + i) % available.length]);
+  }
+  return { ordered, preferredModel: pool.preferredModel };
 }
 
 function cleanInput(value) {
@@ -156,26 +352,78 @@ export function generateDemoResponse({ mode, tool, prompt, preferences = {} }) {
 }
 
 function buildSystemInstruction(language = 'ar') {
-  if (language === 'en') {
-    return [
-      'You are PathPilot AI — a genuinely smart, warm, conversational AI assistant, tutor, and creator.',
-      'Answer questions directly and naturally, write clean code/summaries/plans/content when asked, explain difficult concepts clearly, and prioritize solving and explaining past online exam questions whenever mentioned.',
-      'Never output robotic disclaimers or filler templates. Match the user language naturally.',
-    ].join(' ');
+  const base = language === 'en'
+    ? [
+      'You are PathPilot AI — an exceptionally smart, thoughtful, accurate assistant, tutor, and workspace organizer.',
+      '1) Think carefully and answer the user accurately, naturally, and thoroughly in their language.',
+      '2) For analytical, academic, coding, or exam questions, begin your output with a concise reasoning block wrapped in <thinking>Step 1: ... | Step 2: ... | Step 3: ...</thinking> before your main answer.',
+      '3) You have real workspace powers: if the user asks to create or organize a folder (e.g., "create a Physics folder"), append [[FOLDER:Folder Name]] at the very end of your reply. If the user asks to generate or export a PDF summary/document, write the complete structured document in your reply and append [[PDF:Document Title]] at the very end.',
+      '4) Whenever the user mentions past online exams, solve every question accurately and highlight tested concepts.',
+    ]
+    : [
+      'أنت PathPilot AI — مساعد ومعلم ذكي جدًا، يفكر بعمق ويرد بدقة واحترافية وبطريقة طبيعية سلسة.',
+      '١) افهم سؤال المستخدم جيدًا ورد عليه بإجابة صحيحة، ذكية، ومنظمة بدون حشو.',
+      '٢) في الأسئلة العلمية أو البرمجية أو التلخيص والامتحانات، ابدأ في أول سطر بكتلة تفكير مختصرة جدًا داخل <thinking>تحليل السؤال: ... | خطة الحل: ...</thinking> ثم اكتب إجابتك الكاملة بعدها مباشرة.',
+      '٣) لديك صلاحيات تنفيذية حقيقية في المنصة: إذا طلب المستخدم إنشاء مجلد أو تنظيم المحادثة في مجلد (مثل: اعمل مجلد فيزياء)، أضف في نهاية ردك الوسم [[FOLDER:اسم المجلد]]. وإذا طلب إنشاء أو استخراج ملف PDF، اكتب المحتوى المنظم كاملًا في ردك وأضف في نهايته الوسم [[PDF:عنوان الملف]] ليتم تجهيز ملف الـ PDF للمستخدم فورًا.',
+      '٤) إذا ذكر المستخدم امتحانات أونلاين سابقة، اهتم بها لأقصى درجة وحل أسئلتها واشرح أفكارها.',
+    ];
+  return base.join('\n');
+}
+
+function parseAiEnvelopeAndCleanText(rawText, isFinal = false) {
+  let text = String(rawText || '');
+  let thinkingSteps = [];
+  let createFolder = '';
+  let openPdfTitle = '';
+
+  const thinkMatch = text.match(/<thinking>([\s\S]*?)<\/thinking>/i);
+  if (thinkMatch) {
+    const parts = thinkMatch[1]
+      .split(/\||\n/)
+      .map((s) => s.replace(/^[-•*\d.)]+\s*/, '').trim())
+      .filter(Boolean);
+    thinkingSteps = parts.slice(0, 5).map((p, idx) => ({
+      id: `t-${idx + 1}`,
+      title: idx === 0 ? 'تحليل وفهم الطلب' : `خطوة التفكير ${idx + 1}`,
+      detail: p,
+    }));
+    text = text.replace(thinkMatch[0], '').trimStart();
+  } else if (!isFinal && /<thinking>/i.test(text) && !/<\/thinking>/i.test(text)) {
+    text = text.replace(/<thinking>[\s\S]*$/i, '').trimStart();
   }
-  return [
-    'أنت PathPilot AI — مساعد ومعلم ذكي جدًا، طبيعي، متفاعل، ومبدع مثل ChatGPT تمامًا.',
-    'تجاوب مع المستخدم بأسلوب بشري سلس ومباشر باللغة التي يكتب بها (سواء بالعامية المصرية المهذبة أو العربية الواضحة أو الإنجليزية).',
-    'أجب عن أي سؤال بذكاء، أنشئ أكوادًا أو ملخصات مناهج أو خططًا أو أسئلة امتحانات فور طلبها، وإذا أرفق المستخدم امتحانات أونلاين سابقة حلّها واشرح أفكارها المتكررة بعناية.',
-  ].join(' ');
+
+  const folderMatch = text.match(/\[\[FOLDER:([^\]]+)\]\]/i);
+  if (folderMatch) {
+    createFolder = folderMatch[1].trim().slice(0, 50);
+    text = text.replace(/\[\[FOLDER:[^\]]+\]\]/gi, '').trim();
+  }
+
+  const pdfMatch = text.match(/\[\[PDF:([^\]]+)\]\]/i);
+  if (pdfMatch) {
+    openPdfTitle = pdfMatch[1].trim().slice(0, 80);
+    text = text.replace(/\[\[PDF:[^\]]+\]\]/gi, '').trim();
+  }
+
+  if (!isFinal) {
+    text = text.replace(/\[\[(?:FOLDER|PDF):[^\]]*$/i, '').trimEnd();
+  }
+
+  return {
+    visibleText: text,
+    thinkingTrace: thinkingSteps.length ? { intent: 'deep-ai', materialCount: 0, steps: thinkingSteps } : null,
+    actions: {
+      ...(createFolder ? { createFolder } : {}),
+      ...(openPdfTitle ? { openPdfTitle } : {}),
+    },
+  };
 }
 
 function buildOpenAiMessages(prompt, turns = [], language = 'ar') {
   const history = Array.isArray(turns)
-    ? turns.slice(-8).flatMap((turn) => {
+    ? turns.slice(-10).flatMap((turn) => {
       const items = [];
-      if (turn?.prompt) items.push({ role: 'user', content: String(turn.prompt).slice(0, 3500) });
-      if (turn?.answer) items.push({ role: 'assistant', content: String(turn.answer).slice(0, 3500) });
+      if (turn?.prompt) items.push({ role: 'user', content: String(turn.prompt).slice(0, 4000) });
+      if (turn?.answer) items.push({ role: 'assistant', content: String(turn.answer).slice(0, 4000) });
       return items;
     })
     : [];
@@ -186,20 +434,23 @@ function buildOpenAiMessages(prompt, turns = [], language = 'ar') {
   ];
 }
 
-async function readOpenAiStreamOrJson(response, onDelta) {
+async function readStreamChunks(response, onRawProgress) {
   const contentType = String(response.headers.get('content-type') || '').toLowerCase();
   if (!contentType.includes('event-stream') || !response.body) {
     const textBody = await response.text();
     try {
       const json = JSON.parse(textBody);
-      const msg = json?.choices?.[0]?.message?.content || json?.answer || '';
+      const msg = json?.choices?.[0]?.message?.content
+        || json?.candidates?.[0]?.content?.parts?.map((p) => p.text || '').join('')
+        || json?.answer
+        || '';
       if (msg && msg.trim()) {
-        onDelta?.(msg.trim(), msg.trim());
+        onRawProgress?.(msg.trim());
         return msg.trim();
       }
     } catch {
       if (textBody && textBody.trim() && !textBody.trim().startsWith('<')) {
-        onDelta?.(textBody.trim(), textBody.trim());
+        onRawProgress?.(textBody.trim());
         return textBody.trim();
       }
     }
@@ -230,7 +481,7 @@ async function readOpenAiStreamOrJson(response, onDelta) {
           || '';
         if (delta) {
           full += delta;
-          onDelta?.(delta, full);
+          onRawProgress?.(full);
         }
       } catch {
         // Ignore partial chunk JSON lines
@@ -240,8 +491,10 @@ async function readOpenAiStreamOrJson(response, onDelta) {
   return full.trim();
 }
 
-async function tryGeminiLive(messages, apiKey, signal, onDelta) {
-  if (!apiKey) return null;
+async function tryGooglePoolRotation(messages, signal, onRawProgress) {
+  const { ordered, preferredModel } = nextOrderedKeysFromPool();
+  if (!ordered.length) return null;
+
   const sysMsg = messages.find((m) => m.role === 'system')?.content || '';
   const contents = messages
     .filter((m) => m.role !== 'system')
@@ -250,54 +503,56 @@ async function tryGeminiLive(messages, apiKey, signal, onDelta) {
       parts: [{ text: m.content }],
     }));
 
-  for (const model of ['gemini-3.8-flash', 'gemini-2.5-flash-lite', 'gemini-2.5-flash']) {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse`;
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-goog-api-key': apiKey,
-      },
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: sysMsg }] },
-        contents,
-        generationConfig: { temperature: 0.45, maxOutputTokens: 4096 },
-      }),
-      signal,
-    });
-    if (!res.ok) continue;
-    const answer = await readOpenAiStreamOrJson(res, onDelta);
-    if (answer) return { answer, source: `gemini:${model}`, degraded: false };
+  const models = preferredModel && preferredModel !== 'auto'
+    ? [preferredModel, 'gemini-2.5-flash-lite']
+    : ['gemini-3.8-flash', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'];
+
+  const candidates = ordered.slice(0, 10);
+
+  for (const keyEntry of candidates) {
+    for (const model of models) {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse`;
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-goog-api-key': keyEntry.key,
+        },
+        body: JSON.stringify({
+          systemInstruction: { parts: [{ text: sysMsg }] },
+          contents,
+          generationConfig: { temperature: 0.45, maxOutputTokens: 4096 },
+        }),
+        signal,
+      });
+
+      if (res.status === 429 || res.status === 503) {
+        recordKeyOutcome(keyEntry.key, 'rate_limit');
+        break;
+      }
+
+      if (res.status === 400 || res.status === 403) {
+        const errBody = await res.text().catch(() => '');
+        if (/API_KEY_INVALID|invalid api key/i.test(errBody)) {
+          recordKeyOutcome(keyEntry.key, 'invalid');
+          break;
+        }
+        continue;
+      }
+
+      if (!res.ok) continue;
+
+      const rawAnswer = await readStreamChunks(res, onRawProgress);
+      if (rawAnswer) {
+        recordKeyOutcome(keyEntry.key, 'ok');
+        return { rawAnswer, source: `google-pool:${model}` };
+      }
+    }
   }
   return null;
 }
 
-async function tryGroqLive(messages, apiKey, signal, onDelta) {
-  if (!apiKey) return null;
-  for (const model of ['openai/gpt-oss-120b', 'openai/gpt-oss-20b']) {
-    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model,
-        messages,
-        temperature: 0.45,
-        max_tokens: 4096,
-        stream: true,
-      }),
-      signal,
-    });
-    if (!res.ok) continue;
-    const answer = await readOpenAiStreamOrJson(res, onDelta);
-    if (answer) return { answer, source: `groq:${model}`, degraded: false };
-  }
-  return null;
-}
-
-async function tryZeroKeyFreeCloudAi(messages, signal, onDelta) {
+async function tryZeroKeyFreeCloudAi(messages, signal, onRawProgress) {
   try {
     const res = await fetch('https://text.pollinations.ai/openai', {
       method: 'POST',
@@ -305,14 +560,14 @@ async function tryZeroKeyFreeCloudAi(messages, signal, onDelta) {
       body: JSON.stringify({
         model: 'openai',
         messages,
-        temperature: 0.5,
+        temperature: 0.45,
         stream: true,
       }),
       signal,
     });
     if (res.ok) {
-      const answer = await readOpenAiStreamOrJson(res, onDelta);
-      if (answer) return { answer, source: 'cloud-ai-free', degraded: false };
+      const rawAnswer = await readStreamChunks(res, onRawProgress);
+      if (rawAnswer) return { rawAnswer, source: 'cloud-ai-free' };
     }
   } catch (error) {
     if (signal?.aborted) throw error;
@@ -322,18 +577,14 @@ async function tryZeroKeyFreeCloudAi(messages, signal, onDelta) {
     const res = await fetch('https://text.pollinations.ai/', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'openai',
-        messages,
-        jsonMode: false,
-      }),
+      body: JSON.stringify({ model: 'openai', messages, jsonMode: false }),
       signal,
     });
     if (res.ok) {
       const text = (await res.text()).trim();
       if (text && !text.startsWith('<')) {
-        onDelta?.(text, text);
-        return { answer: text, source: 'cloud-ai-free', degraded: false };
+        onRawProgress?.(text);
+        return { rawAnswer: text, source: 'cloud-ai-free' };
       }
     }
   } catch (error) {
@@ -359,36 +610,53 @@ export async function streamSmartAiReply({
   onDelta,
 } = {}) {
   throwIfAborted(signal);
-  const vault = loadAiProviderVault();
   const messages = buildOpenAiMessages(prompt, turns, language);
 
-  if (vault.geminiKey) {
-    try {
-      const gemini = await tryGeminiLive(messages, vault.geminiKey, signal, onDelta);
-      if (gemini) return gemini;
-    } catch (error) {
-      if (signal?.aborted) throw error;
+  const emitVisible = (rawFull) => {
+    const parsed = parseAiEnvelopeAndCleanText(rawFull, false);
+    if (parsed.visibleText) {
+      onDelta?.(parsed.visibleText, parsed.visibleText, parsed.thinkingTrace);
     }
+  };
+
+  try {
+    const fromPool = await tryGooglePoolRotation(messages, signal, emitVisible);
+    if (fromPool?.rawAnswer) {
+      const finalParsed = parseAiEnvelopeAndCleanText(fromPool.rawAnswer, true);
+      const cleanAnswer = finalParsed.visibleText || fromPool.rawAnswer;
+      onDelta?.(cleanAnswer, cleanAnswer, finalParsed.thinkingTrace);
+      return {
+        answer: cleanAnswer,
+        source: fromPool.source,
+        degraded: false,
+        thinkingTrace: finalParsed.thinkingTrace,
+        actions: finalParsed.actions,
+      };
+    }
+  } catch (error) {
+    if (signal?.aborted) throw error;
   }
 
-  if (vault.groqKey) {
-    try {
-      const groq = await tryGroqLive(messages, vault.groqKey, signal, onDelta);
-      if (groq) return groq;
-    } catch (error) {
-      if (signal?.aborted) throw error;
-    }
+  const zeroKeyCloud = await tryZeroKeyFreeCloudAi(messages, signal, emitVisible);
+  if (zeroKeyCloud?.rawAnswer) {
+    const finalParsed = parseAiEnvelopeAndCleanText(zeroKeyCloud.rawAnswer, true);
+    const cleanAnswer = finalParsed.visibleText || zeroKeyCloud.rawAnswer;
+    onDelta?.(cleanAnswer, cleanAnswer, finalParsed.thinkingTrace);
+    return {
+      answer: cleanAnswer,
+      source: zeroKeyCloud.source,
+      degraded: false,
+      thinkingTrace: finalParsed.thinkingTrace,
+      actions: finalParsed.actions,
+    };
   }
-
-  const zeroKeyCloud = await tryZeroKeyFreeCloudAi(messages, signal, onDelta);
-  if (zeroKeyCloud) return zeroKeyCloud;
 
   if (preferences?.localLlmEnabled && isBrowserLLMReady()) {
     try {
       const localLlm = await generateBrowserLLMResponse({ mode, tool, prompt, preferences, timeoutMs: 25_000 });
       if (localLlm?.answer) {
-        onDelta?.(localLlm.answer, localLlm.answer);
-        return { answer: localLlm.answer, source: 'local-llm', degraded: false };
+        onDelta?.(localLlm.answer, localLlm.answer, null);
+        return { answer: localLlm.answer, source: 'local-llm', degraded: false, thinkingTrace: null, actions: {} };
       }
     } catch (error) {
       if (signal?.aborted) throw error;
@@ -396,8 +664,8 @@ export async function streamSmartAiReply({
   }
 
   const offline = generateNaturalConversationalAnswer({ prompt, preferences: { ...preferences, uiLanguage: language } });
-  onDelta?.(offline, offline);
-  return { answer: offline, source: 'natural-tutor', degraded: true };
+  onDelta?.(offline, offline, null);
+  return { answer: offline, source: 'natural-tutor', degraded: true, thinkingTrace: null, actions: {} };
 }
 
 export async function generateAssistantResponse({ mode, tool, prompt, preferences = {}, signal, onDelta }) {
