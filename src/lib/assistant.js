@@ -1,6 +1,9 @@
+import { openVaultPayload, sealVaultPayload } from './crypto-vault.js';
 import { getFreeCloudConfig } from './free-cloud-hub.js';
 import { generateBrowserLLMResponse, isBrowserLLMReady } from './local-llm.js';
 import { generateNaturalConversationalAnswer } from './natural-tutor.js';
+
+const AI_VAULT_STORAGE_KEY = 'pathpilot.ai.vault.v6';
 
 export const TOOL_LIBRARY = {
   study: [
@@ -29,9 +32,35 @@ export const TOOL_LIBRARY = {
   ],
 };
 
-const MODE_LABELS = { study: 'مساحة الدراسة', work: 'مساحة العمل', general: 'المساعد العام' };
 const AUDIENCE_LABELS = { self: 'استخدام شخصي', teacher: 'مدرس أو مشرف', recruiter: 'مسؤول توظيف', team: 'فريق عمل' };
-export const hasLiveAI = Boolean(import.meta.env?.VITE_AI_API_URL?.trim());
+export const hasLiveAI = true;
+
+export function loadAiProviderVault() {
+  try {
+    const raw = globalThis.localStorage?.getItem?.(AI_VAULT_STORAGE_KEY);
+    const saved = openVaultPayload(raw, {}) || {};
+    const freeCfg = getFreeCloudConfig();
+    return {
+      geminiKey: String(saved.geminiKey || import.meta.env?.VITE_GEMINI_API_KEY || freeCfg.geminiApiKey || '').trim(),
+      groqKey: String(saved.groqKey || import.meta.env?.VITE_GROQ_API_KEY || '').trim(),
+    };
+  } catch {
+    return { geminiKey: '', groqKey: '' };
+  }
+}
+
+export function saveAiProviderVault({ geminiKey = '', groqKey = '' } = {}) {
+  try {
+    const clean = {
+      geminiKey: String(geminiKey || '').trim(),
+      groqKey: String(groqKey || '').trim(),
+    };
+    globalThis.localStorage?.setItem?.(AI_VAULT_STORAGE_KEY, sealVaultPayload(clean));
+    return clean;
+  } catch {
+    return { geminiKey: '', groqKey: '' };
+  }
+}
 
 function cleanInput(value) {
   return String(value || '').replace(/\s+/g, ' ').trim();
@@ -45,7 +74,7 @@ function sentences(value) {
 }
 
 export function extractKeywords(value, limit = 6) {
-  const stopWords = new Set(['هذا','هذه','ذلك','التي','الذي','على','إلى','من','في','عن','مع','أو','هو','هي','تم','كان','have','with','from','that','this','and','the','for']);
+  const stopWords = new Set(['هذا', 'هذه', 'ذلك', 'التي', 'الذي', 'على', 'إلى', 'من', 'في', 'عن', 'مع', 'أو', 'هو', 'هي', 'تم', 'كان', 'have', 'with', 'from', 'that', 'this', 'and', 'the', 'for']);
   const counts = new Map();
   String(value || '').toLowerCase().match(/[\p{L}\p{N}]{3,}/gu)?.forEach((word) => {
     if (!stopWords.has(word)) counts.set(word, (counts.get(word) || 0) + 1);
@@ -121,50 +150,191 @@ export function generateDemoResponse({ mode, tool, prompt, preferences = {} }) {
   return applyResponseStyle(`${audiencePrefix(preferences)}${answer}`, preferences);
 }
 
-async function tryFreeDirectGemini(args, signal) {
-  const cfg = getFreeCloudConfig();
-  if (!cfg.geminiApiKey) return null;
-  const model = cfg.geminiModel || 'gemini-2.5-flash';
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
-  const systemText = [
-    'أنت PathPilot AI، معلم ومساعد ذكي يتحدث بأسلوب طبيعي وودود ومباشر باللغة التي يكتب بها المستخدم (العربية أو الإنجليزية).',
-    'أجب عن الأسئلة بوضوح ودقة، ولخّص المناهج باحترافية، وإذا ذكر المستخدم امتحانات أونلاين سابقة أولِها عناية قصوى وحل أسئلتها واشرح أفكارها المتكررة.',
+function buildSystemInstruction(language = 'ar') {
+  if (language === 'en') {
+    return [
+      'You are PathPilot AI — a genuinely smart, warm, conversational AI assistant, tutor, and creator.',
+      'Answer questions directly and naturally, write clean code/summaries/plans/content when asked, explain difficult concepts clearly, and prioritize solving and explaining past online exam questions whenever mentioned.',
+      'Never output robotic disclaimers or filler templates. Match the user language naturally.',
+    ].join(' ');
+  }
+  return [
+    'أنت PathPilot AI — مساعد ومعلم ذكي جدًا، طبيعي، متفاعل، ومبدع مثل ChatGPT تمامًا.',
+    'تجاوب مع المستخدم بأسلوب بشري سلس ومباشر باللغة التي يكتب بها (سواء بالعامية المصرية المهذبة أو العربية الواضحة أو الإنجليزية).',
+    'أجب عن أي سؤال بذكاء، أنشئ أكوادًا أو ملخصات مناهج أو خططًا أو أسئلة امتحانات فور طلبها، وإذا أرفق المستخدم امتحانات أونلاين سابقة حلّها واشرح أفكارها المتكررة بعناية.',
   ].join(' ');
-
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-goog-api-key': cfg.geminiApiKey,
-    },
-    body: JSON.stringify({
-      systemInstruction: { parts: [{ text: systemText }] },
-      contents: [{ role: 'user', parts: [{ text: String(args.prompt || '') }] }],
-      generationConfig: { temperature: 0.35, maxOutputTokens: 3200 },
-    }),
-    signal,
-  });
-  if (!res.ok) return null;
-  const payload = await res.json().catch(() => ({}));
-  const answer = payload?.candidates?.[0]?.content?.parts?.map((p) => p.text || '').join('\n').trim();
-  return answer ? { answer, source: 'gemini-free-direct', degraded: false } : null;
 }
 
-function fallbackResponse(args) {
-  if (args.tool && args.tool !== 'ask') {
-    const specialized = generateDemoResponse(args);
-    const naturalExtra = generateNaturalConversationalAnswer(args);
-    return {
-      answer: `${naturalExtra}\n\n${specialized}`,
-      source: 'natural-tutor',
-      degraded: false,
-    };
+function buildOpenAiMessages(prompt, turns = [], language = 'ar') {
+  const history = Array.isArray(turns)
+    ? turns.slice(-8).flatMap((turn) => {
+      const items = [];
+      if (turn?.prompt) items.push({ role: 'user', content: String(turn.prompt).slice(0, 3500) });
+      if (turn?.answer) items.push({ role: 'assistant', content: String(turn.answer).slice(0, 3500) });
+      return items;
+    })
+    : [];
+  return [
+    { role: 'system', content: buildSystemInstruction(language) },
+    ...history,
+    { role: 'user', content: String(prompt || '') },
+  ];
+}
+
+async function readOpenAiStreamOrJson(response, onDelta) {
+  const contentType = String(response.headers.get('content-type') || '').toLowerCase();
+  if (!contentType.includes('event-stream') || !response.body) {
+    const textBody = await response.text();
+    try {
+      const json = JSON.parse(textBody);
+      const msg = json?.choices?.[0]?.message?.content || json?.answer || '';
+      if (msg && msg.trim()) {
+        onDelta?.(msg.trim(), msg.trim());
+        return msg.trim();
+      }
+    } catch {
+      if (textBody && textBody.trim() && !textBody.trim().startsWith('<')) {
+        onDelta?.(textBody.trim(), textBody.trim());
+        return textBody.trim();
+      }
+    }
+    return '';
   }
-  return {
-    answer: generateNaturalConversationalAnswer(args),
-    source: 'natural-tutor',
-    degraded: false,
-  };
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let full = '';
+
+  for (let chunkStep = 0; chunkStep < 100000; chunkStep += 1) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop() || '';
+
+    for (const rawLine of lines) {
+      const line = rawLine.trim();
+      if (!line.startsWith('data:')) continue;
+      const payload = line.slice(5).trim();
+      if (!payload || payload === '[DONE]') continue;
+      try {
+        const parsed = JSON.parse(payload);
+        const delta = parsed?.choices?.[0]?.delta?.content
+          || parsed?.candidates?.[0]?.content?.parts?.map((p) => p.text || '').join('')
+          || '';
+        if (delta) {
+          full += delta;
+          onDelta?.(delta, full);
+        }
+      } catch {
+        // Ignore partial chunk JSON lines
+      }
+    }
+  }
+  return full.trim();
+}
+
+async function tryGeminiLive(messages, apiKey, signal, onDelta) {
+  if (!apiKey) return null;
+  const sysMsg = messages.find((m) => m.role === 'system')?.content || '';
+  const contents = messages
+    .filter((m) => m.role !== 'system')
+    .map((m) => ({
+      role: m.role === 'assistant' ? 'model' : 'user',
+      parts: [{ text: m.content }],
+    }));
+
+  for (const model of ['gemini-3.8-flash', 'gemini-2.5-flash-lite', 'gemini-2.5-flash']) {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-goog-api-key': apiKey,
+      },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: sysMsg }] },
+        contents,
+        generationConfig: { temperature: 0.45, maxOutputTokens: 4096 },
+      }),
+      signal,
+    });
+    if (!res.ok) continue;
+    const answer = await readOpenAiStreamOrJson(res, onDelta);
+    if (answer) return { answer, source: `gemini:${model}`, degraded: false };
+  }
+  return null;
+}
+
+async function tryGroqLive(messages, apiKey, signal, onDelta) {
+  if (!apiKey) return null;
+  for (const model of ['openai/gpt-oss-120b', 'openai/gpt-oss-20b']) {
+    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model,
+        messages,
+        temperature: 0.45,
+        max_tokens: 4096,
+        stream: true,
+      }),
+      signal,
+    });
+    if (!res.ok) continue;
+    const answer = await readOpenAiStreamOrJson(res, onDelta);
+    if (answer) return { answer, source: `groq:${model}`, degraded: false };
+  }
+  return null;
+}
+
+async function tryZeroKeyFreeCloudAi(messages, signal, onDelta) {
+  try {
+    const res = await fetch('https://text.pollinations.ai/openai', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'openai',
+        messages,
+        temperature: 0.5,
+        stream: true,
+      }),
+      signal,
+    });
+    if (res.ok) {
+      const answer = await readOpenAiStreamOrJson(res, onDelta);
+      if (answer) return { answer, source: 'cloud-ai-free', degraded: false };
+    }
+  } catch (error) {
+    if (signal?.aborted) throw error;
+  }
+
+  try {
+    const res = await fetch('https://text.pollinations.ai/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'openai',
+        messages,
+        jsonMode: false,
+      }),
+      signal,
+    });
+    if (res.ok) {
+      const text = (await res.text()).trim();
+      if (text && !text.startsWith('<')) {
+        onDelta?.(text, text);
+        return { answer: text, source: 'cloud-ai-free', degraded: false };
+      }
+    }
+  } catch (error) {
+    if (signal?.aborted) throw error;
+  }
+  return null;
 }
 
 function throwIfAborted(signal) {
@@ -173,86 +343,93 @@ function throwIfAborted(signal) {
   throw new DOMException('The operation was aborted.', 'AbortError');
 }
 
-function responseError(payload, status) {
-  const error = new Error(payload?.error || payload?.message || payload?.code || `AI service returned ${status}`);
-  error.code = payload?.code || 'AI_SERVICE_FAILED';
-  error.status = status;
-  return error;
-}
-
-async function llmAwareFallback(args, allowColdStart, signal) {
+export async function streamSmartAiReply({
+  prompt,
+  turns = [],
+  language = 'ar',
+  mode = 'general',
+  tool = 'ask',
+  preferences = {},
+  signal,
+  onDelta,
+} = {}) {
   throwIfAborted(signal);
-  try {
-    const freeGemini = await tryFreeDirectGemini(args, signal);
-    if (freeGemini) return freeGemini;
-  } catch (error) {
-    if (signal?.aborted) throw error;
+  const vault = loadAiProviderVault();
+  const messages = buildOpenAiMessages(prompt, turns, language);
+
+  if (vault.geminiKey) {
+    try {
+      const gemini = await tryGeminiLive(messages, vault.geminiKey, signal, onDelta);
+      if (gemini) return gemini;
+    } catch (error) {
+      if (signal?.aborted) throw error;
+    }
   }
 
-  if (args.preferences?.localLlmEnabled && (allowColdStart || isBrowserLLMReady())) {
+  if (vault.groqKey) {
     try {
-      const localLlm = await generateBrowserLLMResponse({
-        ...args,
-        timeoutMs: allowColdStart ? 70_000 : 25_000,
-      });
-      throwIfAborted(signal);
+      const groq = await tryGroqLive(messages, vault.groqKey, signal, onDelta);
+      if (groq) return groq;
+    } catch (error) {
+      if (signal?.aborted) throw error;
+    }
+  }
+
+  const zeroKeyCloud = await tryZeroKeyFreeCloudAi(messages, signal, onDelta);
+  if (zeroKeyCloud) return zeroKeyCloud;
+
+  if (preferences?.localLlmEnabled && isBrowserLLMReady()) {
+    try {
+      const localLlm = await generateBrowserLLMResponse({ mode, tool, prompt, preferences, timeoutMs: 25_000 });
       if (localLlm?.answer) {
+        onDelta?.(localLlm.answer, localLlm.answer);
+        return { answer: localLlm.answer, source: 'local-llm', degraded: false };
+      }
+    } catch (error) {
+      if (signal?.aborted) throw error;
+    }
+  }
+
+  const offline = generateNaturalConversationalAnswer({ prompt, preferences: { ...preferences, uiLanguage: language } });
+  onDelta?.(offline, offline);
+  return { answer: offline, source: 'natural-tutor', degraded: true };
+}
+
+export async function generateAssistantResponse({ mode, tool, prompt, preferences = {}, signal, onDelta }) {
+  throwIfAborted(signal);
+  const customApiUrl = String(import.meta.env?.VITE_AI_API_URL || '').trim();
+  if (customApiUrl) {
+    try {
+      const response = await fetch(customApiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode, tool, prompt: cleanInput(prompt), preferences }),
+        signal,
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (response.ok && typeof payload.answer === 'string' && payload.answer.trim()) {
+        onDelta?.(payload.answer.trim(), payload.answer.trim());
         return {
-          answer: localLlm.answer,
-          source: 'local-llm',
-          degraded: false,
-          localModel: localLlm.model,
+          answer: payload.answer.trim(),
+          source: payload.sourceMode || 'live',
+          degraded: Boolean(payload.researchFailed),
+          sources: Array.isArray(payload.sources) ? payload.sources : [],
         };
       }
     } catch (error) {
       if (signal?.aborted) throw error;
     }
   }
-  throwIfAborted(signal);
-  return fallbackResponse(args);
-}
 
-export async function generateAssistantResponse({ mode, tool, prompt, preferences = {}, signal, onProgress, onDelta }) {
-  const args = { mode, tool, prompt, preferences, signal, onProgress, onDelta };
-  throwIfAborted(signal);
-  if (!hasLiveAI) return llmAwareFallback(args, true, signal);
-
-  const controller = new AbortController();
-  const abortFromCaller = () => controller.abort(signal?.reason || new DOMException('The operation was aborted.', 'AbortError'));
-  if (signal) signal.addEventListener('abort', abortFromCaller, { once: true });
-  const timeout = setTimeout(() => {
-    controller.abort(new DOMException('Live AI request timed out.', 'TimeoutError'));
-  }, 85_000);
-
-  try {
-    const response = await fetch(import.meta.env.VITE_AI_API_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ mode, tool, prompt: cleanInput(prompt), preferences }),
-      signal: controller.signal,
-    });
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok) throw responseError(payload, response.status);
-    if (typeof payload.answer !== 'string' || !payload.answer.trim()) throw new Error('Invalid AI response');
-    return {
-      answer: payload.answer.trim(),
-      source: payload.sourceMode || 'live',
-      degraded: Boolean(payload.researchFailed),
-      sources: Array.isArray(payload.sources) ? payload.sources : [],
-      sourceCount: Number(payload.sourceCount || 0),
-      targetReached: Boolean(payload.targetReached),
-      route: payload.route || null,
-    };
-  } catch (error) {
-    if (signal?.aborted) throw error;
-    if (error?.code === 'SYSTEM_PAUSED' || error?.code === 'UNSAFE_INPUT_BLOCKED') throw error;
-    return llmAwareFallback(args, false, signal);
-  } finally {
-    clearTimeout(timeout);
-    if (signal) signal.removeEventListener('abort', abortFromCaller);
-  }
-}
-
-export function getModeLabel(mode) {
-  return MODE_LABELS[mode] || '';
+  const toolHint = tool && tool !== 'ask' ? `[Task: ${mode || 'general'} / ${tool}]\n${prompt}` : prompt;
+  return streamSmartAiReply({
+    prompt: toolHint,
+    turns: [],
+    language: preferences?.uiLanguage === 'en' ? 'en' : 'ar',
+    mode,
+    tool,
+    preferences,
+    signal,
+    onDelta,
+  });
 }
